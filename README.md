@@ -1,12 +1,33 @@
 # BioDataLedger
 
-**Find retained figures and understand their recorded data, code and parameters without rebuilding a project's history.** BioDataLedger is a lightweight native R/Python project registry for existing computational research folders. No AI service, database or workflow engine is required.
+**Keep your results connected to the data, code and decisions behind them.**
+
+BioDataLedger is a lightweight, local R/Python package for researchers who need to find a saved result and understand its recorded sources—even after the original session has ended.
+
+## The problem
+
+Research folders accumulate different dataset versions, analysis scripts and figures. A saved plot may outlive the notebook session that produced it. When you return to the project or hand it to a colleague, you have to work out which input was used, which conditions were compared and which code and parameters belong to that result.
+
+## How BioDataLedger helps
+
+BioDataLedger adds a small, versioned record book to your existing project folder. You register the data, analyses and figures you want to retain. It keeps explicit links between registered input revisions, analyses and figures, alongside the code, parameters and experimental design you record.
+
+| When you need to… | BioDataLedger helps you… |
+| --- | --- |
+| Find a figure again | Search registered figures and retrieve their recorded sources. |
+| Distinguish dataset versions | Use exact record IDs/revisions and an explicitly chosen input for each purpose. |
+| Understand an intended comparison | Retrieve its recorded condition, levels, reference category and biological replicate. |
+| Inspect or share a retained result | Review known inputs, code snapshots, missing files and selected export contents. |
+
+**The practical benefit:** you can reopen a project in R or Python and inspect a result's recorded context without reconstructing it from memory. Your files stay in their existing folders, and your usual analysis tools remain unchanged. No AI service, database or workflow engine is required.
+
+BioDataLedger records what you supply; it does not run analyses or prove which computation produced a figure. ZIP exports include the registry's full metadata/history and do not guarantee a complete runnable environment, so review the preview before sharing.
+
+[Get started below](#repository-instructions-start-here) · [See the Python/R examples](#five-minute-quick-start) · [Read the API](docs/api/API_0.3.0.md)
 
 Source version: **0.3.0**, including experimental design and levels, under the MIT license. See the [GitHub repository](https://github.com/nbatada/biodataledger). This is a source publication, not a PyPI or CRAN release. The R maintainer-contact placeholder remains unresolved. Start with the synthetic examples below; the [API reference](docs/api/API_0.3.0.md) documents all methods.
 
 ## Repository instructions: start here
-
-BioDataLedger is a small record book for a research project. It remembers which data, code, parameters and experimental design belong to a saved result. You continue doing analysis in your usual Python or R tools, then register the results you want to keep.
 
 The repository contains the **software**. Your research project stays in its own folder; you do not need to move your data into this repository. BioDataLedger saves its records in `.nb_project_bundle/` inside the project you choose. It does not run analyses or automatically filter data.
 
