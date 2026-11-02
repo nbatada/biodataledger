@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1.0",
+  "project": {
+    "id": "09b20ada-f4db-4670-a0c4-76a0efae8c2c",
+    "name": "Empty",
+    "purpose": null,
+    "raw_dir": null,
+    "metadata": null,
+    "next_task": null,
+    "questions": [],
+    "authorities": []
+  },
+  "state_revision": 1,
+  "last_transaction": "9d7948fc-b2b3-4543-956a-c7525d95a328",
+  "records": [],
+  "current": {},
+  "bindings": {},
+  "history": [
+    {
+      "at": "2026-11-02T17:19:59Z",
+      "action": "create",
+      "actor": "caller",
+      "reason": null,
+      "target": null,
+      "transaction": "9d7948fc-b2b3-4543-956a-c7525d95a328"
+    }
+  ],
+  "imported": false
+}

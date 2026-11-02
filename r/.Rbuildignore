@@ -1,0 +1,4 @@
+^check$
+^.*\.Rcheck$
+^.*\.tar\.gz$
+^inst/API_0\.2\.0\.md$

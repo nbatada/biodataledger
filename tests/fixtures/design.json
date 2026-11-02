@@ -1,0 +1,8 @@
+{
+  "condition": "treatment",
+  "levels": ["Vehicle", "LowDose", "HighDose"],
+  "selected_levels": ["Vehicle", "LowDose"],
+  "reference_level": "Vehicle",
+  "replicate": "mouse_id",
+  "selection_reason": "HighDose excluded due to low RNA complexity"
+}

@@ -1,0 +1,677 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BioDataLedger state 0.1.0 and experimental-design extension 0.2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project",
+    "state_revision",
+    "last_transaction",
+    "records",
+    "current",
+    "bindings",
+    "history",
+    "imported"
+  ],
+  "properties": {
+    "schema_version": {
+      "enum": [
+        "0.1.0",
+        "0.2.0"
+      ]
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purpose",
+        "next_task",
+        "id",
+        "name",
+        "raw_dir",
+        "metadata",
+        "questions",
+        "authorities"
+      ],
+      "properties": {
+        "purpose": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "next_task": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "raw_dir": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/locator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/locator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "questions": {
+          "type": "array"
+        },
+        "authorities": {
+          "type": "array"
+        },
+        "design": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "state_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "last_transaction": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/record"
+      }
+    },
+    "current": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/ref"
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "at",
+          "action",
+          "actor",
+          "reason",
+          "target",
+          "transaction"
+        ],
+        "properties": {
+          "at": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ref"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "transaction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      }
+    },
+    "imported": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project_id",
+        "id",
+        "revision"
+      ],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^(DATA|ANA|FIG|DEC|DES)-[0-9]{3,}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "project",
+            "external",
+            "uri"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "code": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "locator",
+        "sha256",
+        "snapshot"
+      ],
+      "properties": {
+        "locator": {
+          "$ref": "#/$defs/locator"
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "snapshot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "id",
+        "revision",
+        "name",
+        "created_at",
+        "locator",
+        "role",
+        "type",
+        "sha256",
+        "size",
+        "inputs",
+        "analysis",
+        "code",
+        "method",
+        "params",
+        "details",
+        "status",
+        "foreign_refs"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "data",
+            "analysis",
+            "figure",
+            "decision",
+            "design"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "locator": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/locator"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "size": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "inputs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/ref"
+          }
+        },
+        "analysis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "code": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/code"
+          }
+        },
+        "method": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "details": {
+          "type": "object"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "superseded",
+            "inactive"
+          ]
+        },
+        "foreign_refs": {
+          "type": "array"
+        },
+        "design": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "design"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "id": {
+                "const": "DES-001"
+              },
+              "details": {
+                "$ref": "#/$defs/design"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "design"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "analysis",
+                  "figure"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "figure"
+              },
+              "analysis": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "design"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "metadata_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed_levels",
+        "missing_levels",
+        "missing_selected_levels",
+        "missing_columns",
+        "unexpected_levels",
+        "valid",
+        "row_count",
+        "missing_condition_values",
+        "missing_replicate_values"
+      ],
+      "properties": {
+        "observed_levels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_levels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_selected_levels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "missing_columns": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "unexpected_levels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "valid": {
+          "const": true
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "missing_condition_values": {
+          "const": 0
+        },
+        "missing_replicate_values": {
+          "const": 0
+        }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "condition",
+        "levels",
+        "selected_levels",
+        "reference_level",
+        "replicate",
+        "selection_reason",
+        "evidence_source",
+        "metadata_check",
+        "context"
+      ],
+      "properties": {
+        "condition": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "selected_levels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "reference_level": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "replicate": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_source": {
+          "enum": [
+            "scientist-declared",
+            "metadata-verified"
+          ]
+        },
+        "metadata_check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/metadata_check"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ref"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "evidence_source": {
+                "const": "scientist-declared"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "metadata_check": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "metadata_check": {
+                "$ref": "#/$defs/metadata_check"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation.",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "0.1.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "project": {
+            "not": {
+              "required": [
+                "design"
+              ]
+            }
+          },
+          "records": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "design"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "kind": {
+                        "const": "design"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
