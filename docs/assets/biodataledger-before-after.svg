@@ -1,0 +1,267 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="864pt" height="432pt" viewBox="0 0 864 432" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-02T16:05:08.237748</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.10.8, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 432 
+L 864 432 
+L 864 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 33.84 83.52 
+L 398.16 83.52 
+Q 403.2 83.52 403.2 88.56 
+L 403.2 123.12 
+Q 403.2 128.16 398.16 128.16 
+L 33.84 128.16 
+Q 28.8 128.16 28.8 123.12 
+L 28.8 88.56 
+Q 28.8 83.52 33.84 83.52 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f7f8fa; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 33.84 136.8 
+L 398.16 136.8 
+Q 403.2 136.8 403.2 141.84 
+L 403.2 176.4 
+Q 403.2 181.44 398.16 181.44 
+L 33.84 181.44 
+Q 28.8 181.44 28.8 176.4 
+L 28.8 141.84 
+Q 28.8 136.8 33.84 136.8 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f7f8fa; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 33.84 190.08 
+L 398.16 190.08 
+Q 403.2 190.08 403.2 195.12 
+L 403.2 229.68 
+Q 403.2 234.72 398.16 234.72 
+L 33.84 234.72 
+Q 28.8 234.72 28.8 229.68 
+L 28.8 195.12 
+Q 28.8 190.08 33.84 190.08 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f7f8fa; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 33.84 280.8 
+L 138.96 280.8 
+Q 144 280.8 144 285.84 
+L 144 314.64 
+Q 144 319.68 138.96 319.68 
+L 33.84 319.68 
+Q 28.8 319.68 28.8 314.64 
+L 28.8 285.84 
+Q 28.8 280.8 33.84 280.8 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f7f8fa; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 163.44 280.8 
+L 268.56 280.8 
+Q 273.6 280.8 273.6 285.84 
+L 273.6 314.64 
+Q 273.6 319.68 268.56 319.68 
+L 163.44 319.68 
+Q 158.4 319.68 158.4 314.64 
+L 158.4 285.84 
+Q 158.4 280.8 163.44 280.8 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f7f8fa; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 293.04 280.8 
+L 398.16 280.8 
+Q 403.2 280.8 403.2 285.84 
+L 403.2 314.64 
+Q 403.2 319.68 398.16 319.68 
+L 293.04 319.68 
+Q 288 319.68 288 314.64 
+L 288 285.84 
+Q 288 280.8 293.04 280.8 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f7f8fa; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 465.84 83.52 
+L 830.16 83.52 
+Q 835.2 83.52 835.2 88.56 
+L 835.2 229.68 
+Q 835.2 234.72 830.16 234.72 
+L 465.84 234.72 
+Q 460.8 234.72 460.8 229.68 
+L 460.8 88.56 
+Q 460.8 83.52 465.84 83.52 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #f0f7f8; stroke: #126b81; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 465.84 252 
+L 830.16 252 
+Q 835.2 252 835.2 257.04 
+L 835.2 280.08 
+Q 835.2 285.12 830.16 285.12 
+L 465.84 285.12 
+Q 460.8 285.12 460.8 280.08 
+L 460.8 257.04 
+Q 460.8 252 465.84 252 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #ffffff; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 465.84 293.76 
+L 830.16 293.76 
+Q 835.2 293.76 835.2 298.8 
+L 835.2 321.84 
+Q 835.2 326.88 830.16 326.88 
+L 465.84 326.88 
+Q 460.8 326.88 460.8 321.84 
+L 460.8 298.8 
+Q 460.8 293.76 465.84 293.76 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #ffffff; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 465.84 335.52 
+L 830.16 335.52 
+Q 835.2 335.52 835.2 340.56 
+L 835.2 363.6 
+Q 835.2 368.64 830.16 368.64 
+L 465.84 368.64 
+Q 460.8 368.64 460.8 363.6 
+L 460.8 340.56 
+Q 460.8 335.52 465.84 335.52 
+z
+" clip-path="url(#p7d7ad38cae)" style="fill: #ffffff; stroke: #d8e0e5; stroke-linejoin: miter"/>
+   </g>
+   <g id="line2d_1">
+    <path d="M 432 25.92 
+L 432 387.36 
+" clip-path="url(#p7d7ad38cae)" style="fill: none; stroke: #d8e0e5; stroke-linecap: square"/>
+   </g>
+   <g id="line2d_2">
+    <path d="M 86.4 338.4 
+L 216 349.92 
+L 345.6 338.4 
+" clip-path="url(#p7d7ad38cae)" style="fill: none; stroke-dasharray: 4.44,1.92; stroke-dashoffset: 0; stroke: #9aabb5; stroke-width: 1.2"/>
+   </g>
+   <g id="text_1">
+    <text style="font-weight: 700; font-size: 20px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="28.8" y="36.733125" transform="rotate(-0 28.8 36.733125)">Without BioDataLedger</text>
+   </g>
+   <g id="text_2">
+    <text style="font-weight: 700; font-size: 20px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="460.8" y="36.733125" transform="rotate(-0 460.8 36.733125)">With BioDataLedger</text>
+   </g>
+   <g id="text_3">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="28.8" y="63.582188" transform="rotate(-0 28.8 63.582188)">Which dataset and cohort should I use?</text>
+   </g>
+   <g id="text_4">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="460.8" y="63.582188" transform="rotate(-0 460.8 63.582188)">Your chosen input, recorded with its sources</text>
+   </g>
+   <g id="text_5">
+    <text style="font-weight: 700; font-size: 13px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="40.32" y="101.306094" transform="rotate(-0 40.32 101.306094)">data_v1.rds</text>
+   </g>
+   <g id="text_6">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="40.32" y="117.979219" transform="rotate(-0 40.32 117.979219)">Hashed only · Vehicle + LowDose</text>
+   </g>
+   <g id="text_7">
+    <text style="font-weight: 700; font-size: 13px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="40.32" y="154.586094" transform="rotate(-0 40.32 154.586094)">data_v2.rds</text>
+   </g>
+   <g id="text_8">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="40.32" y="171.259219" transform="rotate(-0 40.32 171.259219)">Hashed + unassigned · all treatments</text>
+   </g>
+   <g id="text_9">
+    <text style="font-weight: 700; font-size: 13px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="40.32" y="207.926016" transform="rotate(-0 40.32 207.926016)">data_final.rds</text>
+   </g>
+   <g id="text_10">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="40.32" y="224.539219" transform="rotate(-0 40.32 224.539219)">Hashed + unassigned · Vehicle + LowDose</text>
+   </g>
+   <g id="text_11">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="28.8" y="263.815313" transform="rotate(-0 28.8 263.815313)">Which files produced this result?</text>
+   </g>
+   <g id="text_12">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="37.44" y="303.342188" transform="rotate(-0 37.44 303.342188)">metadata.csv</text>
+   </g>
+   <g id="text_13">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="167.04" y="303.271875" transform="rotate(-0 167.04 303.271875)">analysis.R</text>
+   </g>
+   <g id="text_14">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="296.64" y="303.345" transform="rotate(-0 296.64 303.345)">figure.png</text>
+   </g>
+   <g id="text_15">
+    <text style="font-weight: 700; font-size: 18px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="205.92" y="350.985938" transform="rotate(-0 205.92 350.985938)">?</text>
+   </g>
+   <g id="text_16">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="28.8" y="380.123672" transform="rotate(-0 28.8 380.123672)">Reconstruct the choices from scattered files.</text>
+   </g>
+   <g id="text_17">
+    <text style="font-weight: 700; font-size: 10px; font-family: 'Arial'; text-anchor: start; fill: #126b81" x="473.76" y="105.552188" transform="rotate(-0 473.76 105.552188)">CURRENT INPUT FOR COMPARISON</text>
+   </g>
+   <g id="text_18">
+    <text style="font-weight: 700; font-size: 15px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="473.76" y="132.045938" transform="rotate(-0 473.76 132.045938)">DATA-003@2 · data_final.rds</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="473.76" y="160.065" transform="rotate(-0 473.76 160.065)">Cohort note: hashed + unassigned</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="473.76" y="183.822188" transform="rotate(-0 473.76 183.822188)">Selected levels: Vehicle, LowDose</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 12px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="473.76" y="207.582188" transform="rotate(-0 473.76 207.582188)">Reference: Vehicle</text>
+   </g>
+   <g id="text_22">
+    <text style="font-weight: 700; font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #126b81" x="470.88" y="271.478438" transform="rotate(-0 470.88 271.478438)">Input files</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="579.6" y="271.470703" transform="rotate(-0 579.6 271.470703)">data_final.rds + metadata.csv</text>
+   </g>
+   <g id="text_24">
+    <text style="font-weight: 700; font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #126b81" x="470.88" y="313.238438" transform="rotate(-0 470.88 313.238438)">Code snapshots</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="579.6" y="313.099219" transform="rotate(-0 579.6 313.099219)">analysis.R + helpers.R</text>
+   </g>
+   <g id="text_26">
+    <text style="font-weight: 700; font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #126b81" x="470.88" y="354.931406" transform="rotate(-0 470.88 354.931406)">Saved result</text>
+   </g>
+   <g id="text_27">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #172b3a" x="579.6" y="354.932266" transform="rotate(-0 579.6 354.932266)">FIG-001@1 · figure.png</text>
+   </g>
+   <g id="text_28">
+    <text style="font-size: 11px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="460.8" y="391.579219" transform="rotate(-0 460.8 391.579219)">Reopen the project and retrieve these records.</text>
+   </g>
+   <g id="text_29">
+    <text style="font-size: 10px; font-family: 'Arial'; text-anchor: start; fill: #52616c" x="28.8" y="419.406563" transform="rotate(-0 28.8 419.406563)">Illustrative example. You choose and describe the cohort; BioDataLedger records that choice.</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p7d7ad38cae">
+   <rect x="0" y="0" width="864" height="432"/>
+  </clipPath>
+ </defs>
+</svg>

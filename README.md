@@ -1,54 +1,25 @@
 # BioDataLedger
 
-**Keep your results connected to the data, code and decisions behind them.**
+Research projects often contain several versions of the same dataset. After a break, it can be hard to remember which cohort to use, which files it needs, or which script produced a result.
 
-BioDataLedger is a lightweight, local R/Python package for researchers who need to find a saved result and understand its recorded sources—even after the original session has ended.
+BioDataLedger records your chosen datasets, cohort descriptions, analysis settings and saved results in your existing project folder. Reopen the project in R or Python to retrieve those records. Your files stay where they are.
 
-## The problem
+![Without BioDataLedger, dataset versions and source files are ambiguous. With BioDataLedger, the scientist's chosen dataset revision, cohort note, comparison, scripts and result are recorded.](docs/assets/biodataledger-before-after.png)
 
-Research folders accumulate different dataset versions, analysis scripts and figures. A saved plot may outlive the notebook session that produced it. When you return to the project or hand it to a colleague, you have to work out which input was used, which conditions were compared and which code and parameters belong to that result.
+The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-## How BioDataLedger helps
+[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.3.0.md)
 
-BioDataLedger adds a small, versioned record book to your existing project folder. You register the data, analyses and figures you want to retain. It keeps explicit links between registered input revisions, analyses and figures, alongside the code, parameters and experimental design you record.
+## Install
 
-| When you need to… | BioDataLedger helps you… |
-| --- | --- |
-| Find a figure again | Search registered figures and retrieve their recorded sources. |
-| Distinguish dataset versions | Use exact record IDs/revisions and an explicitly chosen input for each purpose. |
-| Understand an intended comparison | Retrieve its recorded condition, levels, reference category and biological replicate. |
-| Inspect or share a retained result | Review known inputs, code snapshots, missing files and selected export contents. |
-
-**The practical benefit:** you can reopen a project in R or Python and inspect a result's recorded context without reconstructing it from memory. Your files stay in their existing folders, and your usual analysis tools remain unchanged. No AI service, database or workflow engine is required.
-
-BioDataLedger records what you supply; it does not run analyses or prove which computation produced a figure. ZIP exports include the registry's full metadata/history and do not guarantee a complete runnable environment, so review the preview before sharing.
-
-[Get started below](#repository-instructions-start-here) · [See the Python/R examples](#five-minute-quick-start) · [Read the API](docs/api/API_0.3.0.md)
-
-Source version: **0.3.0**, including experimental design and levels, under the MIT license. See the [GitHub repository](https://github.com/nbatada/biodataledger). This is a source publication, not a PyPI or CRAN release. The R maintainer-contact placeholder remains unresolved. Start with the synthetic examples below; the [API reference](docs/api/API_0.3.0.md) documents all methods.
-
-## Repository instructions: start here
-
-The repository contains the **software**. Your research project stays in its own folder; you do not need to move your data into this repository. BioDataLedger saves its records in `.nb_project_bundle/` inside the project you choose. It does not run analyses or automatically filter data.
-
-Follow these steps: **get the source → install one client → try the synthetic example → use your own project**. Python and R read the same project records. You can install either client or both; no agent, API key or account with an AI service is needed.
-
-### 1. Get the source
-
-If you already have this checkout, open a terminal in its root folder and skip the clone command. Otherwise:
+Version **0.3.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
 ```
 
-The commands below run from this repository folder. The experimental-design examples require version **0.3.0**; the installation check below prints the version you installed.
-
-### 2. Install Python, R, or both
-
-The tested environment is **macOS**. For Python, you need Python 3.9 or newer. For R, you need an installed R runtime. An online installation downloads build tools or R dependencies; offline installation requires those packages to be available already.
-
-**Python — paste into your terminal:**
+**Python 3.9 or newer**
 
 ```sh
 python3 -m venv .venv
@@ -56,9 +27,9 @@ python3 -m venv .venv
 .venv/bin/python -c 'import biodataledger; print(biodataledger.__version__)'
 ```
 
-The last command prints the installed version. Use `.venv/bin/python` for the examples, or select this environment in your editor/notebook. Python has no runtime dependencies; installation uses setuptools and wheel to build the package.
+Use `.venv/bin/python` or select this environment in your editor. Installation needs setuptools/wheel; the package has no Python runtime dependencies.
 
-**R — paste into your terminal:**
+**R**
 
 ```sh
 mkdir -p .r-library
@@ -68,37 +39,29 @@ R CMD INSTALL -l "$R_LIBS_USER" r
 Rscript -e 'library(BioDataLedger); print(packageVersion("BioDataLedger"))'
 ```
 
-The last command prints the installed version. You may skip `install.packages` if these dependencies are already available; `zip` must be version 3.0.2 or newer. In each new shell, set `R_LIBS_USER` to the absolute path of this checkout's `.r-library` before starting R. In an already open R session, add that absolute path with `.libPaths(c("/absolute/path/to/biodataledger/.r-library", .libPaths()))`, then run `library(BioDataLedger)`.
+Skip the dependency installation if those packages are already available (`zip` ≥3.0.2). In a new shell, set `R_LIBS_USER` to the absolute path of `.r-library` before starting R. In an open R session, add that path with `.libPaths(c("/absolute/path/to/.r-library", .libPaths()))`.
 
-### 3. Try a safe example
+Offline installation requires the build tools and dependencies to be available locally.
 
-Choose the command for your installed language:
+## Try it
+
+From the repository root, run either synthetic example:
 
 ```sh
-# Python
 .venv/bin/python examples/trial_python.py "$PWD/trial-python"
-
-# R
 R_LIBS_USER="$PWD/.r-library" Rscript examples/trial_R.R "$PWD/trial-r" "$PWD/examples/input-files"
 ```
 
-Each command creates a separate synthetic project and prints a saved figure reference. The example registers one dataset, one analysis and two figures. It uses only files supplied in the repository and refuses to overwrite an existing destination. For another run, choose a new destination name. Continue below for the retrieval and sharing examples.
+Each creates a new project with one dataset, one analysis and two figures. Existing destinations are never overwritten.
 
-### 4. Use your own project
+## Record data, analyses and figures
 
-1. Choose your existing research folder as `project_root`. Create a registry once; use `open` in later sessions.
-2. If useful, record your [condition, levels, selection and replicate](#experimental-design-and-levels) before registering an analysis.
-3. Run your analysis with your usual tools and save its outputs.
-4. Register the input, analysis and figures using the [Python or R examples below](#five-minute-quick-start), then call `save()`.
-5. Later, reopen the project and use `find_figures()` and `get_figure()` to recover a retained result's recorded sources.
+For your own project, set `project_root` to its existing folder. Use `create` once and `open` on later visits. Run your analysis normally, then register the saved outputs and call `save()`.
 
-For an AI coding assistant, use the [copy-ready agent instructions](#paste-into-your-coding-agent). For method arguments and return values, use the [API reference](docs/api/API_0.3.0.md). The package works directly from Python or R without an agent. No PyPI or CRAN release has been published.
+The examples below assume a fresh folder containing copies of `examples/input-files/`. Use a different folder from an initialized trial project. Python uses `qc.py`; R uses `qc.R`.
 
-## Five-minute quick start
-
-For a safe trial, run `examples/trial_python.py` or `examples/trial_R.R` using the commands above. They copy only supplied synthetic files into a new directory. For your own project, set `project_root` to its explicit existing root and replace the sample names with real registered inputs and saved outputs. Creation requires only name/root; optional purpose, raw_dir and metadata can be added. Reopen instead of creating if a registry already exists.
-
-Python (`project_root` is the existing synthetic trial folder containing input.csv, qc.py, library.svg and genes.svg):
+<details>
+<summary>Python</summary>
 
 ```python
 from biodataledger import ProjectBundle
@@ -121,7 +84,10 @@ figure = p.get_figure(figures[0].ref)
 print(figure.inputs, figure.code, figure.params, figure.provenance)
 ```
 
-R (load the installed package and use the corresponding synthetic qc.R):
+</details>
+
+<details>
+<summary>R</summary>
 
 ```r
 library(BioDataLedger)
@@ -144,13 +110,16 @@ figure <- p$get_figure(figures[[1]]$ref)
 print(list(inputs = figure$inputs, code = figure$code, params = figure$params, provenance = figure$provenance))
 ```
 
-Retention is four calls: one analysis, two figures, save. Enter shared provenance once. The sample parameter is fictional, not a QC recommendation. Inspect before selecting a candidate figure; names and latest timestamps do not establish identity.
+</details>
 
-## Experimental design and levels
+## Conditions and levels
 
-Design is optional. `levels` lists available categories in the stated order; `selected_levels` records the intended analysis selection. It does **not** subset a dataset or expression matrix. Observed levels can differ between datasets.
+`condition` names the metadata column. `levels` lists the available categories; `selected_levels` records the intended comparison. `reference_level` sets its baseline, and `replicate` names the biological replicate column. These declarations do not filter data.
 
-For an already opened project `p`, this fictional PRMT5 example declares a comparison; it does not inspect or change real PRMT5 data:
+For an open project `p`, this synthetic example records Vehicle versus LowDose:
+
+<details>
+<summary>Python</summary>
 
 ```python
 p.set_design(
@@ -166,6 +135,11 @@ print(p)
 print(p.get_design_summary())
 ```
 
+</details>
+
+<details>
+<summary>R</summary>
+
 ```r
 p$set_design(
   condition = "treatment",
@@ -180,19 +154,18 @@ p
 p$get_design_summary()
 ```
 
-Use `get_condition()`, `get_levels()`, `get_selected_levels()`, `get_reference_level()` and `get_replicate()` in native analysis code. `get_design()` returns the full current design; `get_design("DES-001@1")` retrieves an exact earlier revision. `get_design_summary()` returns bounded condition, selection, reference, replicate and revision fields, with an explicit truncation flag. Printed counts reflect registered records, not illustrative totals.
+</details>
 
-Each `set_design` creates a revision. New analyses capture the current design; linked figures inherit that analysis's exact design. Existing analyses and figures retain their original design or explicit unknown context, even if the current selection changes. `get_analysis(ref)` and `get_figure(ref)` expose that retained design.
+Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.3.0.md#experimental-design) for verification rules and getters.
 
-Optional `check_design_metadata(metadata)` checks supplied column values without loading a file. Python accepts a dictionary of column sequences (for a pandas table, pass `table.to_dict(orient="list")`); R accepts a data frame or named column list, including factor columns. Only condition and replicate columns are inspected. Missing columns/values and unexpected observed levels are reported. Absent declared or selected levels are listed separately and do not by themselves invalidate the check. Matching metadata does not establish that a contrast is estimable or scientifically valid.
+## Share a result
 
-To retain verification, pass those columns as `metadata=` to `set_design`; an invalid check leaves the registry unchanged. The record then says `metadata-verified` rather than `scientist-declared`. `context=[data_ref]` in Python or `context=list(data_ref)` in R can identify exact registered data/analysis context. Verification describes the supplied columns at that time; it is not proof that they came from a particular dataset. No metadata rows are saved, but observed level labels and counts are recorded.
+Preview the export, then save selected files to a ZIP. **ZIPs include the whole registry's metadata and history**, even when only a few files are selected. Review sensitive information and missing dependencies before sharing; a ZIP is not a guarantee that an analysis will run elsewhere.
 
-Legacy projects still load without a design. The first `set_design` stages schema 0.2.0; `save()` persists it. Clients older than package 0.3.0 reject this newer schema. Legacy state paths, old records and ZIP format remain unchanged.
+These examples continue from above. Set `archive_path` to a new ZIP filename and `import_root` to a new directory.
 
-## Share with a colleague
-
-Context means metadata without scientific payloads. Working means explicitly selected files plus listed code snapshots. Review the complete preview, including metadata/history, missing dependencies and omissions. To share this synthetic example:
+<details>
+<summary>Python</summary>
 
 ```python
 plan = p.preview_export("working", include=[d.ref, f1, f2])
@@ -203,6 +176,11 @@ print(q.get_figure(f1).provenance)
 print(q.check(hashes=True))
 ```
 
+</details>
+
+<details>
+<summary>R</summary>
+
 ```r
 plan <- p$preview_export("working", include = list(d$ref, f1, f2))
 print(plan)
@@ -212,77 +190,44 @@ print(q$get_figure(f1)$provenance)
 print(q$check(hashes = TRUE))
 ```
 
-`archive_path` must be a new ZIP filename and `import_root` a new directory. Use `preview_export("context")` for metadata-only sharing. Imports do not run code, load native objects or fetch missing inputs. Included hashes are checked; omitted external resources remain unavailable until explicitly rebound. The other language can inspect the same registry and files without converting RDS/H5AD objects.
+</details>
 
-## What provenance means
+Use `preview_export("context")` for metadata only. Import checks packaged hashes and does not execute scripts or fetch missing files.
 
-Captured file bytes/digests are not proof of which computation ran. Data/code links, methods and parameters are declarations unless separately verified. Snapshots preserve supplied source bytes; a hash alone cannot recover a lost file. Unknown execution remains unknown. Scientific validity, acceptance and an actual reproduced rerun require their own evidence.
+## Using an agent
 
-There is **no automatic sensitive-metadata redaction**. Do not publish or transfer confidential project data, patient identifiers, credentials or private history. Whole registry metadata travels in this version. A bundle being inspectable does not establish that it is resumable or reproduced.
-
-## API at a glance
-
-BioDataLedger uses a local Python/R package API, not a web API. No API key is needed. Python imports `ProjectBundle` from `biodataledger`; R loads `BioDataLedger` and uses `ProjectBundle`. The examples above show both languages; the [full API reference](docs/api/API_0.3.0.md) documents arguments, returned values and limits.
-
-| Task | Python | R |
-| --- | --- | --- |
-| Open an existing registry | `ProjectBundle.open(project_dir=project_root)` | `ProjectBundle$open(project_dir=project_root)` |
-| Inspect compact status | `p.status()` | `p$status()` |
-| Resolve a selected input | `p.get_data(purpose="qc")` | `p$get_data(purpose="qc")` |
-| Find candidate figures | `p.find_figures(type="qc")` | `p$find_figures(type="qc")` |
-| Inspect an exact figure | `p.get_figure("FIG-001@1")` | `p$get_figure("FIG-001@1")` |
-| Retain analysis and figures | `p.register_analysis(...)`, `p.register_figure(...)` | `p$register_analysis(...)`, `p$register_figure(...)` |
-| Save staged changes | `p.save()` | `p$save()` |
-
-Replace the sample purpose, type and reference with values from your project. Creation uses `ProjectBundle.create` / `ProjectBundle$create` only when explicitly starting a new registry.
-
-## Paste into your coding agent
-
-Install the package first. Replace the bracketed fields, then paste this prompt into your agent. The initial step is read-only; the requested task supplies any later execution authority.
+Install the package, fill in the brackets and paste this into your coding agent:
 
 ```text
-Use the installed BioDataLedger package for this project.
-Project root: [absolute path to my existing project]
-Language: [Python or R]
-Task: [the specific lookup or analysis I want]
+Use BioDataLedger for this project.
+Project folder: [absolute path]
+Language: [R or Python]
+Task: [what I want to do]
 
-Read the BioDataLedger API reference supplied with the installed package.
-Use ProjectBundle from biodataledger (Python) or BioDataLedger (R).
-Open the explicit project root once and call status() once at session start.
-Read get_design_summary(); use get_design() if it is truncated.
-Use the recorded condition, levels, selection, reference and replicate.
-A design is a declaration, not permission to filter data or change the analysis.
+Open the registry and read status() and get_design_summary().
 If no registry exists, ask before creating one.
-Resolve inputs by exact registered reference or my selected purpose.
-Report missing or ambiguous inputs; do not guess or search unrelated folders.
-First report the selected records, missing evidence and next action.
-
-For analysis I authorize, use native Python/R tools. Register only retained,
-actually saved outputs. Record known exact inputs, generating code, method
-and parameters once with register_analysis; link related register_figure
-calls to that analysis and save meaningful changes. Keep unknowns explicit.
-Ask before changing current inputs, cohorts, labels or scientific decisions.
-On a stale-write error, preserve staged work and report the conflict.
-Preview files and metadata before any separately authorized export.
-Do not treat registration or hashes as proof of execution or scientific validity.
+Use exact dataset references or my chosen current-for-purpose input.
+Report missing files, ambiguous choices and unknown provenance.
+Ask before changing the cohort, design or current dataset.
+For authorized work, register saved results with their known inputs,
+code and parameters, then save. Preserve staged work on a stale-write error.
+Preview all files and metadata before an authorized export.
 ```
 
-See the [agent usage contract](docs/agent/USAGE.md) for the same boundaries. BioDataLedger also works directly from Python or R without an agent.
+The [agent guide](docs/agent/USAGE.md) gives the full usage rules. You can also use the package directly from R or Python.
 
-## Optional agent use and limits
+## Limits
 
-Query compact status at session start; resolve known paths with getters; register retained results; save meaningful edits. Ask the scientist before changing current inputs or scientific decisions. Missing/ambiguous records are not permission to guess or search unrelated folders. These instructions do not restrict an unrestricted shell/interpreter. The [agent usage guide](docs/agent/USAGE.md) describes these package-use boundaries.
+Records describe the sources you supply; they are not proof that code ran or that a result is scientifically valid. Data remain native files, and selecting levels does not subset an object.
 
-The legacy storage/ZIP formats remain compatible. Writes have been tested on local macOS. Windows/Linux writes, network/cloud-synced projects, power loss and physical >4 GiB export performance are not yet verified. Native object saving, GUI, workflow replay, database/cloud sync and mandatory agent tooling are non-goals.
+Older projects remain readable. Saving experimental design requires clients ≥0.3.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
 
-## Run the package checks
+## Tests
 
-After installing both clients from this checkout, run these commands from the repository root:
+After installing both clients:
 
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
 R CMD check --no-manual BioDataLedger_0.3.0.tar.gz
 ```
-
-The tests use synthetic fixtures and check native R/Python interoperability, exact revisions, experimental design, safe import and the README examples. Software checks do not establish scientific validity.
