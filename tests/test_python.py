@@ -44,7 +44,7 @@ class BundleTests(unittest.TestCase):
         q = ProjectBundle.open(self.root)
         rows = q.find_figures(type="qc")
         self.assertEqual(len(rows), 2)
-        view = q.get_figure(f)
+        view = q.get_figure(f, check_files=True)
         self.assertEqual(view.inputs, [self.d])
         self.assertEqual(view.params, {"min_genes": 200})
         self.assertEqual(view.provenance, {"figure_file": "captured", "analytical": "declared", "execution": "unknown"})
@@ -53,18 +53,18 @@ class BundleTests(unittest.TestCase):
         self.assertTrue(view.code_availability[0]["available"])
         legacy = q.register_figure("genes.svg", "clonality", name="T-cell clonality")
         q.save()
-        self.assertIn("code", q.get_figure(legacy).unknown)
+        self.assertIn("code", q.get_figure(legacy, check_files=True).unknown)
         self.assertEqual(q.find_figures("T-cell clonality")[0].ref, legacy)
         self.assertEqual((self.root / "NORTH_STAR.md").read_text(), "scientist-owned")
 
     def test_selector_never_replaces_approved_input(self):
         other = self.p.register_data("data.csv", "analysis_ready", subset="hashed-only")
         self.p.save()
-        self.assertEqual(self.p.get_data(purpose="qc").ref, self.d)
+        self.assertEqual(self.p.get_data(purpose="qc", check_files=True).ref, self.d)
         with self.assertRaisesRegex(BundleError, "ambiguous"):
-            self.p.get_data(role="analysis_ready")
+            self.p.get_data(role="analysis_ready", check_files=True)
         os.unlink(self.root / "data.csv")
-        view = self.p.get_data(purpose="qc")
+        view = self.p.get_data(purpose="qc", check_files=True)
         self.assertEqual(view.ref, self.d)
         self.assertFalse(view.available)
         self.p.set_context({"authorities": ["external-authority"]})
@@ -76,10 +76,10 @@ class BundleTests(unittest.TestCase):
         b = self.p.register_analysis("Leiden", [self.d], params={"resolution": .4})
         x = self.p.register_data("data.csv", "cluster", clustering_run=a, cluster="1")
         y = self.p.register_data("data.csv", "cluster", clustering_run=b, cluster="1")
-        self.assertNotEqual(self.p.get_data(ref=x).details["clustering_run"], self.p.get_data(ref=y).details["clustering_run"])
+        self.assertNotEqual(self.p.get_data(ref=x, check_files=True).details["clustering_run"], self.p.get_data(ref=y, check_files=True).details["clustering_run"])
         revised = self.p.update_record(self.d, {"name": "corrected name"}, "correction")
         self.assertEqual(revised["revision"], 2)
-        self.assertEqual(self.p.get_data(purpose="qc").ref, self.d)
+        self.assertEqual(self.p.get_data(purpose="qc", check_files=True).ref, self.d)
         self.p.save()
 
     def test_four_cohorts_and_modality_records(self):
@@ -95,16 +95,16 @@ class BundleTests(unittest.TestCase):
         q = ProjectBundle.open(self.root)
         self.assertEqual(len({ref["id"] for ref in refs}), 4)
         for ref, (label, members) in zip(refs, subsets.items()):
-            record = q.get_data(ref=ref)
+            record = q.get_data(ref=ref, check_files=True)
             self.assertEqual(record.details["subset"], label)
-            member_record = q.get_data(ref=record.details["membership"])
+            member_record = q.get_data(ref=record.details["membership"], check_files=True)
             self.assertEqual(member_record.path.read_text().splitlines()[1:], members)
         bulk = q.register_analysis("bulk", [self.d], method="declared only", unit="mouse", denominator="sample reads", design="~ treatment")
         cells = q.register_analysis("single-cell", [refs[1]], layer="counts", unit="cell")
         spatial = q.register_data("library.svg", "spatial-image", coordinate_transform="declared identity")
         q.save()
         self.assertNotEqual(q._record(bulk)["details"]["unit"], q._record(cells)["details"]["unit"])
-        self.assertEqual(q.get_data(ref=spatial).details["coordinate_transform"], "declared identity")
+        self.assertEqual(q.get_data(ref=spatial, check_files=True).details["coordinate_transform"], "declared identity")
 
     def test_stale_writers_and_external_edit(self):
         q = ProjectBundle.open(self.root)
@@ -139,7 +139,7 @@ class BundleTests(unittest.TestCase):
     def test_code_snapshot_is_recoverable_not_execution(self):
         _, f, _ = self.retained()
         (self.root / "qc.py").write_text("changed")
-        view = self.p.get_figure(f)
+        view = self.p.get_figure(f, check_files=True)
         original = view.code_availability[0]["path"]
         self.assertIn("threshold = 200", original.read_text())
         self.assertEqual(view.analysis_details["provenance"]["analytical"], "declared")
@@ -171,10 +171,10 @@ class BundleTests(unittest.TestCase):
         with patch("biodataledger.core.fingerprint", side_effect=AssertionError("unexpected data read")):
             q = ProjectBundle.open(self.root)
             ref = q.register_data("large.h5ad", "opaque")
-            self.assertEqual(q.get_data(ref=ref).path, huge.resolve())
+            self.assertEqual(q.get_data(ref=ref, check_files=True).path, huge.resolve())
             out = q.get_output_dir("qc")
             self.assertFalse(out.exists())
-        self.assertEqual(q.get_data(ref=ref).sha256, None)
+        self.assertEqual(q.get_data(ref=ref, check_files=True).sha256, None)
 
     def test_working_and_context_import(self):
         _, f, g = self.retained()
@@ -184,10 +184,10 @@ class BundleTests(unittest.TestCase):
             self.p.export_zip(plan, target)
             q = ProjectBundle.import_zip(target, self.base / mode)
             self.assertEqual(q.state["project"]["id"], self.p.state["project"]["id"])
-            self.assertEqual(q.get_figure(f).params, {"min_genes": 200})
-            self.assertEqual(q.get_figure(f).available, mode == "working")
-            self.assertEqual(q.get_data(ref=self.d).available, mode == "working")
-            self.assertEqual(q.get_figure(f).code_availability[0]["available"], mode == "working")
+            self.assertEqual(q.get_figure(f, check_files=True).params, {"min_genes": 200})
+            self.assertEqual(q.get_figure(f, check_files=True).available, mode == "working")
+            self.assertEqual(q.get_data(ref=self.d, check_files=True).available, mode == "working")
+            self.assertEqual(q.get_figure(f, check_files=True).code_availability[0]["available"], mode == "working")
             with self.assertRaises(BundleError):
                 ProjectBundle.import_zip(target, self.base / mode)
 
@@ -247,9 +247,9 @@ class BundleTests(unittest.TestCase):
         z = self.base / "context.zip"
         self.p.export_zip(plan, z)
         q = ProjectBundle.import_zip(z, self.base / "imported")
-        self.assertFalse(q.get_data(ref=ref).available)
+        self.assertFalse(q.get_data(ref=ref, check_files=True).available)
         q.rebind_external(ref, ext, "explicit local location")
-        self.assertTrue(q.get_data(ref=ref).available)
+        self.assertTrue(q.get_data(ref=ref, check_files=True).available)
 
 
 if __name__ == "__main__":

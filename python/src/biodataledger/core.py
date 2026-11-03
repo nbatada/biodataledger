@@ -12,12 +12,14 @@ import tempfile
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from .design import validate_design, check_metadata, compact_design, summary_text
 
 VERSION = "0.1.0"
 DESIGN_VERSION = "0.2.0"
+SCOPE_VERSION = "0.3.0"
 STATE_PATH = ".nb_project_bundle/project.json"
 MAX_JSON = 20 * 1024 * 1024
 PREFIXES = {"data": "DATA", "analysis": "ANA", "figure": "FIG", "decision": "DEC", "design": "DES"}
@@ -128,10 +130,81 @@ def ref_key(ref):
     return ref["id"], ref["revision"]
 
 
+def validate_record(rec, version):
+    validate_values(rec)
+    require(isinstance(rec, dict) and RECORD_KEYS <= set(rec) <= RECORD_KEYS | {"design", "scope"}, "invalid record fields")
+    require(rec["kind"] in PREFIXES, "invalid record kind")
+    require(isinstance(rec["id"], str) and re.fullmatch(PREFIXES[rec["kind"]] + r"-\d{3,}", rec["id"]), "invalid record ID")
+    require(type(rec["revision"]) is int and rec["revision"] >= 1, "invalid record revision")
+    require(isinstance(rec["name"], str) and rec["name"] and isinstance(rec["created_at"], str), "record name/time required")
+    require(rec["status"] in ("active", "superseded", "inactive"), "invalid record status")
+    require(isinstance(rec["details"], dict) and isinstance(rec["foreign_refs"], list), "invalid details/foreign_refs")
+    require(rec["params"] is None or isinstance(rec["params"], dict), "parameters must be object or null")
+    require(rec["inputs"] is None or isinstance(rec["inputs"], list), "inputs must be array or null")
+    require(isinstance(rec["code"], list), "code must be array")
+    for field in ("role", "type", "method"):
+        require(rec[field] is None or isinstance(rec[field], str), "invalid text field: " + field)
+    if rec["locator"] is not None:
+        validate_locator(rec["locator"])
+    require(rec["sha256"] is None or bool(re.fullmatch(r"[0-9a-f]{64}", str(rec["sha256"]))), "invalid SHA256")
+    require(rec["size"] is None or type(rec["size"]) is int and rec["size"] >= 0, "invalid file size")
+    if rec["kind"] in ("data", "figure"):
+        require(rec["locator"] is not None, "file record needs locator")
+    if rec["kind"] == "figure":
+        require(bool(rec["type"]) and rec["sha256"] is not None, "figure needs type and digest")
+    if rec["kind"] == "data":
+        require(bool(rec["role"]), "data role required")
+    if rec["kind"] == "design":
+        require(rec["id"] == "DES-001", "invalid design identity")
+        validate_design(rec["details"], require)
+    for code in rec["code"]:
+        require(isinstance(code, dict) and set(code) == {"locator", "sha256", "snapshot"}, "invalid code entry")
+        validate_locator(code["locator"])
+        require(code["sha256"] is None or bool(re.fullmatch(r"[0-9a-f]{64}", str(code["sha256"]))), "invalid code digest")
+        if code["snapshot"] is not None:
+            require(code["snapshot"] == ".nb_project_bundle/code/" + str(code["sha256"]), "invalid snapshot path")
+    require(version != VERSION or "design" not in rec and rec["kind"] != "design", "design requires schema 0.2.0")
+    require("scope" not in rec or version == SCOPE_VERSION and rec["kind"] == "data", "scope requires schema 0.3.0 DATA")
+    require(rec["kind"] != "data" or "design" not in rec or version == SCOPE_VERSION, "DATA design requires schema 0.3.0")
+    if "scope" in rec:
+        from .scope import normalize_scope
+        require(normalize_scope(rec["scope"], require) == rec["scope"], "scope must use canonical fields")
+
+
+def validate_links(rec, check_ref):
+    for ref in rec["inputs"] or []:
+        check_ref(ref, "data")
+    if rec["analysis"] is not None:
+        check_ref(rec["analysis"], "analysis")
+    for field, kind in (("parent", "data"), ("membership", "data"), ("clustering_run", "analysis")):
+        if rec["details"].get(field) is not None:
+            check_ref(rec["details"][field], kind)
+    if rec["kind"] == "figure" and rec["analysis"] is not None:
+        require("design" not in rec, "linked figure inherits its analysis design")
+    if "design" in rec:
+        require(rec["kind"] in ("data", "analysis", "figure"), "design context belongs to analyses or figures")
+        if rec["design"] is not None:
+            check_ref(rec["design"], "design")
+    if rec["kind"] == "design":
+        for ref in rec["details"]["context"]:
+            check_ref(ref)
+            require(check_ref(ref)["kind"] in ("data", "analysis"), "design context must reference data or analysis")
+    if "scope" in rec:
+        scope = rec["scope"]
+        for field, kind in (("sample_manifest_ref", "data"), ("transformation_ref", "analysis")):
+            if scope[field] is not None:
+                check_ref(scope[field], kind)
+        for ref in scope["evidence"]["source_refs"]:
+            require(check_ref(ref)["kind"] in ("data", "analysis", "decision"), "scope source kind")
+        report = scope["membership_evidence"]["report_ref"]
+        if report is not None:
+            check_ref(report, "data")
+
+
 def validate_state(state):
     validate_values(state)
     require(isinstance(state, dict) and set(state) == STATE_KEYS, "unexpected/missing state fields")
-    require(state["schema_version"] in (VERSION, DESIGN_VERSION), "unsupported schema version")
+    require(state["schema_version"] in (VERSION, DESIGN_VERSION, SCOPE_VERSION), "unsupported schema version")
     project = state["project"]
     require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design"}, "invalid project fields")
     require(valid_uuid(project["id"]) and isinstance(project["name"], str) and project["name"], "invalid project identity")
@@ -156,63 +229,18 @@ def validate_state(state):
         require("design" not in project and all("design" not in r and r.get("kind") != "design" for r in state["records"]), "design requires schema 0.2.0")
     index = {}
     for rec in state["records"]:
-        require(isinstance(rec, dict) and RECORD_KEYS <= set(rec) <= RECORD_KEYS | {"design"}, "invalid record fields")
-        require(rec["kind"] in PREFIXES, "invalid record kind")
-        require(isinstance(rec["id"], str) and re.fullmatch(PREFIXES[rec["kind"]] + r"-\d{3,}", rec["id"]), "invalid record ID")
-        require(type(rec["revision"]) is int and rec["revision"] >= 1, "invalid record revision")
-        key = (rec["id"], rec["revision"])
+        validate_record(rec, state["schema_version"])
+        key = ref_key(rec)
         require(key not in index, "duplicate record revision")
         index[key] = rec
-        require(isinstance(rec["name"], str) and rec["name"] and isinstance(rec["created_at"], str), "record name/time required")
-        require(rec["status"] in ("active", "superseded", "inactive"), "invalid record status")
-        require(isinstance(rec["details"], dict) and isinstance(rec["foreign_refs"], list), "invalid details/foreign_refs")
-        require(rec["params"] is None or isinstance(rec["params"], dict), "parameters must be object or null")
-        require(rec["inputs"] is None or isinstance(rec["inputs"], list), "inputs must be array or null")
-        require(isinstance(rec["code"], list), "code must be array")
-        for field in ("role", "type", "method"):
-            require(rec[field] is None or isinstance(rec[field], str), "invalid text field: " + field)
-        if rec["locator"] is not None:
-            validate_locator(rec["locator"])
-        require(rec["sha256"] is None or bool(re.fullmatch(r"[0-9a-f]{64}", str(rec["sha256"]))), "invalid SHA256")
-        require(rec["size"] is None or type(rec["size"]) is int and rec["size"] >= 0, "invalid file size")
-        if rec["kind"] in ("data", "figure"):
-            require(rec["locator"] is not None, "file record needs locator")
-        if rec["kind"] == "figure":
-            require(bool(rec["type"]) and rec["sha256"] is not None, "figure needs type and digest")
-        if rec["kind"] == "data":
-            require(bool(rec["role"]), "data role required")
-        if rec["kind"] == "design":
-            require(rec["id"] == "DES-001", "invalid design identity")
-            validate_design(rec["details"], require)
-        for code in rec["code"]:
-            require(isinstance(code, dict) and set(code) == {"locator", "sha256", "snapshot"}, "invalid code entry")
-            validate_locator(code["locator"])
-            require(code["sha256"] is None or bool(re.fullmatch(r"[0-9a-f]{64}", str(code["sha256"]))), "invalid code digest")
-            if code["snapshot"] is not None:
-                require(code["snapshot"] == ".nb_project_bundle/code/" + str(code["sha256"]), "invalid snapshot path")
     def check_ref(ref, kind=None):
         require(isinstance(ref, dict) and set(ref) == {"project_id", "id", "revision"}, "invalid exact reference")
-        require(ref["project_id"] == project["id"] and type(ref["revision"]) is int, "foreign or invalid reference")
+        require(ref["project_id"] == project["id"] and isinstance(ref["id"], str) and type(ref["revision"]) is int and ref["revision"] > 0, "foreign or invalid reference")
         require(ref_key(ref) in index, "dangling reference")
         require(kind is None or index[ref_key(ref)]["kind"] == kind, "wrong reference kind")
+        return index[ref_key(ref)]
     for rec in state["records"]:
-        for ref in rec["inputs"] or []:
-            check_ref(ref, "data")
-        if rec["analysis"] is not None:
-            check_ref(rec["analysis"], "analysis")
-        for field, kind in (("parent", "data"), ("membership", "data"), ("clustering_run", "analysis")):
-            if rec["details"].get(field) is not None:
-                check_ref(rec["details"][field], kind)
-        if rec["kind"] == "figure" and rec["analysis"] is not None:
-            require("design" not in rec, "linked figure inherits its analysis design")
-        if "design" in rec:
-            require(rec["kind"] in ("analysis", "figure"), "design context belongs to analyses or figures")
-            if rec["design"] is not None:
-                check_ref(rec["design"], "design")
-        if rec["kind"] == "design":
-            for ref in rec["details"]["context"]:
-                check_ref(ref)
-                require(index[ref_key(ref)]["kind"] in ("data", "analysis"), "design context must reference data or analysis")
+        validate_links(rec, check_ref)
     if project.get("design") is not None:
         check_ref(project["design"], "design")
     for purpose, ref in state["current"].items():
@@ -252,8 +280,9 @@ class ProjectBundle:
         self.state = state
         self._loaded_digest = raw_digest
         self._loaded_revision = state["state_revision"]
-        self._original = canonical(state)
+        self._dirty = False
         self._snapshots = {}
+        self._reindex()
 
     @classmethod
     def create(cls, name, project_dir, purpose=None, raw_dir=None, metadata=None):
@@ -275,7 +304,7 @@ class ProjectBundle:
         require(not folder.exists() and not folder.is_symlink(), "project registry already exists")
         folder.mkdir()  # Exclusive creation, no overwrite or recursive project migration.
         obj._loaded_digest = atomic_state(root / STATE_PATH, state)
-        obj._original = canonical(state)
+        obj._dirty = False
         return obj
 
     @classmethod
@@ -290,7 +319,30 @@ class ProjectBundle:
 
     @property
     def unsaved(self):
-        return canonical(self.state) != self._original
+        return self._dirty
+
+    def _reindex(self):
+        self._index = {}
+        self._latest_index = {}
+        self._kind_counts = {kind: 0 for kind in PREFIXES}
+        self._next_ids = {kind: 0 for kind in PREFIXES}
+        self._roles = defaultdict(set)
+        for rec in self.state["records"]:
+            self._index_record(rec)
+        self._purposes = sorted(self.state["current"])
+
+    def _index_record(self, rec):
+        self._index[ref_key(rec)] = rec
+        self._next_ids[rec["kind"]] = max(self._next_ids[rec["kind"]], int(rec["id"].split("-")[1]))
+        old = self._latest_index.get(rec["id"])
+        if old is None or rec["revision"] > old["revision"]:
+            if old is None:
+                self._kind_counts[rec["kind"]] += 1
+            elif old["kind"] == "data" and old["status"] == "active":
+                self._roles[old["role"]].discard(old["id"])
+            self._latest_index[rec["id"]] = rec
+            if rec["kind"] == "data" and rec["status"] == "active":
+                self._roles[rec["role"]].add(rec["id"])
 
     def _locator(self, path):
         path = str(path)
@@ -337,29 +389,48 @@ class ProjectBundle:
             require(match is not None, "exact ID@revision required")
             ref = {"project_id": self.state["project"]["id"], "id": match[1], "revision": int(match[2])}
         require(isinstance(ref, dict) and set(ref) == {"project_id", "id", "revision"}, "exact reference required")
-        require(ref["project_id"] == self.state["project"]["id"] and type(ref["revision"]) is int, "wrong project/reference")
-        found = [r for r in self.state["records"] if ref_key(r) == ref_key(ref)]
-        require(len(found) == 1, "missing exact record")
-        require(kind is None or found[0]["kind"] == kind, "wrong record kind")
-        return found[0]
+        require(ref["project_id"] == self.state["project"]["id"] and isinstance(ref["id"], str) and re.fullmatch(r"(?:DATA|ANA|FIG|DEC|DES)-\d{3,}", ref["id"]) and type(ref["revision"]) is int and ref["revision"] > 0, "wrong project/reference")
+        rec = self._index.get(ref_key(ref))
+        require(rec is not None, "missing exact record")
+        require(kind is None or rec["kind"] == kind, "wrong record kind")
+        return rec
 
     def _event(self, action, target=None, reason=None, transaction=None):
+        self._dirty = True
         self.state["history"].append({"at": now(), "action": action, "actor": "caller", "reason": reason,
                                       "target": copy.deepcopy(target), "transaction": transaction})
 
     def _new(self, kind, name):
         require(isinstance(name, str) and name.strip(), "record name required")
-        nums = [int(r["id"].split("-")[1]) for r in self.state["records"] if r["kind"] == kind]
-        return {"kind": kind, "id": "%s-%03d" % (PREFIXES[kind], max(nums, default=0) + 1),
+        return {"kind": kind, "id": "%s-%03d" % (PREFIXES[kind], self._next_ids[kind] + 1),
                 "revision": 1, "name": name, "created_at": now(), "locator": None, "role": None,
                 "type": None, "sha256": None, "size": None, "inputs": None, "analysis": None,
                 "code": [], "method": None, "params": None, "details": {}, "status": "active", "foreign_refs": []}
 
-    def _stage(self, rec, action="register", reason=None):
-        trial = copy.deepcopy(self.state)
-        trial["records"].append(rec)
-        validate_state(trial)
-        self.state = trial
+    def _stage(self, rec, action="register", reason=None, version=None):
+        version = version or self.state["schema_version"]
+        validate_record(rec, version)
+        require(ref_key(rec) not in self._index, "duplicate record revision")
+        def check_ref(ref, kind=None):
+            if isinstance(ref, dict) and ref == self._ref(rec):
+                require(kind is None or rec["kind"] == kind, "wrong record kind")
+                return rec
+            return self._record(ref, kind)
+        validate_links(rec, check_ref)
+        snapshots = {}
+        for code in rec["code"]:
+            dest = code["snapshot"]
+            if dest and dest not in self._snapshots and not self._internal(dest).exists():
+                source = self._resolve(code["locator"])
+                require(source is not None and source.is_file() and source.stat().st_size <= 1024 * 1024, "code snapshot source missing or oversized")
+                raw = source.read_bytes()
+                require(digest_bytes(raw) == code["sha256"], "code changed during capture")
+                snapshots[dest] = raw
+        rec = copy.deepcopy(rec)
+        self.state["records"].append(rec)
+        self.state["schema_version"] = version
+        self._index_record(rec)
+        self._snapshots.update(snapshots)
         ref = self._ref(rec)
         self._event(action, ref, reason)
         return ref
@@ -382,7 +453,6 @@ class ProjectBundle:
             if snapshot:
                 raw = path.read_bytes()
                 require(digest_bytes(raw) == digest, "code changed during capture")
-                self._snapshots[relative] = raw
             entries.append({"locator": loc, "sha256": digest, "snapshot": relative})
         return entries
 
@@ -428,6 +498,126 @@ class ProjectBundle:
             rec["design"] = copy.deepcopy(self.state["project"]["design"])
         return self._stage(rec)
 
+    def _verify_file(self, rec, max_bytes=None):
+        label = rec["id"] + "@" + str(rec["revision"])
+        def fail(code):
+            raise BundleError(code + ": " + label)
+        path = self._resolve(rec["locator"])
+        if path is None:
+            fail("UNRESOLVED")
+        try:
+            before = path.stat()
+        except FileNotFoundError:
+            fail("MISSING_FILE")
+        except OSError:
+            fail("UNUSABLE_FILE")
+        if not path.is_file():
+            fail("UNUSABLE_FILE")
+        if rec["size"] is not None and before.st_size != rec["size"]:
+            fail("SIZE_MISMATCH")
+        if max_bytes is not None and before.st_size > max_bytes:
+            fail("MEMBERSHIP_EVIDENCE")
+        if rec["sha256"] is None:
+            fail("MISSING_DIGEST")
+        try:
+            actual = fingerprint(path)
+            after = path.stat()
+        except OSError:
+            fail("UNUSABLE_FILE")
+        stat_key = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        if stat_key(before) != stat_key(after):
+            fail("FILE_CHANGED")
+        if actual != rec["sha256"]:
+            fail("DIGEST_MISMATCH")
+        return path, actual
+
+    def _membership_report(self, rec, scope, check_membership):
+        from .scope import validate_report, same_value
+        label = rec["id"] + "@" + str(rec["revision"])
+        def evidence_require(condition, detail):
+            require(condition, "MEMBERSHIP_EVIDENCE: " + label + " " + detail)
+        ev = scope["membership_evidence"]
+        evidence_require(ev["status"] == "verification_recorded", "no recorded verification")
+        report_rec = self._record(ev["report_ref"], "data")
+        path, expected = self._verify_file(report_rec, MAX_JSON)
+        # Check the bytes actually parsed as well as the streamed integrity result.
+        raw = path.read_bytes()
+        evidence_require(digest_bytes(raw) == expected, "report changed while reading")
+        report = parse_json(raw)
+        validate_report(report, evidence_require)
+        membership_ref = rec["details"].get("membership")
+        evidence_require(membership_ref is not None and membership_ref == report["membership_ref"], "membership binding mismatch")
+        member = self._record(membership_ref, "data")
+        evidence_require(rec["sha256"] is not None and report["subject_sha256"] == rec["sha256"], "subject binding mismatch")
+        evidence_require(member["sha256"] is not None and report["membership_sha256"] == member["sha256"], "membership digest mismatch")
+        evidence_require(report["result"] == "match", "comparison did not match")
+        if report["checker"]["analysis_ref"] is not None:
+            self._record(report["checker"]["analysis_ref"], "analysis")
+        if check_membership:
+            self._verify_file(member)
+        checked = []
+        for key, value in report.get("observed_scope", {}).items():
+            if scope[key] is not None:
+                require(same_value(key, scope[key], value), "SCOPE_CONFLICT: " + label + " " + key)
+                checked.append(key)
+        return sorted(checked)
+
+    def set_data_scope(self, ref, scope, reason, design_ref=None):
+        from .scope import normalize_scope
+        require(isinstance(reason, str) and reason.strip(), "scope reason required")
+        rec = copy.deepcopy(self._record(ref, "data"))
+        scope = normalize_scope(scope, require)
+        design_ref = self._ref(self._record(design_ref, "design")) if design_ref is not None else None
+        if scope["membership_evidence"]["status"] == "verification_recorded":
+            self._membership_report(rec, scope, False)
+        rec.update(revision=self._latest_index[rec["id"]]["revision"] + 1,
+                   created_at=now(), scope=scope, design=design_ref)
+        return self._stage(rec, "set_data_scope", reason, version=SCOPE_VERSION)
+
+    def resolve_data(self, ref=None, purpose=None, *, verify, expected_scope=None, require_membership=False):
+        from .scope import validate_expected, same_value
+        require(verify == "sha256", "SELECTOR: explicit verify='sha256' required")
+        require(type(require_membership) is bool, "SELECTOR: require_membership must be boolean")
+        require((ref is not None) + (purpose is not None) == 1, "SELECTOR: exactly one ref or purpose required")
+        if expected_scope is not None:
+            validate_expected(expected_scope, require)
+        if purpose is not None:
+            require(isinstance(purpose, str) and purpose in self.state["current"], "NO_CURRENT: no selected dataset for purpose")
+            ref = self.state["current"][purpose]
+        try:
+            rec = self._record(ref, "data")
+        except BundleError as exc:
+            raise BundleError("SELECTOR: " + str(exc)) from exc
+        label = rec["id"] + "@" + str(rec["revision"])
+        require(rec["status"] == "active", "INACTIVE: " + label)
+        scope = rec.get("scope")
+        for key, value in (expected_scope or {}).items():
+            require(scope is not None and scope[key] is not None, "SCOPE_UNKNOWN: " + label + " " + key)
+            require(same_value(key, scope[key], value), "SCOPE_CONFLICT: " + label + " " + key)
+        if scope and scope["condition_values"] is not None and rec.get("design") is not None:
+            design = self.get_design(rec["design"])
+            values = set(scope["condition_values"])
+            require(set(design["selected_levels"]) <= values <= set(design["levels"]), "SCOPE_CONFLICT: " + label + " condition_values")
+        if require_membership:
+            require(scope is not None and scope["membership_evidence"]["status"] == "verification_recorded", "MEMBERSHIP_EVIDENCE: " + label)
+        path, actual = self._verify_file(rec)
+        membership = scope["membership_evidence"]["status"] if scope else "unknown"
+        checked = []
+        if require_membership:
+            require(scope is not None, "MEMBERSHIP_EVIDENCE: " + label)
+            checked = self._membership_report(rec, scope, True)
+            membership = "verified_against_recorded_evidence"
+        elif membership == "verification_recorded":
+            membership = "verification_recorded_not_rechecked"
+        view = self.get_data(ref=self._ref(rec))
+        view.available = True
+        view.availability_checked = True
+        view.verification = {"checked_at": now(), "baseline_sha256": rec["sha256"], "observed_sha256": actual,
+                             "file_integrity": "match", "scope_basis": scope["evidence"]["basis"] if scope else "unknown",
+                             "required_scope": "match" if expected_scope is not None else "not_requested",
+                             "membership": membership, "verified_scope_fields": checked}
+        return view
+
     def get_raw_dir(self):
         return self._resolve(self.state["project"]["raw_dir"])
 
@@ -439,35 +629,36 @@ class ProjectBundle:
         return self._internal("results/" + kind)
 
     def _latest(self, kind=None):
-        records = {}
-        for rec in self.state["records"]:
-            if kind is None or rec["kind"] == kind:
-                if rec["revision"] > records.get(rec["id"], {}).get("revision", 0):
-                    records[rec["id"]] = rec
-        return [records[key] for key in sorted(records)]
+        return [rec for key, rec in sorted(self._latest_index.items()) if kind is None or rec["kind"] == kind]
 
-    def _view(self, rec):
+    def _view(self, rec, check_files=False):
+        require(type(check_files) is bool, "check_files must be boolean")
         view = copy.deepcopy(rec)
         path = self._resolve(rec["locator"])
-        view.update(ref=self._ref(rec), path=path, available=path is not None and path.exists(), unsaved=self.unsaved)
+        view.update(ref=self._ref(rec), path=path, available=(path is not None and path.exists()) if check_files else None,
+                    availability_checked=check_files, unsaved=self.unsaved)
         return SimpleNamespace(**view)
 
-    def get_data(self, ref=None, role=None, purpose=None):
+    def get_data(self, ref=None, role=None, purpose=None, check_files=False):
         require(sum(x is not None for x in (ref, role, purpose)) == 1, "choose exactly one data selector")
         if purpose is not None:
             require(purpose in self.state["current"], "no current dataset for purpose")
             ref = self.state["current"][purpose]
         if ref is None:
-            matches = [r for r in self._latest("data") if r["role"] == role and r["status"] == "active"]
+            matches = [self._latest_index[key] for key in self._roles.get(role, ())]
             require(len(matches) == 1, "missing or ambiguous data role")
             rec = matches[0]
         else:
             rec = self._record(ref, "data")
-        return self._view(rec)
+        view = self._view(rec, check_files)
+        view.design_ref = copy.deepcopy(rec.get("design"))
+        view.design = self.get_design(view.design_ref) if view.design_ref else None
+        view.scope = copy.deepcopy(rec.get("scope"))
+        return view
 
-    def get_figure(self, ref):
+    def get_figure(self, ref, check_files=False):
         rec = self._record(ref, "figure")
-        view = self._view(rec)
+        view = self._view(rec, check_files)
         source = self._record(rec["analysis"], "analysis") if rec["analysis"] else rec
         for key in ("inputs", "code", "method", "params"):
             setattr(view, key, copy.deepcopy(source[key]))
@@ -482,13 +673,13 @@ class ProjectBundle:
         view.unknown = [key for key in ("inputs", "method", "params") if getattr(view, key) is None]
         if not view.code:
             view.unknown.append("code")
-        view.input_availability = [{"ref": x, "available": self.get_data(ref=x).available} for x in view.inputs or []]
+        view.input_availability = [{"ref": x, "available": self.get_data(ref=x, check_files=check_files).available} for x in view.inputs or []]
         view.code_availability = []
         for code in view.code:
             snapshot = code["snapshot"]
             file = self._resolve({"kind": "project", "value": snapshot}) if snapshot else self._resolve(code["locator"])
             view.code_availability.append({"reference": copy.deepcopy(code), "path": file,
-                                          "available": bool(snapshot in self._snapshots or file is not None and file.is_file())})
+                                          "available": bool(snapshot in self._snapshots or file is not None and file.is_file()) if check_files else None})
         return view
 
     def find_figures(self, query=None, type=None):
@@ -506,6 +697,7 @@ class ProjectBundle:
         rec = self._record(ref, "data")
         require(rec["status"] == "active", "current data must be active")
         self.state["current"][purpose] = self._ref(rec)
+        self._purposes = sorted(self.state["current"])
         self._event("set_current", self._ref(rec), reason)
         return self._ref(rec)
 
@@ -515,6 +707,8 @@ class ProjectBundle:
         require(rec["kind"] != "design", "use set_design to revise experimental design")
         allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path"}
         require(set(changes) <= allowed, "protected or unknown correction field")
+        if rec.get("scope", {}).get("membership_evidence", {}).get("status") == "verification_recorded":
+            require(not ({"path", "details"} & set(changes)), "clear membership evidence through set_data_scope before changing subject/bindings")
         if "path" in changes:
             require(rec["kind"] in ("data", "figure"), "path correction requires file record")
             loc = self._locator(changes["path"])
@@ -522,19 +716,27 @@ class ProjectBundle:
             require(file is not None and file.is_file(), "new revision file missing")
             rec.update(locator=loc, sha256=fingerprint(file), size=file.stat().st_size)
         rec.update(copy.deepcopy({k: v for k, v in changes.items() if k != "path"}))
-        rec["revision"] = max(r["revision"] for r in self.state["records"] if r["id"] == rec["id"]) + 1
+        rec["revision"] = self._latest_index[rec["id"]]["revision"] + 1
         rec["created_at"] = now()
         return self._stage(rec, "update_record", reason)
 
     def set_context(self, changes):
         allowed = {"purpose", "next_task", "questions", "authorities", "raw_dir", "metadata"}
         require(isinstance(changes, dict) and set(changes) <= allowed, "unknown/protected context field")
-        trial = copy.deepcopy(self.state)
+        project = copy.deepcopy(self.state["project"])
         for key, value in changes.items():
-            trial["project"][key] = self._locator(value) if key in ("raw_dir", "metadata") and value is not None else copy.deepcopy(value)
-        validate_state(trial)
-        self.state = trial
-        self._event("set_context")
+            project[key] = self._locator(value) if key in ("raw_dir", "metadata") and value is not None else copy.deepcopy(value)
+        validate_values(project)
+        for key in ("purpose", "next_task"):
+            require(project[key] is None or isinstance(project[key], str), "invalid project text")
+        for key in ("questions", "authorities"):
+            require(isinstance(project[key], list), "project arrays required")
+        for key in ("raw_dir", "metadata"):
+            if project[key] is not None:
+                validate_locator(project[key])
+        if project != self.state["project"]:
+            self.state["project"] = project
+            self._event("set_context")
 
     def record_decision(self, text, reason, targets):
         require(isinstance(reason, str) and reason.strip() and isinstance(targets, list), "reason/targets required")
@@ -568,17 +770,11 @@ class ProjectBundle:
             require(report["valid"], "metadata does not verify the declared design: " + str(report))
             details.update(evidence_source="metadata-verified", metadata_check=report)
         rec = self._new("design", "Experimental design")
-        rec.update(id="DES-001", revision=max((r["revision"] for r in self.state["records"] if r["kind"] == "design"), default=0) + 1,
-                   details=details)
-        trial = copy.deepcopy(self.state)
-        trial["schema_version"] = DESIGN_VERSION
-        trial["records"].append(rec)
-        ref = self._ref(rec)
-        trial["project"]["design"] = ref
-        validate_state(trial)
-        self.state = trial
-        self._event("set_design", ref, selection_reason)
-        return copy.deepcopy(ref)
+        rec.update(id="DES-001", revision=self._latest_index.get("DES-001", {}).get("revision", 0) + 1, details=details)
+        version = SCOPE_VERSION if self.state["schema_version"] == SCOPE_VERSION else DESIGN_VERSION
+        ref = self._stage(rec, "set_design", selection_reason, version=version)
+        self.state["project"]["design"] = copy.deepcopy(ref)
+        return ref
 
     def get_design(self, ref=None):
         ref = self.state["project"].get("design") if ref is None else ref
@@ -626,11 +822,15 @@ class ProjectBundle:
         return {"project": copy.deepcopy(self.state["project"]), "state_revision": self.state["state_revision"],
                 "unsaved": self.unsaved, "records": len(self.state["records"]), "current": copy.deepcopy(self.state["current"]),
                 "next_task": self.state["project"]["next_task"], "design": self.get_design(),
-                "counts": {kind: len(self._latest(kind)) for kind in ("data", "analysis", "figure")}}
+                "counts": {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}}
 
-    def summary_text(self):
-        counts = {kind: len(self._latest(kind)) for kind in ("data", "analysis", "figure")}
-        return summary_text(self.state["project"], self.get_design(), counts)
+    def summary_text(self, purpose=None):
+        counts = {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}
+        if purpose is None:
+            return summary_text(self.state["project"], self.get_design(), counts)
+        status = self.status(purpose=purpose)
+        return "BioDataLedger: " + status["project"]["name"] + "\nPurpose: " + status["purpose"] + "\n" + json.dumps(status.get("dataset"), ensure_ascii=False, indent=2)
+
 
     def __repr__(self):
         return self.summary_text()
@@ -656,15 +856,16 @@ class ProjectBundle:
                                "status": status, "fingerprint": "known" if expected else "unknown"})
         return report
 
-    def status(self, compact=True):
-        """Bounded metadata and availability checks; never read scientific payloads."""
+    def status(self, compact=True, purpose=None, check_files=False):
+        """Bounded metadata by default; availability checks are explicit."""
         require(compact is True, "use summary()/check() for detailed output")
+        require(type(check_files) is bool, "check_files must be boolean")
+        require(purpose is None or isinstance(purpose, str) and purpose.strip(), "purpose must be nonempty")
         clipped = False
         def text(value, limit):
             nonlocal clipped
             if value is None:
                 return None
-            require(isinstance(value, str), "status text must be a string")
             clipped = clipped or len(value) > limit
             return value[:limit]
         def reference(ref):
@@ -674,38 +875,56 @@ class ProjectBundle:
                 return None
             return copy.deepcopy(ref)
         pointers = self.state["current"]
-        current = [{"purpose": text(key, 64), "ref": reference(pointers[key])}
-                   for key in sorted(pointers)[:5]]
-        candidates = []
-        seen = set()
-        records_to_check = [self._record(pointers[key], "data") for key in sorted(pointers)] + self._latest()
-        for record in records_to_check:
-            locators = []
-            if record["locator"] is not None:
-                locators.append((record["locator"], "file"))
-            for code in record["code"]:
-                locator = {"kind": "project", "value": code["snapshot"]} if code["snapshot"] else code["locator"]
-                locators.append((locator, "code"))
-            for locator, role in locators:
-                key = locator_key(locator)
-                if key not in seen:
-                    seen.add(key)
-                    candidates.append((locator, role, self._ref(record)))
-        missing = []
-        found = 0
-        for locator, role, ref in candidates[:100]:
-            path = self._resolve(locator)
-            if path is None or not path.exists():
-                found += 1
-                if len(missing) < 5:
-                    missing.append({"ref": reference(ref), "role": role,
-                                    "reason": "unresolved" if path is None else "missing"})
+        purposes = self._purposes if purpose is None else ([purpose] if purpose in pointers else [])
+        current = [{"purpose": text(key, 64), "ref": reference(pointers[key])} for key in purposes[:5]]
+        missing, found, candidates = [], None, []
+        if check_files:
+            seen = set()
+            records = [self._record(pointers[key], "data") for key in purposes]
+            records += self._latest() if purpose is None else []
+            for record in records:
+                locators = [(record["locator"], "file")] if record["locator"] is not None else []
+                locators += [({"kind": "project", "value": code["snapshot"]} if code["snapshot"] else code["locator"], "code") for code in record["code"]]
+                for locator, role in locators:
+                    key = locator_key(locator)
+                    if key not in seen:
+                        seen.add(key)
+                        candidates.append((locator, role, self._ref(record)))
+            found = 0
+            for locator, role, ref in candidates[:100]:
+                path = self._resolve(locator)
+                if path is None or not path.exists():
+                    found += 1
+                    if len(missing) < 5:
+                        missing.append({"ref": reference(ref), "role": role, "reason": "unresolved" if path is None else "missing"})
         result = {"project": {"id": self.state["project"]["id"], "name": text(self.state["project"]["name"], 80)},
                   "registry_revision": self.state["state_revision"], "current": current,
                   "active_question": None, "next_task": text(self.state["project"]["next_task"], 160),
-                  "missing": {"checked": min(100, len(candidates)), "unchecked": max(0, len(candidates) - 100),
+                  "missing": {"checked": min(100, len(candidates)), "unchecked": max(0, len(candidates) - 100) if check_files else None,
                               "found": found, "items": missing}, "unsaved": self.unsaved,
-                  "truncated": {"current": len(pointers) - len(current), "missing": found - len(missing), "text": clipped}}
+                  "truncated": {"current": len(purposes) - len(current), "missing": found - len(missing) if check_files else 0, "text": False},
+                  "counts": {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}, "availability_checked": check_files}
+        if purpose is not None:
+            result.update(purpose=text(purpose, 64), dataset=None)
+            if purpose in pointers:
+                rec = self._record(pointers[purpose], "data")
+                design_ref = rec.get("design")
+                design = compact_design(self.get_design(design_ref)) if design_ref else None
+                clipped = clipped or bool(design and design["truncated"])
+                scope = None
+                if "scope" in rec:
+                    scope = {}
+                    for key in ("condition_values", "assignment_inclusion"):
+                        values = rec["scope"][key]
+                        clipped = clipped or bool(values and len(values) > 5)
+                        scope[key] = None if values is None else [text(x, 64) for x in values[:5]]
+                    for key in ("observation_unit", "assay", "layer"):
+                        scope[key] = text(rec["scope"][key], 64)
+                    scope["evidence"] = rec["scope"]["evidence"]["basis"]
+                    scope["membership_evidence"] = rec["scope"]["membership_evidence"]["status"]
+                result["dataset"] = {"ref": reference(self._ref(rec)), "design_ref": reference(design_ref) if design_ref else None,
+                                     "design": design, "scope": scope, "file_integrity": "not_checked"}
+        result["truncated"]["text"] = clipped
         while len(canonical(result)) > 4096:
             if result["current"]:
                 result["current"].pop()
@@ -713,11 +932,16 @@ class ProjectBundle:
             elif result["missing"]["items"]:
                 result["missing"]["items"].pop()
                 result["truncated"]["missing"] += 1
+            elif result.get("dataset") is not None:
+                result["dataset"] = None
+                result["truncated"]["dataset"] = True
             else:
                 raise BundleError("compact status exceeds its byte budget")
         return result
 
     def save(self):
+        if not self._dirty:
+            return {"state_revision": self._loaded_revision, "transaction": self.state["last_transaction"]}
         require(sys.platform != "win32", "Windows writes not qualified; use a tested local macOS runtime")
         folder = self.root / ".nb_project_bundle"
         lock = folder / "write.lock"
@@ -754,7 +978,8 @@ class ProjectBundle:
             self.state = trial
             self._loaded_digest = new_digest
             self._loaded_revision = trial["state_revision"]
-            self._original = canonical(trial)
+            self._dirty = False
+            self._reindex()
             self._snapshots.clear()
             return {"state_revision": trial["state_revision"], "transaction": trial["last_transaction"]}
         finally:

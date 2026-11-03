@@ -1,6 +1,6 @@
 args <- commandArgs(trailingOnly = TRUE)
 library(BioDataLedger, lib.loc = args[[1]])
-stopifnot(as.character(packageVersion("BioDataLedger")) == "0.3.0")
+stopifnot(as.character(packageVersion("BioDataLedger")) == "0.4.0")
 action <- args[[2]]
 root <- args[[3]]
 if (action == "create") {
@@ -16,17 +16,17 @@ if (action == "create") {
   p$export_zip(p$preview_export("working", include = list(d, "FIG-001@1")), args[[4]])
 } else if (action == "update") {
   p <- ProjectBundle$open(root)
-  stopifnot(p$get_figure("FIG-001@1")$available)
+  stopifnot(p$get_figure("FIG-001@1", check_files = TRUE)$available)
   p$set_context(list(next_task = "updated by R"))
   p$save()
 } else if (action == "inspect") {
   p <- ProjectBundle$open(root)
-  f <- p$get_figure("FIG-001@1")
+  f <- p$get_figure("FIG-001@1", check_files = TRUE)
   cat(jsonlite::toJSON(list(figure = f$ref, params = f$params, method = f$method, next_task = p$summary()$next_task, code = f$code_availability), auto_unbox = TRUE, null = "null"))
 } else if (action == "import") {
   q <- ProjectBundle$import_zip(args[[4]], root)
-  f <- q$get_figure("FIG-001@1")
-  stopifnot(isTRUE(f$available), isTRUE(f$code_availability[[1]]$available), isTRUE(q$get_data(purpose = "qc")$available), identical(f$provenance$figure_file, "captured"), identical(f$provenance$execution, "unknown"))
+  f <- q$get_figure("FIG-001@1", check_files = TRUE)
+  stopifnot(isTRUE(f$available), isTRUE(f$code_availability[[1]]$available), isTRUE(q$get_data(purpose = "qc", check_files = TRUE)$available), identical(f$provenance$figure_file, "captured"), identical(f$provenance$execution, "unknown"))
   q$set_context(list(next_task = "imported and updated by R"))
   q$save()
 } else if (action == "stale") {
@@ -39,10 +39,10 @@ if (action == "create") {
   cat(result)
 } else if (action == "status") {
   p <- ProjectBundle$open(root)
-  cat(jsonlite::toJSON(p$status(), auto_unbox = TRUE, null = "null", digits = 15, force = TRUE))
+  cat(jsonlite::toJSON(p$status(check_files = TRUE), auto_unbox = TRUE, null = "null", digits = 15, force = TRUE))
 } else if (action == "legacy") {
   p <- ProjectBundle$import_zip(args[[4]], root)
-  f <- p$get_figure("FIG-001@1")
+  f <- p$get_figure("FIG-001@1", check_files = TRUE)
   stopifnot(f$params$min_genes == 200, identical(isTRUE(f$available), args[[5]] == "working"))
 } else if (action == "mutations") {
   p <- ProjectBundle$open(root)
@@ -52,7 +52,7 @@ if (action == "create") {
   p$rebind_external(external, args[[4]], "explicit external location")
   p$save()
   q <- ProjectBundle$open(root)
-  stopifnot(is.null(q$summary()$project$purpose), q$get_figure(revised)$revision == 2)
+  stopifnot(is.null(q$summary()$project$purpose), q$get_figure(revised, check_files = TRUE)$revision == 2)
   cat("MUTATIONS-OK")
 } else if (action == "large") {
   p <- ProjectBundle$open(root)
@@ -63,8 +63,8 @@ if (action == "create") {
   }
   assignInNamespace(".hash", blocked_hash, ns = "BioDataLedger")
   d <- p$register_data("large.h5ad", "opaque")
-  stopifnot(isTRUE(p$get_data(ref = d)$available), is.null(p$get_data(ref = d)$sha256))
-  stopifnot(p$status()$missing$checked >= 1)
+  stopifnot(isTRUE(p$get_data(ref = d, check_files = TRUE)$available), is.null(p$get_data(ref = d, check_files = TRUE)$sha256))
+  stopifnot(p$status(check_files = TRUE)$missing$checked >= 1)
   cat("NO-PAYLOAD-HASH")
 } else if (action == "archive-invalid") {
   result <- tryCatch({ProjectBundle$import_zip(args[[4]], root); "WRONG-SUCCESS"}, error = function(e) "REJECTED")

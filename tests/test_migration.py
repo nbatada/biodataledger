@@ -27,16 +27,16 @@ class MigrationTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
 
     def test_installed_identity_and_legacy_archives(self):
-        self.assertEqual(__version__, "0.3.0")
+        self.assertEqual(__version__, "0.4.0")
         import biodataledger
         self.assertIn("site-packages", biodataledger.__file__)
         for mode in ("context", "working"):
             archive = BASE / "tests/legacy" / ("synthetic-" + mode + ".zip")
             before = hashlib.sha256(archive.read_bytes()).hexdigest()
             q = ProjectBundle.import_zip(archive, self.root / ("python-" + mode))
-            self.assertEqual(q.get_figure("FIG-001@1").params, {"min_genes": 200})
+            self.assertEqual(q.get_figure("FIG-001@1", check_files=True).params, {"min_genes": 200})
             self.assertEqual(q.state["schema_version"], "0.1.0")
-            self.assertEqual(q.get_figure("FIG-001@1").available, mode == "working")
+            self.assertEqual(q.get_figure("FIG-001@1", check_files=True).available, mode == "working")
             r_call("legacy", self.root / ("r-" + mode), archive, mode)
             self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), before)
 
@@ -47,7 +47,7 @@ class MigrationTests(unittest.TestCase):
         shutil.copyfile(source, project / STATE_PATH)
         before = (project / STATE_PATH).read_bytes()
         p = ProjectBundle.open(project)
-        self.assertEqual(p.get_data(purpose="qc").ref["id"], "DATA-001")
+        self.assertEqual(p.get_data(purpose="qc", check_files=True).ref["id"], "DATA-001")
         self.assertEqual((project / STATE_PATH).read_bytes(), before)
         self.assertEqual((BASE / "schema/project.schema.json").read_bytes(),
                          (BASE / "python/src/biodataledger/project.schema.json").read_bytes())
@@ -70,9 +70,9 @@ class MigrationTests(unittest.TestCase):
             return real_open(path, *args, **kwargs)
         with patch("biodataledger.core.fingerprint", side_effect=AssertionError("unexpected hash")), patch.object(Path, "open", guarded_open), patch("os.scandir", side_effect=AssertionError("directory crawl")):
             loaded = ProjectBundle.open(p.root)
-            status = loaded.status()
-            self.assertTrue(loaded.get_data(purpose="qc").available)
-            loaded.get_figure(f)
+            status = loaded.status(check_files=True)
+            self.assertTrue(loaded.get_data(purpose="qc", check_files=True).available)
+            loaded.get_figure(f, check_files=True)
             out = loaded.get_output_dir("qc")
             self.assertFalse(out.exists())
         self.assertEqual((p.root / STATE_PATH).read_bytes(), before)
@@ -83,7 +83,7 @@ class MigrationTests(unittest.TestCase):
         native = json.loads(r_call("status", p.root).stdout)
         self.assertEqual(native, status)
         p.set_context({"next_task": "unsaved"})
-        self.assertTrue(p.status()["unsaved"])
+        self.assertTrue(p.status(check_files=True)["unsaved"])
 
     def test_status_checks_pinned_current_revision_after_new_version(self):
         p, d, *_ = make_project(self.root / "pinned")
@@ -91,7 +91,7 @@ class MigrationTests(unittest.TestCase):
         p.update_record(d, {"path": "replacement.csv"}, "new retained version, not a current-pointer change")
         p.save()
         (p.root / "input.csv").unlink()
-        status = p.status()
+        status = p.status(check_files=True)
         self.assertTrue(any(item["ref"] == d for item in status["missing"]["items"]))
         self.assertEqual(json.loads(r_call("status", p.root).stdout), status)
 
@@ -105,7 +105,7 @@ class MigrationTests(unittest.TestCase):
             p.register_data(path, "input")
             path.unlink()
         p.save()
-        s = p.status()
+        s = p.status(check_files=True)
         self.assertEqual(s["missing"]["checked"], 100)
         self.assertEqual(s["missing"]["unchecked"], 5)
         self.assertEqual(s["missing"]["found"], 100)
@@ -123,10 +123,10 @@ class MigrationTests(unittest.TestCase):
             refs.append(p.register_data(path, "analysis_ready", name=label, hash=True))
         p.set_current(refs[1], "qc", "explicit synthetic scientist choice")
         p.save()
-        self.assertEqual(p.get_data(purpose="qc").ref, refs[1])
+        self.assertEqual(p.get_data(purpose="qc", check_files=True).ref, refs[1])
         with self.assertRaises(BundleError):
-            p.get_data(role="analysis_ready")
-        status = p.status()
+            p.get_data(role="analysis_ready", check_files=True)
+        status = p.status(check_files=True)
         metric = {"fixture": "PRMT5 synthetic four distinct registered datasets; one current-purpose pointer", "status_utf8_bytes": len(canonical(status)), "full_state_utf8_bytes": len(canonical(p.state)), "byte_target": 4096, "token_count": None, "token_note": "No tokenizer installed; exact UTF-8 bytes are the reproducible bound, not a universal token claim."}
         self.assertLessEqual(metric["status_utf8_bytes"], metric["byte_target"])
         if os.environ.get("BDL_METRICS_PATH"):
@@ -141,7 +141,7 @@ class MigrationTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             for block in blocks:
                 exec(compile(block, "README.md", "exec"), scope)
-        self.assertEqual(scope["q"].get_figure(scope["f1"]).params, {"min_genes": 200})
+        self.assertEqual(scope["q"].get_figure(scope["f1"], check_files=True).params, {"min_genes": 200})
         self.assertEqual(len(scope["q"].find_figures(type="qc")), 2)
 
     def test_readme_r_examples_installed(self):

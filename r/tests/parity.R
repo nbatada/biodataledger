@@ -6,7 +6,7 @@ d <- b$register_data("a.txt", "qc"); a <- b$register_analysis("analysis", list(d
 f <- b$register_figure("a.txt", "qc", analysis = a)
 writeLines("changed code", file.path(root, "code.R"))
 b$save()
-stopifnot(b$get_figure(f)$source_code_availability[[1]])
+stopifnot(b$get_figure(f, check_files = TRUE)$source_code_availability[[1]])
 old <- b$update_record(d, list(name = "old"), "correction")
 stopifnot(b$get_data(role = "qc")$ref$revision == 2)
 b$save()

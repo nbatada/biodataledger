@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "BioDataLedger state 0.1.0 and experimental-design extension 0.2.0",
+  "title": "BioDataLedger state 0.1.0–0.3.0: design and dataset scope",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -18,7 +18,8 @@
     "schema_version": {
       "enum": [
         "0.1.0",
-        "0.2.0"
+        "0.2.0",
+        "0.3.0"
       ]
     },
     "project": {
@@ -386,6 +387,9 @@
               "type": "null"
             }
           ]
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
         }
       },
       "allOf": [
@@ -418,6 +422,7 @@
             "properties": {
               "kind": {
                 "enum": [
+                  "data",
                   "analysis",
                   "figure"
                 ]
@@ -441,6 +446,20 @@
               "required": [
                 "design"
               ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "data"
+              }
             }
           }
         }
@@ -629,9 +648,205 @@
           }
         }
       ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assay",
+        "assignment_inclusion",
+        "condition_values",
+        "evidence",
+        "layer",
+        "membership_evidence",
+        "observation_unit",
+        "sample_manifest_ref",
+        "selection",
+        "transformation_ref"
+      ],
+      "properties": {
+        "observation_unit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assay": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "condition_values": {
+          "anyOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "assignment_inclusion": {
+          "anyOf": [
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sample_manifest_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "transformation_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "basis",
+            "source_refs"
+          ],
+          "properties": {
+            "basis": {
+              "enum": [
+                "unknown",
+                "declared",
+                "inferred"
+              ]
+            },
+            "source_refs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ref"
+              }
+            }
+          }
+        },
+        "membership_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "report_ref"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "unknown",
+                "declared",
+                "inferred",
+                "verification_recorded"
+              ]
+            },
+            "report_ref": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ref"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "verification_recorded"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "report_ref": {
+                    "$ref": "#/$defs/ref"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "report_ref": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   },
-  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation.",
+  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation. Dataset scope and DATA design pins require schema 0.3.0. Clients validate reference kinds and canonical scope/report evidence; no implicit scientific verification.",
   "allOf": [
     {
       "if": {
@@ -668,6 +883,51 @@
                   }
                 ]
               }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "enum": [
+              "0.1.0",
+              "0.2.0"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "records": {
+            "items": {
+              "allOf": [
+                {
+                  "not": {
+                    "required": [
+                      "scope"
+                    ]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "kind": {
+                        "const": "data"
+                      }
+                    }
+                  },
+                  "then": {
+                    "not": {
+                      "required": [
+                        "design"
+                      ]
+                    }
+                  }
+                }
+              ]
             }
           }
         }

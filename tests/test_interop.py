@@ -39,29 +39,29 @@ class NativeExchangeTests(unittest.TestCase):
         archive = self.base / "r-working.zip"
         r_call("create", root, archive)
         p = ProjectBundle.open(root)
-        f = p.get_figure("FIG-001@1")
+        f = p.get_figure("FIG-001@1", check_files=True)
         self.assertEqual(f.params, {"cutoff": 200, "labels": ["one"], "empty": []})
         p.set_context({"next_task": "updated by Python"})
         p.save()
         result = json.loads(r_call("inspect", root).stdout)
         self.assertEqual(result["params"], f.params)
         q = ProjectBundle.import_zip(archive, self.base / "r-zip-python-import")
-        self.assertTrue(q.get_figure("FIG-001@1").code_availability[0]["available"])
-        self.assertTrue(q.get_data(purpose="qc").available)
+        self.assertTrue(q.get_figure("FIG-001@1", check_files=True).code_availability[0]["available"])
+        self.assertTrue(q.get_data(purpose="qc", check_files=True).available)
 
     def test_python_r_python_and_python_archive(self):
         p, d, f, g, _ = make_project(self.base / "python-created")
         r_call("update", p.root)
         q = ProjectBundle.open(p.root)
         self.assertEqual(q.summary()["next_task"], "updated by R")
-        self.assertEqual(q.get_figure(f).params, {"min_genes": 200})
+        self.assertEqual(q.get_figure(f, check_files=True).params, {"min_genes": 200})
         z = self.base / "python-working.zip"
         q.export_zip(q.preview_export("working", [d, f, g]), z)
         target = self.base / "python-zip-r-import"
         r_call("import", target, z)
         reloaded = ProjectBundle.open(target)
         self.assertEqual(reloaded.summary()["next_task"], "imported and updated by R")
-        self.assertTrue(reloaded.get_figure(f).code_availability[0]["available"])
+        self.assertTrue(reloaded.get_figure(f, check_files=True).code_availability[0]["available"])
 
     def test_cross_language_stale_writers(self):
         p, *_ = make_project(self.base / "race")
@@ -136,8 +136,8 @@ class NativeExchangeTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "MUTATIONS-OK")
         q = ProjectBundle.open(p.root)
         self.assertIsNone(q.state["project"]["purpose"])
-        self.assertEqual(q.get_figure("FIG-001@2").revision, 2)
-        self.assertEqual(q.get_data(purpose="qc").ref["id"], "DATA-001")
+        self.assertEqual(q.get_figure("FIG-001@2", check_files=True).revision, 2)
+        self.assertEqual(q.get_data(purpose="qc", check_files=True).ref["id"], "DATA-001")
 
     def test_shared_invalid_fixtures(self):
         p, *_ = make_project(self.base / "invalid")

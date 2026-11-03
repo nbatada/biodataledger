@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — Exact input resolution and loaded lookup performance
+
+- Use in-memory exact-reference indexes and explicit dirty tracking; clean saves avoid disk writes. Preserve atomic JSON and stale-writer checks.
+- Make ordinary getters/status metadata-only. Availability is unknown until `check_files=True/TRUE`; strict `resolve_data(..., verify="sha256")` verifies a selected file explicitly.
+- Add versioned DATA scope/design pins, explicit requirement comparisons and bound membership-evidence checks. New scope uses schema 0.3.0; old projects and ZIP format remain readable.
+- Add confirmed existing-project intake guidance and native declared-file recovery examples. Recovery does not execute code or reconstruct environments.
+- Enforce bounded JSON metadata in both clients. No database, automatic recorder or real-data migration.
+
 ## 0.3.0 — Experimental design
 
 - Add ordered condition/levels, selected/reference levels, optional biological replicate and reason in both native clients.

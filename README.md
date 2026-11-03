@@ -12,11 +12,11 @@ Use it when your analysis spans multiple sessions, your datasets change, or some
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.3.0.md)
+[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.4.0.md)
 
 ## Install
 
-Version **0.3.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.4.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
@@ -75,7 +75,7 @@ p.set_current(d, purpose="qc", reason="Scientist-selected synthetic trial input"
 p.save()
 
 p = ProjectBundle.open(project_dir=project_root)
-d = p.get_data(purpose="qc")
+d = p.resolve_data(purpose="qc", verify="sha256")
 # Normal native analysis uses d.path and saves figures. The registry runs nothing.
 a = p.register_analysis("QC", inputs=[d.ref], code="qc.py",
                         method="synthetic display", params={"min_genes": 200})
@@ -101,7 +101,7 @@ p$set_current(d, purpose = "qc", reason = "Scientist-selected synthetic trial in
 p$save()
 
 p <- ProjectBundle$open(project_dir = project_root)
-d <- p$get_data(purpose = "qc")
+d <- p$resolve_data(purpose = "qc", verify = "sha256")
 # Normal native analysis uses d$path and saves figures; no package execution.
 a <- p$register_analysis("QC", inputs = list(d$ref), code = "qc.R",
                         method = "synthetic display", params = list(min_genes = 200))
@@ -115,6 +115,12 @@ print(list(inputs = figure$inputs, code = figure$code, params = figure$params, p
 ```
 
 </details>
+
+## Inspect and resume
+
+Open the project once and use exact getters for frequent metadata lookups. In 0.4, availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
+
+Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.4.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
 
 ## Conditions and levels
 
@@ -160,7 +166,7 @@ p$get_design_summary()
 
 </details>
 
-Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.3.0.md#experimental-design) for verification rules and getters.
+Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.4.0.md#experimental-design) for verification rules and getters.
 
 ## Share a result
 
@@ -224,7 +230,7 @@ The [agent guide](docs/agent/USAGE.md) gives the full usage rules. You can also 
 
 Records describe the sources you supply; they are not proof that code ran or that a result is scientifically valid. Data remain native files, and selecting levels does not subset an object.
 
-Older projects remain readable. Saving experimental design requires clients ≥0.3.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
+Older projects remain readable. Saving experimental design requires clients ≥0.3.0; new DATA scope/design records require clients ≥0.4.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
 
 ## Tests
 
@@ -233,5 +239,5 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.3.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.4.0.tar.gz
 ```
