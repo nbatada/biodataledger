@@ -1,8 +1,12 @@
 # BioDataLedger
 
-Research projects often contain several versions of the same dataset. After a break, it can be hard to remember which cohort to use, which files it needs, or which script produced a result.
+**Resume your analysis without reconstructing its history.**
 
-BioDataLedger records your chosen datasets, cohort descriptions, analysis settings and saved results in your existing project folder. Reopen the project in R or Python to retrieve those records. Your files stay where they are.
+A research folder can contain several dataset versions, scripts and figures, with little indication of which belong together. Returning after a break—or handing the project to a colleague—can mean searching old code just to recover earlier choices.
+
+BioDataLedger records the dataset revisions, cohort notes, code and parameters you associate with each retained analysis and figure. You can then retrieve a result’s recorded sources, find the input you designated for a task, and see what information is missing. It works in R and Python with your existing files.
+
+Use it when your analysis spans multiple sessions, your datasets change, or someone else needs to understand and continue your work.
 
 ![Without BioDataLedger, the source of a saved CD8 figure is unclear. With BioDataLedger, an exact figure lookup retrieves its recorded input, analysis code and parameters.](docs/assets/biodataledger-provenance-gemini-v1.jpg)
 
