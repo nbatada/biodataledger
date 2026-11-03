@@ -18,14 +18,12 @@ The example illustrates records you supply; the package does not choose or verif
 
 Version **0.5.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-The new figure-source reporting and retrieval methods are local development
-additions and have not been published. To use the examples below, install from
-this local checkout. The pinned GitHub command installs the earlier published
-package, which does not include these methods.
+The pinned GitHub version includes figure-source reporting, preserved-source
+retrieval and figure discovery by registered path or scientific asset ID.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install the verified 0.5.0 package at commit `74af9b4`:
+Run this in R to install the verified 0.5.0 package at commit `5ee6d0e`:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -34,7 +32,7 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "74af9b422631929919f62002977827e1d72ea536",
+  ref = "5ee6d0e393a2b7d2b9afb31c56458ebc0581a5ad",
   upgrade = "never"
 )
 ```
