@@ -4,7 +4,7 @@ Research projects often contain several versions of the same dataset. After a br
 
 BioDataLedger records your chosen datasets, cohort descriptions, analysis settings and saved results in your existing project folder. Reopen the project in R or Python to retrieve those records. Your files stay where they are.
 
-![Without BioDataLedger, dataset versions and source files are ambiguous. With BioDataLedger, the scientist's chosen dataset revision, cohort note, comparison, scripts and result are recorded.](docs/assets/biodataledger-before-after.png)
+![Without BioDataLedger, the source of a saved CD8 figure is unclear. With BioDataLedger, an exact figure lookup retrieves its recorded input, analysis code and parameters.](docs/assets/biodataledger-provenance-gemini-v1.jpg)
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
