@@ -13,7 +13,7 @@ unlink(file.path(root, "data.txt")); unlink(file.path(root, "code.R"))
 s <- b$status(check_files = TRUE)
 json <- jsonlite::toJSON(s, auto_unbox = TRUE, null = "null", digits = 15, force = TRUE)
 stopifnot(nchar(json, type = "bytes") <= 4096L,
-          identical(names(s), c("project", "registry_revision", "current", "active_question", "next_task", "missing", "availability_checked", "counts", "unsaved", "truncated")),
+          identical(names(s), c("project", "registry_revision", "current", "active_question", "next_task", "missing", "availability_checked", "counts", "unsaved", "truncated", "evidence")),
           s$unsaved, s$truncated$current == 2L, s$truncated$text,
           s$missing$checked == 2L, s$missing$found == 2L,
           all(vapply(s$missing$items, function(x) x$reason == "missing", logical(1))),

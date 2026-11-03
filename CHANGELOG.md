@@ -2,6 +2,8 @@
 
 ## Unreleased — Lightweight agent workflow
 
+- Analysis/figure details and compact summaries explicitly distinguish declared relationships from missing execution evidence. Historical records remain unchanged; file hashes, snapshots, imports and caller-supplied labels never establish observed execution. R registration defaults now match Python.
+
 - Reduced R JSON parsing overhead while preserving decoded duplicate-key and malformed-input checks.
 - Dirty saves compare the original validated registry bytes under the writer lock without reparsing unchanged metadata. Python validates the proposed state once before publishing snapshots or registry bytes.
 - R reuses the indexes produced by full validation and uses ordinary copy-on-modify semantics for save candidates, avoiding a redundant index rebuild and deep copy without removing checks.

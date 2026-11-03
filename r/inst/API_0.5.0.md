@@ -31,6 +31,38 @@ Compact status is capped at 4096 UTF-8 bytes, with explicit omissions/truncation
 - `set_current(ref, purpose, reason)` records an explicit scientist-selected active DATA revision. It never rewrites historical analysis inputs. External scientific authority blocks a competing local current choice.
 - `record_decision(text, reason, targets)`, `set_context(changes)` and `rebind_external(ref, path, reason)` retain their explicit declaration/rebinding roles. Rebinding checks known hashes. `get_raw_dir`, `get_metadata_path`, and `get_output_dir(kind)` retrieve locations without creating analysis directories.
 
+## Declared relationships and execution evidence
+
+Analysis and figure detail views add a detached `evidence` object:
+
+```json
+{"input_relationships":"declared","code_relationships":"declared","execution":"unknown","execution_evidence":"not_captured","missing":["execution_evidence"]}
+```
+
+This example has all declared fields present. Missing inputs, method, parameters
+or code are listed individually. Unknown analytical provenance is also explicit.
+Figure `unknown` uses the same missing-information list. Linked figures use their
+exact analysis revision; corrections do not reinterpret earlier figures.
+
+The registry does not observe analysis execution. Code snapshots and recorded or
+verified file digests establish file facts, not execution of the declared code on
+the declared inputs. Strict integrity checks and imports never promote execution
+status. Arbitrary `details` fields, including claims named `execution_evidence`,
+are not a supported captured-execution contract.
+
+Existing records are not rewritten or upgraded. Unsupported legacy provenance
+labels remain in raw `details`; derived provenance reports treat them as unknown.
+New R registrations use the same declared/unknown defaults as Python, regardless
+of caller-supplied provenance labels. Existing `provenance` keys remain available.
+
+`status()` and `summary()` include a small constant `evidence` object containing
+`execution`, `execution_evidence` and the missing execution-evidence marker.
+This describes the registry's evidence boundary; it is not a scan of every
+record's completeness or of external execution logs. Query an exact detail view
+for record-specific missing fields. Ordinary evidence queries load no payloads,
+perform no hashing or writes, and retain the compact status byte cap. No executor,
+automatic recorder, schema migration or new dependency is introduced.
+
 ## Experimental design and saved-object scope
 
 `set_design(condition, levels, selected_levels=None, reference_level=None, replicate=None, selection_reason=None, metadata=None, context=...)` records a versioned DES declaration. The condition and ordered levels are required. Selected levels default to all levels; an explicit selection must be a nonempty unique subset. Optional in-memory metadata checks validate supplied labels, not biological independence. Nothing subsets a scientific object.

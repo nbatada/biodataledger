@@ -255,6 +255,13 @@ object retains its revision; reopen deliberately for another writer's updates.
 
 Records describe the sources you supply; they are not proof that code ran or that a result is scientifically valid. Data remain native files, and selecting levels does not subset an object.
 
+`get_analysis(ref).evidence` and `get_figure(ref).evidence` distinguish declared
+input/code relationships from execution evidence (R uses `$evidence`). The
+registry currently captures no analysis execution, so execution remains unknown
+and `execution_evidence` appears in the missing-information list even when every
+declared field is present. Compact status and summaries state this explicitly.
+Hashes, code snapshots and successful imports do not change that status.
+
 Older projects remain readable. Saving experimental design requires clients ≥0.3.0; DATA scope/design records require clients ≥0.4.0; explicit analysis input modes and managed figure copies require clients ≥0.5.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
 
 ## Tests

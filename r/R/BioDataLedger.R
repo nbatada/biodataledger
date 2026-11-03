@@ -1,5 +1,20 @@
 .obj <- function(...) { x <- list(...); if (!length(x)) names(x) <- character(); x }
 .arr <- function(x = list()) unname(as.list(x))
+.execution_summary <- function() .obj(execution = "unknown", execution_evidence = "not_captured", missing = list("execution_evidence"))
+.provenance_status <- function(rec, field, allowed) {
+  provenance <- rec$details$provenance
+  value <- if (.is_obj(provenance)) provenance[[field]] else NULL
+  if (is.character(value) && length(value) == 1L && !is.na(value) && value %in% allowed) value else "unknown"
+}
+.analytical_evidence <- function(rec) {
+  declared <- identical(.provenance_status(rec, "analytical", c("declared", "unknown")), "declared")
+  .obj(input_relationships = if (declared && !is.null(rec$inputs)) "declared" else "unknown",
+       code_relationships = if (declared && length(rec$code)) "declared" else "unknown",
+       execution = "unknown", execution_evidence = "not_captured",
+       missing = .arr(c(if (is.null(rec$inputs)) "inputs", if (is.null(rec$method)) "method",
+                        if (is.null(rec$params)) "params", if (!length(rec$code)) "code",
+                        if (!declared) "analytical_provenance", "execution_evidence")))
+}
 .uuid <- function() as.character(uuid::UUIDgenerate())
 .now <- function() format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
 .fail <- function(message) stop(message, call. = FALSE)
@@ -584,7 +599,8 @@ ProjectBundle <- local({
     register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Analysis inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = validate_details(.obj(...)), design = select_design(design_ref))
+      details <- .obj(...); details$provenance <- .obj(file = "unknown", analytical = "declared")
+      rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
       append_record(rec, "register_analysis", capture_code(rec), version = "0.4.0")
     }
@@ -598,8 +614,9 @@ ProjectBundle <- local({
       }
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- validate_details(.obj(...)); if (any(c("preservation", "artifact_role") %in% names(details))) .fail("Reserved preservation metadata")
-      details$format <- tolower(tools::file_ext(p)); details$provenance$file <- "captured"
+      details <- .obj(...); if (any(c("preservation", "artifact_role") %in% names(details))) .fail("Reserved preservation metadata")
+      details$format <- tolower(tools::file_ext(p))
+      details$provenance <- .obj(file = "captured", analytical = if (!is.null(analysis) || length(inputs) || length(entries)) "declared" else "unknown")
       design <- if (is.null(analysis)) select_design(design_ref) else NULL
       rec <- .new_record(state, "figure", if (is.null(name)) tools::file_path_sans_ext(basename(p)) else name, loc, type = type, sha256 = .hash(p), size = file.info(p)$size, inputs = inputs, analysis = analysis, code = entries, method = method, params = params, details = details, design = design)
       if (is.null(analysis)) {rec["design"] <- list(design); rec$input_mode <- input_mode}
@@ -695,13 +712,14 @@ ProjectBundle <- local({
         out$inputs <- .copy(a$inputs); out$code <- .copy(a$code); out$method <- a$method; out$params <- .copy(a$params)
       }
       out$analysis_details <- if (is.null(rec$analysis)) .copy(rec$details) else .copy(.record(state, rec$analysis)$details)
-      out$analysis_details$provenance$file <- NULL # Analysis context is not the figure file.
+      if (.is_obj(out$analysis_details$provenance)) out$analysis_details$provenance$file <- NULL # Analysis context is not the figure file.
       analytical_source <- if (is.null(rec$analysis)) rec else .record(state, rec$analysis)
       out["input_mode"] <- list(.copy(analytical_source$input_mode))
-      out$provenance <- .obj(figure_file = if (is.null(rec$details$provenance$file)) "unknown" else rec$details$provenance$file,
-                             analytical = if (is.null(analytical_source$details$provenance$analytical)) "unknown" else analytical_source$details$provenance$analytical,
+      out$provenance <- .obj(figure_file = .provenance_status(rec, "file", c("captured", "unknown")),
+                             analytical = .provenance_status(analytical_source, "analytical", c("declared", "unknown")),
                              execution = "unknown")
-      out$unknown <- .arr(c(if (is.null(out$inputs)) "inputs", if (is.null(out$method)) "method", if (is.null(out$params)) "params", if (!length(out$code)) "code"))
+      out$evidence <- .analytical_evidence(analytical_source)
+      out$unknown <- .copy(out$evidence$missing)
       out["input_availability"] <- list(if (is.null(out$inputs)) NULL else .arr(lapply(out$inputs, function(x) .obj(ref = x, available = if (check_files) get_data(ref = x, check_files = TRUE)$available else NULL, availability_checked = check_files))))
       out$code_availability <- .arr(lapply(out$code, function(x) {
         key <- paste0(x$locator$kind, ":", x$locator$value)
@@ -714,6 +732,7 @@ ProjectBundle <- local({
     get_analysis <- function(ref) {
       rec <- .record(state, ref); if (rec$kind != "analysis") .fail("Not analysis")
       out <- view(rec); out["design_ref"] <- list(.copy(rec$design)); out["design"] <- list(if (is.null(rec$design)) NULL else get_design(rec$design))
+      out$evidence <- .analytical_evidence(rec)
       out
     }
     get_design <- function(ref = NULL) {
@@ -881,7 +900,7 @@ ProjectBundle <- local({
     }
     summary <- function() {
       .obj(state_revision = state$state_revision, unsaved = dirty, records = length(state$records), current = .copy(state$current),
-           next_task = state$project$next_task, design = get_design(), counts = .copy(attr(state, "record_index")$summary$counts))
+           next_task = state$project$next_task, design = get_design(), counts = .copy(attr(state, "record_index")$summary$counts), evidence = .execution_summary())
     }
     get_design_summary <- function() {
       design <- get_design(); if (is.null(design)) return(NULL)
@@ -922,7 +941,7 @@ ProjectBundle <- local({
                      "  File integrity: not checked")
         }
       }
-      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure)), collapse = "\n")
+      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure), "Execution evidence: not captured by registry."), collapse = "\n")
     }
     status <- function(compact = TRUE, purpose = NULL, check_files = FALSE) {
       if (!is.null(purpose) && !.design_text(purpose)) .fail("Invalid purpose")
@@ -1002,7 +1021,7 @@ ProjectBundle <- local({
       result <- .obj(project = .obj(id = state$project$id, name = clip(state$project$name, 80L)), registry_revision = state$state_revision,
                      current = .arr(current), active_question = NULL, next_task = clip(state$project$next_task, 160L),
                      missing = .obj(checked = checked, unchecked = if (check_files) length(candidates) - checked else NULL, found = if (check_files) found else NULL, items = .arr(items)),
-                     availability_checked = check_files, counts = .copy(attr(state, "record_index")$summary$counts), unsaved = dirty, truncated = .obj(current = max(0L, length(purposes) - 5L), missing = found - length(items), text = clipped))
+                     availability_checked = check_files, counts = .copy(attr(state, "record_index")$summary$counts), unsaved = dirty, truncated = .obj(current = max(0L, length(purposes) - 5L), missing = found - length(items), text = clipped), evidence = .execution_summary())
       if (!is.null(purpose)) {result$purpose <- clip(purpose, 64L); result["dataset"] <- list(dataset); result$truncated$current <- 0L; if (dataset_omitted) result$truncated$dataset <- TRUE; result$truncated$text <- clipped}
       while (nchar(.json(result), type = "bytes") > 4096L) {
         if (length(result$current)) {

@@ -133,6 +133,31 @@ def ref_key(ref):
     return ref["id"], ref["revision"]
 
 
+def _provenance_label(rec, field, supported):
+    declared = rec["details"].get("provenance")
+    value = declared.get(field) if isinstance(declared, dict) else None
+    return value if value in supported else "unknown"
+
+
+def _execution_evidence():
+    # This registry captures files and declarations, not the execution of analyses.
+    return {"execution": "unknown", "execution_evidence": "not_captured",
+            "missing": ["execution_evidence"]}
+
+
+def _record_evidence(rec):
+    declared = _provenance_label(rec, "analytical", ("declared",)) == "declared"
+    missing = [key for key in ("inputs", "method", "params") if rec[key] is None]
+    if not rec["code"]:
+        missing.append("code")
+    if not declared:
+        missing.append("analytical_provenance")
+    return {"input_relationships": "declared" if declared and rec["inputs"] is not None else "unknown",
+            "code_relationships": "declared" if declared and rec["code"] else "unknown",
+            "execution": "unknown", "execution_evidence": "not_captured",
+            "missing": missing + ["execution_evidence"]}
+
+
 def validate_record(rec, version):
     validate_values(rec)
     require(isinstance(rec, dict) and RECORD_KEYS <= set(rec) <= RECORD_KEYS | {"design", "scope", "input_mode", "preservation"}, "invalid record fields")
@@ -801,13 +826,13 @@ class ProjectBundle:
         view.input_mode = copy.deepcopy(source.get("input_mode"))
         view.analysis_details = copy.deepcopy(source["details"])
         # Analysis context has no figure file; its generic null file marker is not a figure gap.
-        view.analysis_details.get("provenance", {}).pop("file", None)
-        view.provenance = {"figure_file": rec["details"].get("provenance", {}).get("file", "unknown"),
-                           "analytical": source["details"].get("provenance", {}).get("analytical", "unknown"),
+        if isinstance(view.analysis_details.get("provenance"), dict):
+            view.analysis_details["provenance"].pop("file", None)
+        view.provenance = {"figure_file": _provenance_label(rec, "file", ("captured",)),
+                           "analytical": _provenance_label(source, "analytical", ("declared",)),
                            "execution": "unknown"}
-        view.unknown = [key for key in ("inputs", "method", "params") if getattr(view, key) is None]
-        if not view.code:
-            view.unknown.append("code")
+        view.evidence = _record_evidence(source)
+        view.unknown = list(view.evidence["missing"])
         view.input_availability = [{"ref": x, "available": self.get_data(ref=x, check_files=check_files).available} for x in view.inputs or []]
         view.code_availability = []
         for code in view.code:
@@ -969,20 +994,24 @@ class ProjectBundle:
         view = self._view(rec)
         view.design_ref = copy.deepcopy(rec.get("design"))
         view.design = self.get_design(view.design_ref) if view.design_ref else None
+        view.evidence = _record_evidence(rec)
         return view
 
     def summary(self):
         return {"project": copy.deepcopy(self.state["project"]), "state_revision": self.state["state_revision"],
                 "unsaved": self.unsaved, "records": len(self.state["records"]), "current": copy.deepcopy(self.state["current"]),
                 "next_task": self.state["project"]["next_task"], "design": self.get_design(),
-                "counts": {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}}
+                "counts": {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")},
+                "evidence": _execution_evidence()}
 
     def summary_text(self, purpose=None):
         counts = {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}
+        evidence_text = "\nExecution evidence: not captured by registry."
         if purpose is None:
-            return summary_text(self.state["project"], self.get_design(), counts)
+            return summary_text(self.state["project"], self.get_design(), counts) + evidence_text
         status = self.status(purpose=purpose)
-        return "BioDataLedger: " + status["project"]["name"] + "\nPurpose: " + status["purpose"] + "\n" + json.dumps(status.get("dataset"), ensure_ascii=False, indent=2)
+        return ("BioDataLedger: " + status["project"]["name"] + "\nPurpose: " + status["purpose"]
+                + "\n" + json.dumps(status.get("dataset"), ensure_ascii=False, indent=2) + evidence_text)
 
 
     def __repr__(self):
@@ -1056,7 +1085,8 @@ class ProjectBundle:
                   "missing": {"checked": min(100, len(candidates)), "unchecked": max(0, len(candidates) - 100) if check_files else None,
                               "found": found, "items": missing}, "unsaved": self.unsaved,
                   "truncated": {"current": len(purposes) - len(current), "missing": found - len(missing) if check_files else 0, "text": False},
-                  "counts": {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}, "availability_checked": check_files}
+                  "counts": {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}, "availability_checked": check_files,
+                  "evidence": _execution_evidence()}
         if purpose is not None:
             result.update(purpose=text(purpose, 64), dataset=None)
             if purpose in pointers:
