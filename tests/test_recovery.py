@@ -139,15 +139,12 @@ class RecoveryTests(unittest.TestCase):
         if not shutil.which("Rscript"):
             self.skipTest("Rscript unavailable")
         library = os.environ.get("BDL_R_LIB")
-        probe_env = dict(os.environ)
+        env = dict(os.environ)
         if library:
-            probe_env["R_LIBS_USER"] = library
-        probe = subprocess.run(["Rscript", "--vanilla", "-e", "quit(status=if (requireNamespace('BioDataLedger', quietly=TRUE)) 0 else 1)"], env=probe_env, capture_output=True)
+            env["R_LIBS_USER"] = os.pathsep.join(filter(None, (library, env.get("R_LIBS_USER"))))
+        probe = subprocess.run(["Rscript", "--vanilla", "-e", "quit(status=if (requireNamespace('BioDataLedger', quietly=TRUE)) 0 else 1)"], env=env, capture_output=True)
         if probe.returncode:
             self.skipTest("BioDataLedger R package not installed")
-        env = dict(os.environ)
-        if env.get("BDL_R_LIB"):
-            env["R_LIBS_USER"] = env["BDL_R_LIB"]
         result = subprocess.run(["Rscript", "--vanilla", str(script), str(self.imported_root),
                                  str(self.base / "r-restored")], capture_output=True, text=True, env=env)
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
