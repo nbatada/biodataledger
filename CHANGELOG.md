@@ -13,6 +13,13 @@
 - R reuses the indexes produced by full validation and uses ordinary copy-on-modify semantics for save candidates, avoiding a redundant index rebuild and deep copy without removing checks.
 - Clarified loaded-session reuse, grouped fresh-process lookups, explicit input verification and meaningful saves. No mandatory per-turn operation, new API, dependency or persisted format.
 
+## Local figure-source extension — BIODATALEDGER-008
+
+- Separate explicit rendering DATA refs from exact analytical inputs; retain recorded parent/transformation evidence without inferring relationships.
+- Extend figure getters with unambiguous ID/asset/path selectors and a <=4096-byte compact report, including missing files, declared code candidates, snapshots and explicit unverified integrity/execution.
+- Add bounded `read_figure_source` access to verified snapshot bytes, including staged/imported sources and exact selection among multiple scripts. No original-file fallback when a snapshot was recorded.
+- Reuse optional versioned details and existing code identities; package/schema remain 0.5.0/0.4.0. Old records/freeform details remain readable without migration. No recovery engine, new dependency or execution capture.
+
 ## 0.5.0 — Exact analysis context and preserved figure revisions
 
 - Analyses and standalone figures accept exact `design_ref` and explicit separate/combined input modes. Known scope contradictions reject before staging; missing context stays unknown. Historical refs and project defaults remain distinct.

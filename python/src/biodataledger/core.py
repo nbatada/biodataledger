@@ -463,6 +463,11 @@ class ProjectBundle:
                 return rec
             return self._record(ref, kind)
         validate_links(rec, check_ref)
+        if rec["kind"] == "figure":
+            from .figure_sources import KEY, recognized, normalize
+            value = rec["details"].get(KEY)
+            if recognized(value):
+                normalize(value, self, require, safe_relative)
         if context_check and rec["kind"] in ("analysis", "figure"):
             report = self._context_report(rec)
             require(report["status"] != "inconsistent", "SCOPE_CONFLICT: " + "; ".join(report["issues"]))
@@ -531,7 +536,7 @@ class ProjectBundle:
         return self._stage(rec, version=CONTEXT_VERSION)
 
     def _figure_record(self, path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None,
-                        snapshot_code=True, design_ref=_DEFAULT, input_mode=_DEFAULT, **details):
+                        snapshot_code=True, design_ref=_DEFAULT, input_mode=_DEFAULT, figure_sources=_DEFAULT, **details):
         require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
         locator = self._locator(path)
         file = self._resolve(locator)
@@ -543,6 +548,9 @@ class ProjectBundle:
                    analysis=self._ref(self._record(analysis, "analysis")) if analysis is not None else None,
                    inputs=None if inputs is None else [self._ref(self._record(x, "data")) for x in inputs],
                    code=self._code(code, snapshot_code), method=method, params=copy.deepcopy(params), details=copy.deepcopy(details))
+        if figure_sources is not _DEFAULT and figure_sources is not None:
+            from .figure_sources import KEY, normalize
+            rec["details"][KEY] = normalize(figure_sources, self, require, safe_relative)
         rec["details"]["format"] = file.suffix.lstrip(".").lower()
         rec["details"]["provenance"] = {"file": "captured", "analytical": "declared" if analysis or inputs or code else "unknown"}
         if analysis is None:
@@ -815,8 +823,43 @@ class ProjectBundle:
         view.scope = copy.deepcopy(rec.get("scope"))
         return view
 
-    def get_figure(self, ref, check_files=False):
-        rec = self._record(ref, "figure")
+    def _figure_selector(self, ref=None, asset_id=None, path=None, revision=None):
+        require(sum(x is not None for x in (ref, asset_id, path)) == 1, "choose one figure selector")
+        require(revision is None or type(revision) is int and revision > 0, "invalid revision")
+        if ref is not None:
+            if isinstance(ref, str) and re.fullmatch(r"FIG-\d{3,}", ref):
+                if revision is not None:
+                    return self._record(ref + "@" + str(revision), "figure")
+                matches = [rec for (key, rev), rec in self._index.items() if key == ref]
+            else:
+                rec = self._record(ref, "figure")
+                require(revision is None or revision == rec["revision"], "conflicting revision")
+                return rec
+        elif asset_id is not None:
+            from .figure_sources import KEY, recognized
+            require(isinstance(asset_id, str) and asset_id.strip(), "invalid asset_id")
+            matches = [rec for rec in self.state["records"] if rec["kind"] == "figure" and recognized(rec["details"].get(KEY)) and rec["details"][KEY].get("asset_id") == asset_id]
+        else:
+            require(isinstance(path, (str, Path)) and bool(str(path)), "invalid figure path")
+            value = str(path)
+            matches = []
+            for rec in self.state["records"]:
+                if rec["kind"] != "figure":
+                    continue
+                loc = rec["locator"]
+                candidates = [loc["value"]]
+                if loc["kind"] == "project":
+                    candidates.append(str(self.root / loc["value"]))
+                if value in candidates:
+                    matches.append(rec)
+        if revision is not None:
+            matches = [rec for rec in matches if rec["revision"] == revision]
+        require(len(matches) == 1, "missing or ambiguous figure selector; use an exact reference")
+        return matches[0]
+
+    def get_figure(self, ref=None, check_files=False, *, asset_id=None, path=None, revision=None, compact=False):
+        require(type(compact) is bool, "compact must be boolean")
+        rec = self._figure_selector(ref, asset_id, path, revision)
         view = self._view(rec, check_files)
         source = self._record(rec["analysis"], "analysis") if rec["analysis"] else rec
         for key in ("inputs", "code", "method", "params"):
@@ -840,7 +883,51 @@ class ProjectBundle:
             file = self._resolve({"kind": "project", "value": snapshot}) if snapshot else self._resolve(code["locator"])
             view.code_availability.append({"reference": copy.deepcopy(code), "path": file,
                                           "available": bool(snapshot in self._snapshots or file is not None and file.is_file()) if check_files else None})
-        return view
+        from .figure_sources import describe, compact as compact_report
+        view.figure_sources = describe(self, rec, check_files, require, safe_relative)
+        view.analytical_inputs = copy.deepcopy(view.inputs)
+        view.rendering_inputs = copy.deepcopy(view.figure_sources["rendering_inputs"])
+        view.rendering_relationship = view.figure_sources["relationship"]
+        view.generating_code = copy.deepcopy(view.figure_sources["code"])
+        view.dependencies = copy.deepcopy(view.figure_sources["dependency_details"])
+        view.asset_id = view.figure_sources["asset_id"]
+        return compact_report(view, canonical) if compact else view
+
+    def read_figure_source(self, ref=None, *, asset_id=None, path=None, revision=None, code_ref=None):
+        rec = self._figure_selector(ref, asset_id, path, revision)
+        from .figure_sources import describe
+        sources = describe(self, rec, False, require, safe_relative)
+        require(not sources["contradictions"], "invalid figure_sources: " + "; ".join(sources["contradictions"]))
+        source = sources["code"]
+        candidates = sources["code_candidates"]
+        if code_ref is not None:
+            from .figure_sources import normalize
+            selected = normalize({"generating_code": code_ref}, self, require, safe_relative)["generating_code"]
+            allowed = candidates + ([source] if source else [])
+            matches = [item for item in allowed if all(item["selector"][key] == selected[key] for key in ("record", "index", "sha256"))]
+            require(bool(matches), "SOURCE_UNKNOWN: code selection does not belong to figure")
+            source = matches[0]
+        elif source is None:
+            require(len(candidates) == 1, "SOURCE_UNKNOWN: select exact code when absent or ambiguous")
+            source = candidates[0]
+        require(source is not None, "SOURCE_UNKNOWN: generating code not declared")
+        selector = source["selector"]
+        require(selector["sha256"] is not None, "SOURCE_DIGEST_UNKNOWN")
+        entry = self._record(selector["record"])["code"][selector["index"]]
+        snapshot = entry["snapshot"]
+        if snapshot in self._snapshots:
+            content = self._snapshots[snapshot]
+        else:
+            locator = {"kind": "project", "value": snapshot} if snapshot else entry["locator"]
+            file = self._resolve(locator)
+            require(file is not None and file.is_file(), "SOURCE_MISSING: recorded source unavailable")
+            require(file.stat().st_size <= 1024 * 1024, "SOURCE_OVERSIZED: source exceeds 1 MiB")
+            with file.open("rb") as stream:
+                content = stream.read(1024 * 1024 + 1)
+        require(len(content) <= 1024 * 1024, "SOURCE_OVERSIZED: source exceeds 1 MiB")
+        require(digest_bytes(content) == selector["sha256"], "SOURCE_DIGEST_MISMATCH")
+        return {"content": bytes(content), "sha256": selector["sha256"], "code_ref": copy.deepcopy(selector),
+                "snapshot": snapshot, "integrity": "match", "execution": "unknown", "execution_evidence": "not_captured"}
 
     def find_figures(self, query=None, type=None):
         tokens = (query or "").casefold().split()
@@ -873,7 +960,7 @@ class ProjectBundle:
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
         require(rec["kind"] != "design", "use set_design to revise experimental design")
-        allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis"}
+        allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources"}
         require(set(changes) <= allowed, "protected or unknown correction field")
         if rec.get("scope", {}).get("membership_evidence", {}).get("status") == "verification_recorded":
             require(not ({"path", "details"} & set(changes)), "clear membership evidence through set_data_scope before changing subject/bindings")
@@ -900,7 +987,14 @@ class ProjectBundle:
             file = self._resolve(loc)
             require(file is not None and file.is_file(), "new revision file missing")
             rec.update(locator=loc, sha256=fingerprint(file), size=file.stat().st_size)
-        rec.update(copy.deepcopy({k: v for k, v in changes.items() if k not in ("path", "design_ref", "analysis")}))
+        rec.update(copy.deepcopy({k: v for k, v in changes.items() if k not in ("path", "design_ref", "analysis", "figure_sources")}))
+        if "figure_sources" in changes:
+            require(rec["kind"] == "figure", "figure_sources requires a figure")
+            from .figure_sources import KEY, normalize
+            if changes["figure_sources"] is None:
+                rec["details"].pop(KEY, None)
+            else:
+                rec["details"][KEY] = normalize(changes["figure_sources"], self, require, safe_relative)
         rec["revision"] = self._latest_index[rec["id"]]["revision"] + 1
         rec["created_at"] = now()
         return self._stage(rec, "update_record", reason, version=CONTEXT_VERSION if {"design_ref", "input_mode", "analysis"} & set(changes) else None,

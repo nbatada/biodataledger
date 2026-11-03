@@ -476,6 +476,7 @@ ProjectBundle <- local({
       proposed <- state
       if (!is.null(version)) proposed$schema_version <- version
       .validate(proposed, record_only = rec)
+      if (rec$kind == "figure" && .sources_known(rec$details[[.figure_sources_key]])) .sources_normalize(state, rec$details[[.figure_sources_key]])
       if (context_check && rec$kind %in% c("analysis", "figure") && identical(context_report(rec)$status, "inconsistent")) .fail(paste0("SCOPE_CONFLICT: ", paste(unlist(context_report(rec)$issues), collapse = "; ")))
       state$schema_version <<- proposed$schema_version
       state$records[[length(state$records) + 1L]] <<- rec
@@ -604,7 +605,7 @@ ProjectBundle <- local({
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
       append_record(rec, "register_analysis", capture_code(rec), version = "0.4.0")
     }
-    figure_record <- function(path, type, analysis = NULL, name = NULL, inputs = NULL, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
+    figure_record <- function(path, type, analysis = NULL, name = NULL, inputs = NULL, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", figure_sources = NULL, ...) {
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (is.null(p) || dir.exists(p)) .fail("Figure must be a local regular file")
       if (!is.null(analysis)) {
@@ -615,6 +616,7 @@ ProjectBundle <- local({
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
       details <- .obj(...); if (any(c("preservation", "artifact_role") %in% names(details))) .fail("Reserved preservation metadata")
+      if (!is.null(figure_sources)) details[[.figure_sources_key]] <- .sources_normalize(state, figure_sources)
       details$format <- tolower(tools::file_ext(p))
       details$provenance <- .obj(file = "captured", analytical = if (!is.null(analysis) || length(inputs) || length(entries)) "declared" else "unknown")
       design <- if (is.null(analysis)) select_design(design_ref) else NULL
@@ -701,9 +703,32 @@ ProjectBundle <- local({
                                verified_scope_fields = verified_fields)
       out
     }
-    get_figure <- function(ref, check_files = FALSE) {
+    figure_selector <- function(ref = NULL, asset_id = NULL, path = NULL, revision = NULL) {
+      if (sum(!vapply(list(ref,asset_id,path),is.null,logical(1))) != 1L || !is.null(revision) && !.is_int(revision,TRUE)) .fail("Choose one figure selector and valid revision")
+      if (!is.null(ref)) {
+        if (is.character(ref) && length(ref)==1L && grepl("^FIG-[0-9]{3,}$",ref)) {
+          if (!is.null(revision)) return(.record(state,paste0(ref,"@",revision)))
+          matches <- Filter(function(x) x$id==ref,state$records)
+        } else {
+          rec <- .record(state,ref)
+          if (rec$kind!="figure" || !is.null(revision) && rec$revision!=revision) .fail("Wrong figure/revision")
+          return(rec)
+        }
+      } else if (!is.null(asset_id)) {
+        if (!.design_text(asset_id)) .fail("Invalid asset_id")
+        matches <- Filter(function(x) x$kind=="figure" && .sources_known(x$details[[.figure_sources_key]]) && identical(x$details[[.figure_sources_key]]$asset_id,asset_id),state$records)
+      } else {
+        if (!.design_text(path)) .fail("Invalid figure path")
+        matches <- Filter(function(x) x$kind=="figure" && (identical(x$locator$value,path) || x$locator$kind=="project" && identical(file.path(root,x$locator$value),path)),state$records)
+      }
+      if (!is.null(revision)) matches <- Filter(function(x) x$revision==revision,matches)
+      if (length(matches)!=1L) .fail("Missing or ambiguous figure selector; use exact reference")
+      matches[[1L]]
+    }
+    get_figure <- function(ref = NULL, check_files = FALSE, asset_id = NULL, path = NULL, revision = NULL, compact = FALSE) {
       if (!is.logical(check_files) || length(check_files) != 1L || is.na(check_files)) .fail("Invalid check_files")
-      rec <- .record(state, ref); if (rec$kind != "figure") .fail("Not figure")
+      if (!is.logical(compact) || length(compact)!=1L || is.na(compact)) .fail("Invalid compact")
+      rec <- figure_selector(ref,asset_id,path,revision)
       out <- view(rec, check_files)
       design_ref <- if (is.null(rec$analysis)) rec$design else .record(state, rec$analysis)$design
       out["design_ref"] <- list(.copy(design_ref)); out["design"] <- list(if (is.null(design_ref)) NULL else get_design(design_ref))
@@ -727,7 +752,43 @@ ProjectBundle <- local({
         .obj(reference = x, path = p, available = if (check_files) !is.null(p) && file.exists(p) else NULL, availability_checked = check_files)
       }))
       out$source_code_availability <- .arr(lapply(out$code_availability, function(x) x$available))
-      out
+      out$figure_sources <- .sources_describe(root,state,rec,check_files,pending_code)
+      out["analytical_inputs"] <- list(.copy(out$inputs)); out["rendering_inputs"] <- list(.copy(out$figure_sources$rendering_inputs))
+      out$rendering_relationship <- out$figure_sources$relationship
+      out["generating_code"] <- list(.copy(out$figure_sources$code)); out$dependencies <- .copy(out$figure_sources$dependency_details)
+      out["asset_id"] <- list(out$figure_sources$asset_id)
+      if (compact) .sources_compact(out) else out
+    }
+    read_figure_source <- function(ref = NULL, asset_id = NULL, path = NULL, revision = NULL, code_ref = NULL) {
+      rec <- figure_selector(ref,asset_id,path,revision)
+      sources <- .sources_describe(root,state,rec,FALSE,pending_code)
+      if (length(sources$contradictions)) .fail(paste("Invalid figure_sources",paste(unlist(sources$contradictions),collapse="; ")))
+      source <- sources$code
+      if (!is.null(code_ref)) {
+        selected <- .sources_normalize(state,.obj(generating_code=code_ref))$generating_code
+        allowed <- c(sources$code_candidates,if(is.null(source)) list() else list(source))
+        matches <- Filter(function(x) .same_exact_ref(state,x$selector$record,selected$record,.record(state,selected$record)$kind) && x$selector$index==selected$index && identical(x$selector$sha256,selected$sha256),allowed)
+        if (!length(matches)) .fail("SOURCE_UNKNOWN: code selection does not belong to figure")
+        source <- matches[[1L]]
+      } else if (is.null(source)) {
+        if (length(sources$code_candidates)!=1L) .fail("SOURCE_UNKNOWN: exact code selection required")
+        source <- sources$code_candidates[[1L]]
+      }
+      selector <- source$selector
+      if (is.null(selector$sha256)) .fail("SOURCE_DIGEST_UNKNOWN")
+      entry <- .record(state,selector$record)$code[[selector$index+1L]]
+      snapshot <- entry$snapshot
+      bytes <- if(!is.null(snapshot)) pending_code[[snapshot]] else NULL
+      if (is.null(bytes)) {
+        locator <- if(is.null(snapshot)) entry$locator else .obj(kind="project",value=snapshot)
+        file <- .resolve(root,state,locator)
+        if (is.null(file) || !file.exists(file) || dir.exists(file)) .fail("SOURCE_MISSING: recorded source unavailable")
+        if (file.info(file)$size>1048576) .fail("SOURCE_OVERSIZED: source exceeds 1 MiB")
+        bytes <- readBin(file,"raw",n=1048577L)
+      }
+      if (length(bytes)>1048576) .fail("SOURCE_OVERSIZED: source exceeds 1 MiB")
+      if (!identical(.hash_raw(bytes),selector$sha256)) .fail("SOURCE_DIGEST_MISMATCH")
+      .obj(content=bytes,sha256=selector$sha256,code_ref=.copy(selector),snapshot=snapshot,integrity="match",execution="unknown",execution_evidence="not_captured")
     }
     get_analysis <- function(ref) {
       rec <- .record(state, ref); if (rec$kind != "analysis") .fail("Not analysis")
@@ -847,7 +908,7 @@ ProjectBundle <- local({
     update_record <- function(ref, changes, reason) {
       rec <- .record(state, ref)
       if (rec$kind == "design") .fail("Use set_design to revise design")
-      allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis")
+      allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
       new <- .copy(rec); new$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
@@ -870,7 +931,11 @@ ProjectBundle <- local({
         new$locator <- loc; new$sha256 <- .hash(file); new$size <- as.numeric(file.info(file)$size)
       }
       new$created_at <- .now()
-      for (key in setdiff(names(changes), c("path", "design_ref", "analysis"))) new[key] <- list(.copy(changes[[key]]))
+      for (key in setdiff(names(changes), c("path", "design_ref", "analysis", "figure_sources"))) new[key] <- list(.copy(changes[[key]]))
+      if ("figure_sources" %in% names(changes)) {
+        if (rec$kind!="figure") .fail("figure_sources requires a figure")
+        if (is.null(changes$figure_sources)) new$details[[.figure_sources_key]] <- NULL else new$details[[.figure_sources_key]] <- .sources_normalize(state,changes$figure_sources)
+      }
       out <- append_record(new, "update_record", context_check = any(c("inputs", "design_ref", "input_mode", "analysis") %in% names(changes)), version = if (any(c("design_ref", "input_mode", "analysis") %in% names(changes))) "0.4.0" else NULL); state$history[[length(state$history)]]$reason <<- reason; out
     }
     record_decision <- function(text, reason, targets = list()) {
@@ -1045,7 +1110,7 @@ ProjectBundle <- local({
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
-    self <- list(check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

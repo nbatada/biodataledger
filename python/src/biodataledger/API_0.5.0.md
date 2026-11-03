@@ -56,7 +56,7 @@ Keep ordinary metadata inspection cheap; verify only when the input will be used
 
 - `register_data(path, role, name=None, hash=False, **details)` records an existing file/URI. Hashing large local files is an explicit opt-in. Known parent/membership links use exact DATA refs in details; clustering_run uses an ANA ref.
 - `register_analysis(name, inputs, code=None, method=None, params=None, snapshot_code=True, design_ref=<project default>, input_mode="separate", **details)` pins exact DATA refs and the resolved design once. Pass an exact design ref to override the default or explicit null for unknown design. `input_mode="combined"` declares joint comparison scope without pooling files. New records reject known scope contradictions; missing context stays unknown. Inputs/method/parameters may be explicitly unknown.
-- `register_figure(path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None, snapshot_code=True, design_ref=<project default>, input_mode="separate", **details)` records an existing figure and its digest. Standalone figures resolve/pin their design and check declared scope like analyses. With an analysis ref, all explicit design/input-mode/inputs/code/method/params overrides reject; the figure inherits that exact context. One analysis can supply shared provenance to several figures.
+- `register_figure(path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None, snapshot_code=True, design_ref=<project default>, input_mode="separate", figure_sources=None, **details)` records an existing figure and its digest. Standalone figures resolve/pin their design and check declared scope like analyses. With an analysis ref, all explicit design/input-mode/inputs/code/method/params overrides reject; the figure inherits that exact context. One analysis can supply shared provenance to several figures.
 - Supplied code files are snapshotted by default, with a 1 MiB per-file limit and explicit opt-out. Snapshots preserve bytes; they do not prove execution or discover imports. Native figure/data saving remains outside the library.
 - `save()` commits meaningful staged changes as one atomic JSON snapshot. Clean save returns without disk writes. Dirty save checks the loaded digest/revision under the existing lock; a stale writer fails and retains pending edits. Do not automatically merge or steal locks.
 - `update_record(ref, changes, reason)` appends a correction, preserving earlier revisions and current pointers. DATA scope/design changes use `set_data_scope`; project design changes use `set_design`. Analysis/standalone-figure design and input-mode corrections use `design_ref`/`input_mode` in `changes` and recheck declared consistency. Clear a recorded membership-verification claim through the scope setter before changing its bound file/details.
@@ -186,3 +186,86 @@ Corrections accept `design_ref` and `input_mode` on an analysis or standalone
 figure. `analysis` may link a figure to an exact analysis revision; simultaneous
 owned analytical overrides reject. DATA design corrections use `set_data_scope`.
 Current-purpose pointers and historical references never move automatically.
+
+## Figure rendering sources — BIODATALEDGER-008
+
+Analytical inputs, method, parameters, design and execution uncertainty continue
+to come from the exact linked analysis. Rendering inputs are separately declared;
+a saved result table is not automatically the same input as the analytical
+matrix. A known rendering reference can have an unknown relationship to the
+analytical input; a file hash, snapshot or recorded parent does not promote it. Nothing infers a relationship from names, sizes or matching counts.
+
+`register_figure(..., figure_sources={...})` accepts this optional object. R uses
+named lists and zero-based code indexes, matching Python:
+
+```text
+rendering_inputs: [exact DATA refs] or null
+relationship: "declared" or "unknown" (default)
+generating_code: {record: exact ANA/FIG ref, index: 0, sha256: optional expected digest,
+                  registered_ref: optional exact DATA ref} or null
+dependencies: [{path: "helpers/palette.R", ref: exact DATA ref}] or null
+asset_id: an explicit project-scoped string alias or null
+```
+
+The generating selector resolves an existing code entry once and stores its exact
+owner revision, index and digest. A supplied digest must match; an optional code
+DATA binding must have that same captured digest. This records a declaration,
+not proof that the script generated the figure. No new CODE identities or
+execution recorder are introduced. Relative dependency paths reject traversal,
+absolute/drive/backslash paths and case/Unicode/file-parent collisions. Declared
+dependencies do not establish that every dependency was captured.
+
+Use `update_record(ref, {"figure_sources": {...}}, reason)` to append a correction;
+explicit null clears this declaration. Generic details corrections cannot insert
+invalid recognized source links. Earlier revisions/current pointers remain fixed.
+Storage is optional `details["biodataledger.figure_sources"]` with marker
+`version="biodataledger-figure-sources/1"`. Unrelated legacy values under that key
+remain uninterpreted. Opening never migrates old records. Package/schema stay
+0.5.0/0.4.0; saved pre-extension 0.5.0 clients can still read these details but do
+not validate or expose the new source contract.
+
+`get_figure(ref=None, check_files=False, asset_id=None, path=None, revision=None,
+compact=False)` retains the old exact-ref calls. Supply exactly one selector.
+`FIG-075@2` or a full project/record/revision ref is exact. Bare `FIG-075`, a
+registered path, or an explicit asset alias succeeds only for one recorded
+revision; otherwise choose an exact reference or supply revision. Paths match
+registered relative/absolute paths, not filename guesses. All revisions are
+considered, so a newer record is never chosen silently. Exact refs use the loaded
+hash index; alias/path lookup scans loaded metadata only.
+
+Full figure views add analytical_inputs, rendering_inputs, rendering_relationship,
+generating_code, dependencies, asset_id and figure_sources. Existing analytical
+fields/evidence keep their meanings. Existing recorded code candidates and
+snapshots remain visible even without a new generating-code declaration. Compact
+reports omit the duplicate selected generating entry from alternatives; full views
+retain every candidate. Recorded
+DATA parent/transformation refs are shown as evidence where present; absence stays
+unknown. Ordinary queries never read/hash payload bytes or scan directories.
+`check_files=True` requests existence checks only; reported integrity remains
+`not_checked`. Missing files become explicit report markers. Dependency
+completeness and execution remain unknown even when every listed file exists.
+
+`compact=True` returns a JSON-serializable report bounded to 4096 UTF-8 bytes.
+It includes figure identity/path/availability, exact analysis, separate inputs,
+recorded relationship evidence, code candidates/snapshots, method/parameters and
+missing/contradictory declarations. Large values are omitted with truncation
+metadata; exact identity strings are never shortened. Use the full getter for
+omitted values. A compact report is not an execution or standalone-readiness
+certificate.
+
+`read_figure_source(ref=None, asset_id=None, path=None, revision=None,
+code_ref=None)` explicitly retrieves at most 1 MiB of source bytes and verifies
+those returned bytes against the recorded SHA-256. It returns content (`bytes` in
+Python, `raw` in R), code_ref, sha256, snapshot, integrity="match" and execution
+unknown/not_captured. A recorded generating selector is preferred. Otherwise one
+recorded code candidate can be read as declared code, without asserting that it
+generated the figure. Multiple candidates require an exact code_ref selection.
+A recorded snapshot is used exclusively, including staged/imported snapshots;
+a missing or corrupt snapshot never falls back to the original. When no snapshot
+was recorded, only a matching bounded original file can be returned.
+
+No source is executed or written by this method. Existing declared-file recovery
+helpers remain available for an explicitly reviewed file layout. ZIP payload
+selection is unchanged: new rendering/dependency declarations do not implicitly
+copy their DATA files. Review/include the needed records and code owners during
+working export.

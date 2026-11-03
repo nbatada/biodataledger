@@ -18,6 +18,11 @@ The example illustrates records you supply; the package does not choose or verif
 
 Version **0.5.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
+The new figure-source reporting and retrieval methods are local development
+additions and have not been published. To use the examples below, install from
+this local checkout. The pinned GitHub command installs the earlier published
+package, which does not include these methods.
+
 **R — install the tested version from GitHub**
 
 Run this in R to install the verified 0.5.0 package at commit `74af9b4`:
@@ -106,6 +111,9 @@ print(p.status())
 figures = p.find_figures(type="qc")
 figure = p.get_figure(figures[0].ref)
 print(figure.inputs, figure.code, figure.params, figure.provenance)
+print(p.get_figure(f1, compact=True))
+preserved_source = p.read_figure_source(f1)
+print(preserved_source["content"].decode("utf-8"))
 ```
 
 </details>
@@ -132,6 +140,9 @@ print(p$status())
 figures <- p$find_figures(type = "qc")
 figure <- p$get_figure(figures[[1]]$ref)
 print(list(inputs = figure$inputs, code = figure$code, params = figure$params, provenance = figure$provenance))
+print(p$get_figure(f1, compact = TRUE))
+preserved_source <- p$read_figure_source(f1)
+cat(rawToChar(preserved_source$content))
 ```
 
 </details>
@@ -150,6 +161,29 @@ of each figure's recorded analysis revision. Results contain the latest active
 figure revisions and their inherited context. Search reads loaded metadata only.
 
 Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.5.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
+
+## Inspect a figure and its preserved source
+
+Analytical inputs stay attached to the exact analysis. A saved result table used
+for rendering can be declared separately through `figure_sources` when registering
+a figure, or through `update_record`. Supply its exact DATA reference; the relationship to the analytical input stays
+`unknown` by default. Set `relationship="declared"` only for an explicit scientist
+declaration. Hashes, snapshots and matching names never promote that relationship. An
+optional generating-code selector names an existing exact analysis/figure revision
+and zero-based code index. It reuses the recorded digest and snapshot.
+
+Use `get_figure(ref, compact=True)` (R: `compact = TRUE`) for a bounded source
+report. Exact references stay unambiguous; a bare figure ID, asset alias or
+registered path rejects when several revisions match. Source/dependency file
+availability is unchecked until `check_files=True`, and existence does not verify
+integrity or establish complete dependencies.
+
+`read_figure_source(ref)` returns at most 1 MiB of digest-verified bytes. It uses a
+recorded snapshot even after the original script changes. A missing snapshot never
+falls back to the original. Multiple recorded scripts require an exact code
+selection. Reading preserved code does not establish that it executed or generated
+the figure. See the [figure-source contract](docs/api/API_0.5.0.md#figure-rendering-sources--biodataledger-008)
+for the declaration shape, R/Python usage, source selectors and explicit unknowns.
 
 ## Conditions and levels
 
