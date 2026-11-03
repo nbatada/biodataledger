@@ -2,6 +2,8 @@
 
 ## Unreleased — Lightweight agent workflow
 
+- Added the R-only `check_object` prototype for read-only live membership, metadata, selected representation and cluster checks against existing registered references. Required FAIL/UNKNOWN returns BLOCKED; printed cards distinguish observations from declarations and unverified downstream use. Generic lists work without optional SeuratObject. No Python checker, execution engine or registry schema change.
+
 - Figure search also matches registered paths and explicit scientific asset IDs.
 - Compact figure reports expose asset IDs and optional `details.entry_point` function declarations without changing API signatures or the persisted schema.
 - Added nested-status and native figure-discovery regressions and portable project-helper guidance.

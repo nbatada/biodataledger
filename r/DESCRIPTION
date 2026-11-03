@@ -7,3 +7,4 @@ Description: Records exact data, analysis and figure references, and exchanges
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports: jsonlite, digest, zip (>= 3.0.2), uuid, stringi
+Suggests: SeuratObject (>= 5.0.0)

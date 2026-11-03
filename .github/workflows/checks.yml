@@ -23,8 +23,8 @@ jobs:
           r-version: '4.5.3'
       - name: Create local R library
         run: mkdir -p "$R_LIBS_USER"
-      - name: Install declared R dependencies
-        run: Rscript -e 'install.packages(c("jsonlite","digest","zip","uuid","stringi"), repos="https://cloud.r-project.org")'
+      - name: Install R dependencies and optional adapter test dependency
+        run: Rscript -e 'install.packages(c("jsonlite","digest","zip","uuid","stringi","SeuratObject"), repos="https://cloud.r-project.org")'
       - name: Install both native clients
         run: |
           python -m pip install ./python

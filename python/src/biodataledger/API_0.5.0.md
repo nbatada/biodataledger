@@ -333,3 +333,17 @@ returned reference has the same figure ID and a new revision. Old exact refs
 remain readable; no relationship is inferred from filenames. Prefer managed
 `save_figure` copies when old image bytes must also remain available: metadata
 history alone cannot preserve an overwritten external file.
+
+
+## R-only live-object prototype — BIODATALEDGER-010
+
+`check_object(object, ref=NULL, purpose=NULL, assay=NULL, layer=NULL)` accepts an
+already-loaded generic list or an optional Seurat object. It compares observed
+membership/metadata/selected representation with the exact DATA revision's existing
+scope, pinned design and registered manifests. Required FAIL or UNKNOWN returns
+BLOCKED. It is read-only and never loads or hashes the dataset/matrix. Printed
+cards distinguish observed values, declared identity/selection and unverified
+origin/downstream use. No Python checker or automatic execution gate is added.
+See [object-check v1](OBJECT_CHECK_V1.md) for the native interface, CSV authorities,
+required-field rules, manual helper example and language-neutral report contract.
+This local prototype is not included in the README's pinned published build.

@@ -703,6 +703,15 @@ ProjectBundle <- local({
                                verified_scope_fields = verified_fields)
       out
     }
+    check_object <- function(object, ref = NULL, purpose = NULL, assay = NULL, layer = NULL) {
+      if (sum(!vapply(list(ref,purpose),is.null,logical(1)))!=1L) .fail("Choose exactly one ref or purpose")
+      if (!is.null(purpose)) {
+        if (!.design_text(purpose)) .fail("Invalid purpose")
+        ref <- state$current[[purpose]]
+        if (is.null(ref)) .fail("No current data for purpose")
+      }
+      .check_object(root,state,object,.ref(state,ref),assay,layer)
+    }
     figure_selector <- function(ref = NULL, asset_id = NULL, path = NULL, revision = NULL) {
       if (sum(!vapply(list(ref,asset_id,path),is.null,logical(1))) != 1L || !is.null(revision) && !.is_int(revision,TRUE)) .fail("Choose one figure selector and valid revision")
       if (!is.null(ref)) {
@@ -1111,7 +1120,7 @@ ProjectBundle <- local({
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
-    self <- list(read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

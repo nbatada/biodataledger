@@ -150,6 +150,18 @@ opened project and an exact registered reference into a helper; call
 `resolve_data(..., verify="sha256")` once before loading through native R/Python.
 See the [portable helper example](docs/api/API_0.5.0.md#portable-project-helpers).
 
+## Check a loaded scientific input (local R prototype)
+
+`ledger$check_object(object, purpose="comparison", assay="RNA", layer="counts")`
+compares a supplied object's sample-qualified cells, treatment/replicate mapping,
+selected representation and required cluster assignments against registered
+references. It prints PASS/FAIL/UNKNOWN for each field and returns BLOCKED when a
+required field is not PASS. Seurat support is optional; a generic R interface works
+without it. The checker does not prove downstream use or scientific validity.
+
+This prototype requires the local source checkout; it is not in the pinned GitHub
+version above. See the [manual example and report contract](docs/api/OBJECT_CHECK_V1.md).
+
 ## Inspect and resume
 
 Open the project once and use exact getters for frequent metadata lookups. In 0.4, availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
