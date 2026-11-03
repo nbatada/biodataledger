@@ -20,7 +20,7 @@ Version **0.5.0** · MIT license · Tested on **macOS**. Install Python, R, or b
 
 **R — install the tested version from GitHub**
 
-Run this in R to install the verified 0.5.0 package at commit `a368f59`:
+Run this in R to install the verified 0.5.0 package at commit `74af9b4`:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -29,7 +29,7 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "a368f591189199b8d59fae9e447b8c6df49c02a7",
+  ref = "74af9b422631929919f62002977827e1d72ea536",
   upgrade = "never"
 )
 ```
