@@ -214,8 +214,9 @@ def validate_links(rec, check_ref):
 
 
 def validate_state(state):
-    validate_values(state)
     require(isinstance(state, dict) and set(state) == STATE_KEYS, "unexpected/missing state fields")
+    # Each record validates its own values below; visit the other fields once.
+    validate_values({key: value for key, value in state.items() if key != "records"})
     require(state["schema_version"] in (VERSION, DESIGN_VERSION, SCOPE_VERSION, CONTEXT_VERSION), "unsupported schema version")
     project = state["project"]
     require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design"}, "invalid project fields")
@@ -267,9 +268,13 @@ def validate_state(state):
     return state
 
 
-def atomic_state(path, state):
+def _state_bytes(state):
     raw = canonical(validate_state(state))
     require(len(raw) <= MAX_JSON, "state exceeds 20 MiB")
+    return raw
+
+
+def _atomic_state_bytes(path, raw):
     temp = None
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".state-", delete=False) as out:
@@ -282,6 +287,10 @@ def atomic_state(path, state):
         if temp is not None and temp.exists():
             temp.unlink()
     return digest_bytes(raw)
+
+
+def atomic_state(path, state):
+    return _atomic_state_bytes(path, _state_bytes(state))
 
 
 class ProjectBundle:
@@ -1096,18 +1105,18 @@ class ProjectBundle:
         try:
             (lock / "owner.json").write_bytes(canonical({"pid": os.getpid(), "host": socket.gethostname(), "at": now()}))
             raw = (self.root / STATE_PATH).read_bytes()
-            current = validate_state(parse_json(raw))
-            require(digest_bytes(raw) == self._loaded_digest and current["state_revision"] == self._loaded_revision,
+            # Matching bytes under the lock retain the revision validated on open.
+            require(digest_bytes(raw) == self._loaded_digest,
                     "stale state; reload and reconcile, edits retained")
             if not self.unsaved:
                 return {"state_revision": self._loaded_revision, "transaction": self.state["last_transaction"]}
             trial = copy.deepcopy(self.state)
-            trial["state_revision"] = current["state_revision"] + 1
+            trial["state_revision"] = self._loaded_revision + 1
             trial["last_transaction"] = str(uuid.uuid4())
             for event in trial["history"]:
                 if event["transaction"] is None:
                     event["transaction"] = trial["last_transaction"]
-            validate_state(trial)
+            serialized = _state_bytes(trial)
             for relative, content in self._snapshots.items():
                 file = self._internal(relative)
                 file.parent.mkdir(exist_ok=True)
@@ -1118,7 +1127,7 @@ class ProjectBundle:
                         os.fsync(output.fileno())
                 except FileExistsError:
                     require(fingerprint(file) == digest_bytes(content), "snapshot conflict")
-            new_digest = atomic_state(self.root / STATE_PATH, trial)
+            new_digest = _atomic_state_bytes(self.root / STATE_PATH, serialized)
             self.state = trial
             self._loaded_digest = new_digest
             self._loaded_revision = trial["state_revision"]

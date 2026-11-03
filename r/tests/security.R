@@ -43,3 +43,60 @@ check_zip_metadata_fields <- function() {
   stopifnot(inherits(try(BioDataLedger:::.validate_zip(archive), silent = TRUE), "try-error"))
 }
 check_zip_metadata_fields()
+
+# Decoded-key validation must retain nested and escaped duplicate rejection.
+check_decoded_json_keys <- function() {
+  parse <- function(text) BioDataLedger:::.parse_json_bytes(charToRaw(enc2utf8(text)))
+  invalid <- c(
+    '{"a":1,"a":2}', '{"a":1,"\\u0061":2}',
+    '{"outer":{"x":null,"x":[]}}', '[{"nested":[{"x":1,"\\u0078":2}]}]',
+    '{"":1,"":2}', '{"α":1,"\\u03b1":2}',
+    '{"a\\u0062":1,"ab":2}', '{"a\\\\b":1,"a\\u005cb":2}',
+    '{"a":}', '{"a":1,}', '[1,]', '{"a":NaN}', '{"a":Infinity}'
+  )
+  for (text in invalid) stopifnot(inherits(try(parse(text), silent = TRUE), 'try-error'))
+  valid <- parse('{"object":{},"array":[],"null":null,"a":{"x":1},"b":{"x":2},"escaped":"a\\\\b\\\"c","unicode":"α"}')
+  stopifnot(BioDataLedger:::.is_obj(valid$object), BioDataLedger:::.is_arr(valid$array),
+            is.null(valid$null), 'null' %in% names(valid), valid$a$x == 1,
+            valid$b$x == 2, valid$unicode == 'α')
+  stopifnot(inherits(try(BioDataLedger:::.finite_tree(parse('{"overflow":1e999}')), silent = TRUE), 'try-error'))
+}
+check_decoded_json_keys()
+
+# Matching validated bytes need no second parse while the writer lock is held.
+check_save_reuses_validated_revision <- function() {
+  root <- tempfile('save-validated-'); dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  p <- ProjectBundle$create('same validated bytes', root)
+  p$set_context(list(next_task = 'pending'))
+  original <- get('.read_json', asNamespace('BioDataLedger'))
+  on.exit(assignInNamespace('.read_json', original, ns = 'BioDataLedger'), add = TRUE)
+  assignInNamespace('.read_json', function(...) stop('unexpected registry reparse'), ns = 'BioDataLedger')
+  stopifnot(p$save()$state_revision == 2L, !p$status()$unsaved)
+  assignInNamespace('.read_json', original, ns = 'BioDataLedger')
+  # Changed valid bytes with the same revision must still reject and retain edits.
+  q <- ProjectBundle$open(root)
+  q$set_context(list(next_task = 'local edit'))
+  path <- file.path(root, '.nb_project_bundle', 'project.json')
+  raw <- readBin(path, 'raw', file.info(path)$size)
+  writeBin(c(raw, charToRaw(' ')), path)
+  stopifnot(inherits(try(q$save(), silent = TRUE), 'try-error'), q$status()$unsaved,
+            !dir.exists(file.path(root, '.nb_project_bundle', 'write.lock')))
+  writeBin(raw, path)
+  stopifnot(q$save()$state_revision == 3L)
+}
+check_save_reuses_validated_revision()
+
+# Digest matching is ASCII-only and consumes the complete scalar string.
+check_digest_shapes <- function() {
+  digest <- paste(rep('a09F', 16), collapse = '')
+  valid <- c(digest, tolower(digest), toupper(digest))
+  invalid <- list('', substr(digest, 1, 63), paste0(digest, 'a'),
+                  paste0(digest, '\n'), paste0(digest, '\r\n'), paste0('\n', digest),
+                  paste0(substr(digest, 1, 63), 'α'), paste0(substr(digest, 1, 63), 'ａ'),
+                  paste0(substr(digest, 1, 63), 'g'), NA_character_, NULL,
+                  c(digest, digest), 1, list(digest))
+  stopifnot(all(vapply(valid, BioDataLedger:::.is_sha, logical(1))),
+            !any(vapply(invalid, BioDataLedger:::.is_sha, logical(1))))
+}
+check_digest_shapes()

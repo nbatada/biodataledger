@@ -11,43 +11,22 @@
   if (length(bytes) > .metadata_limit) .fail("Metadata size limit exceeded")
   text <- rawToChar(bytes)
   if (!jsonlite::validate(text)) .fail("Invalid JSON")
-  .reject_duplicate_keys(text)
-  jsonlite::fromJSON(text, simplifyVector = FALSE)
+  parsed <- jsonlite::fromJSON(text, simplifyVector = FALSE)
+  .reject_duplicate_keys(parsed)
+  parsed
 }
 .read_json <- function(path) {
   if (is.na(file.info(path)$size) || file.info(path)$size > .metadata_limit) .fail("Metadata size limit exceeded")
   bytes <- readBin(path, "raw", n = .metadata_limit + 1L)
   .parse_json_bytes(bytes)
 }
-.reject_duplicate_keys <- function(text) {
-  chars <- strsplit(text, "", fixed = TRUE)[[1]]
-  stack <- list(); expecting <- FALSE; i <- 1L; n <- length(chars)
-  while (i <= n) {
-    ch <- chars[i]
-    if (ch == '"') {
-      j <- i + 1L; escaped <- FALSE
-      while (j <= n) {
-        if (chars[j] == '"' && !escaped) break
-        if (chars[j] == "\\" && !escaped) escaped <- TRUE else escaped <- FALSE
-        j <- j + 1L
-      }
-      if (j > n) .fail("Invalid JSON string")
-      if (length(stack) && identical(stack[[length(stack)]]$type, "object") && expecting) {
-        key <- jsonlite::fromJSON(paste0(chars[i:j], collapse = ""))
-        k <- j + 1L; while (k <= n && chars[k] %in% c(" ", "\n", "\r", "\t")) k <- k + 1L
-        if (k <= n && chars[k] == ":") {
-          if (key %in% stack[[length(stack)]]$keys) .fail("Duplicate JSON key")
-          stack[[length(stack)]]$keys <- c(stack[[length(stack)]]$keys, key)
-          expecting <- FALSE
-        }
-      }
-      i <- j
-    } else if (ch == "{") {stack[[length(stack) + 1L]] <- list(type = "object", keys = character()); expecting <- TRUE
-    } else if (ch == "[") {stack[[length(stack) + 1L]] <- list(type = "array", keys = character()); expecting <- FALSE
-    } else if (ch %in% c("}", "]")) {stack[[length(stack)]] <- NULL; expecting <- FALSE
-    } else if (ch == "," && length(stack)) expecting <- identical(stack[[length(stack)]]$type, "object")
-    i <- i + 1L
-  }
+.reject_duplicate_keys <- function(value) {
+  if (!is.list(value)) return(invisible(NULL))
+  # simplifyVector=FALSE retains decoded object names, including duplicates.
+  keys <- names(value)
+  if (!is.null(keys) && anyDuplicated(keys)) .fail("Duplicate JSON key")
+  for (child in value) .reject_duplicate_keys(child)
+  invisible(NULL)
 }
 .hash <- function(path) digest::digest(file = path, algo = "sha256", serialize = FALSE)
 .safe_rel <- function(x) {
@@ -187,7 +166,7 @@
 .is_arr <- function(x) is.list(x) && is.null(names(x))
 .is_int <- function(x, positive = FALSE) is.numeric(x) && length(x) == 1L && is.finite(x) && x == floor(x) && abs(x) <= 9007199254740991 && (!positive || x >= 1)
 .is_uuid <- function(x) is.character(x) && length(x) == 1L && grepl("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", x)
-.is_sha <- function(x) is.character(x) && length(x) == 1L && grepl("^[0-9a-fA-F]{64}$", x)
+.is_sha <- function(x) is.character(x) && length(x) == 1L && grepl("\\A[0-9a-fA-F]{64}\\z", x, perl = TRUE)
 .validate_locator <- function(x) {
   if (!.is_obj(x) || !setequal(names(x), c("kind", "value")) || !is.character(x$value) || length(x$value) != 1L || !nzchar(x$value) || !x$kind %in% c("project", "external", "uri")) .fail("Invalid locator")
   if (x$kind == "project" && !.safe_rel(x$value)) .fail("Unsafe project locator")
@@ -794,7 +773,8 @@ ProjectBundle <- local({
       if (!dir.create(lock, showWarnings = FALSE)) .fail("Write lock held")
       on.exit(unlink(lock, recursive = TRUE), add = TRUE)
       path <- file.path(folder, "project.json")
-      if (.hash(path) != loaded_digest || .read_json(path)$state_revision != loaded_revision) .fail("Stale project state")
+      # Matching bytes retain the revision validated when this object was opened.
+      if (.hash(path) != loaded_digest) .fail("Stale project state")
       proposed <- .copy(state); proposed$state_revision <- state$state_revision + 1L; proposed$last_transaction <- .uuid()
       for (i in seq_along(proposed$history)) if (is.null(proposed$history[[i]]$transaction)) proposed$history[[i]]$transaction <- proposed$last_transaction
       .validate(proposed)

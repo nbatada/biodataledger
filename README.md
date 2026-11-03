@@ -246,6 +246,11 @@ Preview all files and metadata before an authorized export.
 
 The [agent guide](docs/agent/USAGE.md) gives the full usage rules. You can also use the package directly from R or Python.
 
+Keep the project loaded in the active process and query it only when needed.
+There is no required call on every chat turn. Group related lookups when a tool
+starts a fresh process, and save once after meaningful record changes. A loaded
+object retains its revision; reopen deliberately for another writer's updates.
+
 ## Limits
 
 Records describe the sources you supply; they are not proof that code ran or that a result is scientifically valid. Data remain native files, and selecting levels does not subset an object.

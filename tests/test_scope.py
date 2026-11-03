@@ -54,6 +54,23 @@ class ScopeTests(unittest.TestCase):
                 patch.object(Path, "read_bytes", side_effect=AssertionError("registry reload")):
             self.p.save()
 
+    def test_dirty_save_checks_bytes_and_validates_proposed_state_once(self):
+        import biodataledger.core as core
+        self.p.set_context({"next_task": "Retain the selected result"})
+        with patch.object(core, "parse_json", side_effect=AssertionError("unchanged registry reparsed")), \
+                patch.object(core, "validate_state", wraps=core.validate_state) as validate:
+            self.p.save()
+        self.assertEqual(validate.call_count, 1)
+        self.assertEqual(ProjectBundle.open(self.root).summary()["next_task"], "Retain the selected result")
+        before = (self.root / STATE_PATH).read_bytes()
+        self.p.set_context({"next_task": "Pending edit"})
+        # Inject an invalid staged value to exercise the final persistence boundary.
+        self.p.state["records"][0]["details"]["bad_number"] = float("nan")
+        with self.assertRaises(BundleError):
+            self.p.save()
+        self.assertTrue(self.p.unsaved)
+        self.assertEqual((self.root / STATE_PATH).read_bytes(), before)
+
     def test_scope_revision_pin_and_strict_resolution(self):
         d = self.scoped()
         self.assertNotEqual(d, self.d)
