@@ -140,6 +140,10 @@ print(list(inputs = figure$inputs, code = figure$code, params = figure$params, p
 
 Open the project once and use exact getters for frequent metadata lookups. In 0.4, availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 
+Figure search matches names, types and descriptions, plus the name and description
+of each figure's recorded analysis revision. Results contain the latest active
+figure revisions and their inherited context. Search reads loaded metadata only.
+
 Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.5.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
 
 ## Conditions and levels

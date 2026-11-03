@@ -846,9 +846,17 @@ class ProjectBundle:
         tokens = (query or "").casefold().split()
         result = []
         for rec in self._latest("figure"):
-            haystack = " ".join([rec["name"], rec["type"], str(rec["details"].get("description", ""))]).casefold()
-            if rec["status"] == "active" and (type is None or rec["type"] == type) and all(t in haystack for t in tokens):
-                result.append(self.get_figure(self._ref(rec)))
+            if rec["status"] != "active" or type is not None and rec["type"] != type:
+                continue
+            if tokens:
+                fields = [rec["name"], rec["type"], rec["details"].get("description")]
+                if rec["analysis"] is not None:
+                    analysis = self._record(rec["analysis"], "analysis")
+                    fields.extend((analysis["name"], analysis["details"].get("description")))
+                haystack = " ".join(value for value in fields if isinstance(value, str)).casefold()
+                if not all(t in haystack for t in tokens):
+                    continue
+            result.append(self.get_figure(self._ref(rec)))
         return result
 
     def set_current(self, ref, purpose, reason):

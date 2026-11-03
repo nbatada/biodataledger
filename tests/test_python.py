@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -56,6 +57,69 @@ class BundleTests(unittest.TestCase):
         self.assertIn("code", q.get_figure(legacy, check_files=True).unknown)
         self.assertEqual(q.find_figures("T-cell clonality")[0].ref, legacy)
         self.assertEqual((self.root / "NORTH_STAR.md").read_text(), "scientist-owned")
+
+    def test_find_figures_exact_inherited_metadata_and_native_parity(self):
+        design = self.p.set_design("treatment", ["Vehicle", "LowDose"])
+        a = self.p.register_analysis("Clonality", [self.d], code="qc.py", method="synthetic",
+                                     params={"n": 2}, input_mode="combined", description="Rare clone expansion")
+        f = self.p.register_figure("library.svg", "summary", analysis=a, name="Visible panel", description="Frequency")
+        hidden = self.p.register_figure("genes.svg", "summary", analysis=a, name="Hidden panel")
+        details = self.p.get_analysis(a).details
+        details["description"] = "Replacement topic"
+        newer = self.p.update_record(a, {"name": "Diversity", "details": details}, "new exact analysis revision")
+        recent = self.p.register_figure("genes.svg", "summary", analysis=newer, name="Modern panel")
+        latest = self.p.update_record(f, {"name": "Corrected visible panel"}, "title only")
+        self.p.update_record(hidden, {"status": "inactive"}, "exclude latest inactive figure")
+        superseded = self.p.register_figure("genes.svg", "summary", analysis=a, name="Superseded panel")
+        self.p.update_record(superseded, {"status": "superseded"}, "exclude latest superseded figure")
+        standalone = self.p.register_figure("genes.svg", "control", name="Calibration", description="Control sample Straße")
+        self.p.set_design("another condition", ["one"])
+        self.p.save()
+        self.assertEqual([v.ref for v in self.p.find_figures("CLONALITY rare", type="summary")], [latest])
+        self.assertEqual([v.ref for v in self.p.find_figures("replacement")], [recent])
+        self.assertEqual([v.ref for v in self.p.find_figures("frequency")], [latest])
+        self.assertEqual([v.ref for v in self.p.find_figures("control calibration")], [standalone])
+        self.assertEqual([v.ref for v in self.p.find_figures()], [latest, recent, standalone])
+        self.assertEqual(self.p.find_figures("clonality", type="control"), [])
+        self.assertEqual(self.p.find_figures("hidden"), [])
+        self.assertEqual(self.p.find_figures("superseded"), [])
+        self.assertEqual([v.ref for v in self.p.find_figures("STRASSE")], [standalone])
+        self.assertEqual([v.ref for v in self.p.find_figures("   ")], [latest, recent, standalone])
+        figure = self.p.find_figures("clonality")[0]
+        self.assertEqual(figure.analysis, a)
+        self.assertEqual(figure.design_ref, design)
+        self.assertEqual(figure.inputs, [self.d])
+        self.assertEqual(figure.input_mode, "combined")
+        self.assertIsNone(figure.available)
+        self.assertEqual(figure.evidence, self.p.get_figure(latest).evidence)
+        self.assertEqual(figure.evidence["execution_evidence"], "not_captured")
+        script = r'''library(BioDataLedger, lib.loc = Sys.getenv("BDL_R_LIB"))
+p <- ProjectBundle$open(commandArgs(TRUE)[[1]])
+view <- p$find_figures("CLONALITY rare", type = "summary")[[1]]
+fields <- c("ref", "analysis", "inputs", "method", "params", "design_ref", "input_mode", "unknown", "provenance", "evidence")
+cat(jsonlite::toJSON(list(matches = unname(lapply(p$find_figures(), function(x) x$ref)),
+                         inherited = view[fields], replacement = unname(lapply(p$find_figures("replacement"), function(x) x$ref)),
+                         hidden = length(p$find_figures("hidden"))), auto_unbox = TRUE, null = "null"))
+'''
+        result = subprocess.run(["Rscript", "--vanilla", "-", str(self.root)], input=script,
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads(result.stdout)
+        self.assertEqual(observed["matches"], [latest, recent, standalone])
+        self.assertEqual(observed["replacement"], [recent])
+        self.assertEqual(observed["hidden"], 0)
+        expected = {k: getattr(figure, k) for k in observed["inherited"]}
+        self.assertEqual(observed["inherited"], expected)
+
+    def test_find_figures_reads_only_loaded_metadata(self):
+        a, f, g = self.retained()
+        with patch("biodataledger.core.fingerprint", side_effect=AssertionError("hash")), \
+                patch("biodataledger.core.canonical", side_effect=AssertionError("registry serialization")), \
+                patch.object(Path, "open", side_effect=AssertionError("payload read")), \
+                patch("os.scandir", side_effect=AssertionError("directory scan")):
+            rows = self.p.find_figures("QC")
+        self.assertEqual([v.ref for v in rows], [f, g])
+        self.assertFalse(self.p.unsaved)
 
     def test_selector_never_replaces_approved_input(self):
         other = self.p.register_data("data.csv", "analysis_ready", subset="hashed-only")

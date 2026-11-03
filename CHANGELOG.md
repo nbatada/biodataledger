@@ -2,6 +2,8 @@
 
 ## Unreleased — Lightweight agent workflow
 
+- Figure search includes the name/description of its exact recorded analysis. R now excludes inactive/superseded latest figures and returns inherited context/evidence like Python. Both clients retain metadata-only search and existing indexes.
+
 - Analysis/figure details and compact summaries explicitly distinguish declared relationships from missing execution evidence. Historical records remain unchanged; file hashes, snapshots, imports and caller-supplied labels never establish observed execution. R registration defaults now match Python.
 
 - Reduced R JSON parsing overhead while preserving decoded duplicate-key and malformed-input checks.

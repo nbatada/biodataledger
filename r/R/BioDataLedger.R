@@ -775,15 +775,22 @@ ProjectBundle <- local({
       invisible(.copy(proposed$project$design))
     }
     find_figures <- function(query = NULL, type = NULL) {
-      figures <- Filter(function(r) r$kind == "figure", state$records)
-      latest <- lapply(split(figures, vapply(figures, function(r) r$id, character(1))), function(rs) rs[[which.max(vapply(rs, function(r) r$revision, numeric(1)))]])
-      latest <- latest[order(names(latest))]
+      index <- attr(state, "record_index")$latest
+      ids <- sort(ls(index, pattern = "^FIG-"), method = "radix")
+      latest <- setNames(lapply(ids, function(id) state$records[[get(id, index, inherits = FALSE)]]), ids)
+      latest <- Filter(function(r) identical(r$status, "active"), latest)
       if (!is.null(type)) latest <- Filter(function(r) identical(r$type, type), latest)
       if (!is.null(query) && nzchar(query)) {
-        tokens <- strsplit(tolower(trimws(query)), "[[:space:]]+")[[1]]
-        latest <- Filter(function(r) {hay <- tolower(paste(r$name, r$type, r$details$description)); all(vapply(tokens, function(t) grepl(t, hay, fixed = TRUE), logical(1)))}, latest)
+        tokens <- strsplit(stringi::stri_trans_casefold(trimws(query)), "[[:space:]]+")[[1]]
+        latest <- Filter(function(r) {
+          a <- if (is.null(r$analysis)) NULL else .record(state, r$analysis)
+          fields <- Filter(function(x) is.character(x) && length(x) == 1L && !is.na(x),
+                           list(r$name, r$type, r$details$description, a$name, a$details$description))
+          hay <- stringi::stri_trans_casefold(paste(unlist(fields, use.names = FALSE), collapse = " "))
+          all(vapply(tokens, function(t) grepl(t, hay, fixed = TRUE), logical(1)))
+        }, latest)
       }
-      lapply(latest, view)
+      lapply(latest, function(r) get_figure(.make_ref(state, r)))
     }
     save <- function() {
       if (!dirty) return(.obj(state_revision = state$state_revision, transaction = state$last_transaction))
