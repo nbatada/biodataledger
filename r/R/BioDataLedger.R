@@ -410,7 +410,7 @@
     if (!is.null(h$target)) .validate_ref_shape(state, h$target)
     if (!is.null(h$transaction) && !.is_uuid(h$transaction)) .fail("Invalid history transaction")
   }
-  invisible(TRUE)
+  invisible(state)
 }
 .record_kind <- function(state, ref) .record(state, ref)$kind
 .code_entries <- function(root, paths, snapshot_code) {
@@ -443,7 +443,7 @@ ProjectBundle <- local({
   open <- function(project_dir) {
     root <- normalizePath(project_dir, mustWork = TRUE); path <- file.path(root, ".nb_project_bundle", "project.json")
     if (!file.exists(path)) .fail("Project registry missing")
-    state <- .read_json(path); .validate(state); state <- .index_state(state)
+    state <- .validate(.read_json(path))
     loaded_digest <- .hash(path); loaded_revision <- state$state_revision
     pending_code <- list(); dirty <- FALSE
     event <- function(action, reason = NULL, target = NULL) {
@@ -775,9 +775,9 @@ ProjectBundle <- local({
       path <- file.path(folder, "project.json")
       # Matching bytes retain the revision validated when this object was opened.
       if (.hash(path) != loaded_digest) .fail("Stale project state")
-      proposed <- .copy(state); proposed$state_revision <- state$state_revision + 1L; proposed$last_transaction <- .uuid()
+      proposed <- state; proposed$state_revision <- state$state_revision + 1L; proposed$last_transaction <- .uuid()
       for (i in seq_along(proposed$history)) if (is.null(proposed$history[[i]]$transaction)) proposed$history[[i]]$transaction <- proposed$last_transaction
-      .validate(proposed)
+      proposed <- .validate(proposed)
       serialized <- charToRaw(.json(proposed))
       if (length(serialized) > .metadata_limit) .fail("Metadata size limit exceeded")
       for (dest in names(pending_code)) {
@@ -790,7 +790,7 @@ ProjectBundle <- local({
       on.exit(if (file.exists(temp)) unlink(temp), add = TRUE)
       if (isTRUE(getOption("BioDataLedger.inject_save_before_rename"))) .fail("Injected save failure before publication")
       if (!file.rename(temp, path)) .fail("Atomic replacement failed")
-      state <<- .index_state(proposed); loaded_digest <<- .hash(path); loaded_revision <<- state$state_revision; pending_code <<- list(); dirty <<- FALSE
+      state <<- proposed; loaded_digest <<- .hash(path); loaded_revision <<- state$state_revision; pending_code <<- list(); dirty <<- FALSE
       .obj(state_revision = state$state_revision, transaction = state$last_transaction)
     }
     set_current <- function(ref, purpose, reason) {

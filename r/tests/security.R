@@ -100,3 +100,59 @@ check_digest_shapes <- function() {
             !any(vapply(invalid, BioDataLedger:::.is_sha, logical(1))))
 }
 check_digest_shapes()
+
+# Candidate save edits must not leak into the staged state on either failure path.
+check_save_candidate_isolation <- function() {
+  root <- tempfile('save-isolation-'); dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  writeLines('synthetic', file.path(root, 'input.txt'))
+  p <- ProjectBundle$create('candidate isolation', root)
+  d <- p$register_data('input.txt', 'input', hash = TRUE); p$save()
+  p$set_context(list(next_task = 'pending edit'))
+  state_env <- environment(p$save)
+  state <- get('state', state_env)
+  index_values <- function(state) {
+    index <- attr(state, 'record_index')
+    lapply(index, function(x) if (is.environment(x)) as.list(x, all.names = TRUE) else x)
+  }
+  path <- file.path(root, '.nb_project_bundle', 'project.json')
+  disk <- readBin(path, 'raw', file.info(path)$size)
+  for (failure in c('validation', 'publication')) {
+    candidate <- state
+    if (failure == 'validation') candidate$schema_version <- 'invalid'
+    assign('state', candidate, envir = state_env)
+    metadata <- BioDataLedger:::.json(candidate)
+    indexes <- BioDataLedger:::.copy(index_values(candidate))
+    if (failure == 'publication') options(BioDataLedger.inject_save_before_rename = TRUE)
+    result <- try(p$save(), silent = TRUE)
+    options(BioDataLedger.inject_save_before_rename = NULL)
+    current <- get('state', state_env)
+    stopifnot(inherits(result, 'try-error'), identical(BioDataLedger:::.json(current), metadata),
+              identical(index_values(current), indexes), identical(current$history, candidate$history),
+              identical(readBin(path, 'raw', file.info(path)$size), disk), p$status()$unsaved,
+              !dir.exists(file.path(root, '.nb_project_bundle', 'write.lock')))
+  }
+  assign('state', state, envir = state_env)
+  stopifnot(p$save()$state_revision == state$state_revision + 1L)
+}
+check_save_candidate_isolation()
+
+# Full validation already built the exact indexes needed by open and dirty save.
+check_validated_index_reuse <- function() {
+  root <- tempfile('save-index-reuse-'); dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  p <- ProjectBundle$create('index reuse', root)
+  original <- get('.index_state', asNamespace('BioDataLedger'))
+  on.exit(assignInNamespace('.index_state', original, ns = 'BioDataLedger'), add = TRUE)
+  calls <- 0L
+  assignInNamespace('.index_state', function(state) {calls <<- calls + 1L; original(state)}, ns = 'BioDataLedger')
+  p <- ProjectBundle$open(root)
+  stopifnot(calls == 1L)
+  p$set_context(list(next_task = 'meaningful update'))
+  calls <- 0L
+  p$save()
+  stopifnot(calls == 1L, !p$status()$unsaved)
+  p$save()
+  stopifnot(calls == 1L)
+}
+check_validated_index_reuse()

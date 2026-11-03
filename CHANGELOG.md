@@ -4,6 +4,7 @@
 
 - Reduced R JSON parsing overhead while preserving decoded duplicate-key and malformed-input checks.
 - Dirty saves compare the original validated registry bytes under the writer lock without reparsing unchanged metadata. Python validates the proposed state once before publishing snapshots or registry bytes.
+- R reuses the indexes produced by full validation and uses ordinary copy-on-modify semantics for save candidates, avoiding a redundant index rebuild and deep copy without removing checks.
 - Clarified loaded-session reuse, grouped fresh-process lookups, explicit input verification and meaningful saves. No mandatory per-turn operation, new API, dependency or persisted format.
 
 ## 0.5.0 — Exact analysis context and preserved figure revisions
