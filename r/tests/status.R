@@ -41,3 +41,13 @@ b$set_current(scoped, 'scope_summary', 'confirmed')
 scoped_status <- b$status(purpose = 'scope_summary')
 stopifnot(scoped_status$counts$data == 106L, scoped_status$dataset$design$truncated,
           scoped_status$truncated$text, identical(scoped_status$dataset$ref, scoped))
+# Nested declarations remain metadata, not vectors to sort or scientific objects.
+nested <- list(note=list(values=list(NULL,'é',list(levels=list('a','b')))))
+b$register_analysis('nested',list(scoped),params=nested,details=nested)
+b$save()
+before <- readBin(registry,'raw',n=file.info(registry)$size)
+for (args in list(list(),list(purpose='scope_summary'),list(check_files=TRUE))) {
+  result <- do.call(b$status,args)
+  stopifnot(nchar(jsonlite::toJSON(result,auto_unbox=TRUE,null='null'),type='bytes')<=4096L,
+            !result$unsaved,identical(before,readBin(registry,'raw',n=file.info(registry)$size)))
+}

@@ -269,3 +269,67 @@ helpers remain available for an explicitly reviewed file layout. ZIP payload
 selection is unchanged: new rendering/dependency declarations do not implicitly
 copy their DATA files. Review/include the needed records and code owners during
 working export.
+
+
+## Portable project helpers
+
+Set the project root explicitly from your launch directory or a caller-supplied
+configuration. For example, in R use `project_root <- normalizePath(".", mustWork=TRUE)`
+only when the session starts in the project root; in Python use `Path.cwd()` under
+the same condition. Otherwise pass the selected root into your script. Do not
+embed a developer's home directory or search upward/recursively for a ledger.
+
+BioDataLedger resolves metadata; a project helper loads the scientific object:
+
+```r
+get_project_data <- function(project, ref) {
+  verified <- project$resolve_data(ref = ref, verify = "sha256")
+  readRDS(verified$path)
+}
+```
+
+The helper is project code, not a package API. Choose `readRDS`, `read.csv` or another
+native loader for the known file format. `get_data(ref=...)` retrieves metadata
+without hashing or loading the object. `resolve_data(ref=..., verify="sha256")`
+streams bytes against the recorded digest without deserializing the object and
+fails if the file or baseline is missing or changed. A matching digest establishes
+file integrity, not biological scope or scientific validity.
+
+Reuse the resolved result and loaded object within the session while the input
+remains unchanged. There is no verification cache or automatic invalidation:
+resolve again after an input change or when a new verification is required. A
+stored resolution result is evidence about bytes at verification time only.
+
+Project-relative registered locators resolve against the opened root after moving
+the project. Export previews list selected payloads and omitted dependencies;
+imports retain original relative locators and explicit payload bindings. External
+files not packaged remain unresolved until deliberate rebinding. Inspect the
+preview before sharing; exporting a figure does not automatically package its data.
+
+## Figure discovery and function declarations
+
+`find_figures(query=...)` also searches the registered locator and a recognized
+`figure_sources.asset_id`. It still returns latest active revisions, with literal
+case-insensitive matching. It searches registry metadata, never the filesystem.
+For exact selection use `get_figure(ref)`, `get_figure(asset_id=...)` or
+`get_figure(path="plots/panel.svg")`. Paths must match the registered locator or its
+resolved absolute project path; a basename alone does not match a nested path.
+Ambiguous selectors reject; pass the exact reference or an explicit revision.
+
+`get_figure(..., compact=True)` (`TRUE` in R) now includes `asset_id` and
+`entry_point`. To record an optional function name, pass
+`details={"entry_point": "draw_umap_by_library"}` to Python `register_figure`, or
+`details=list(entry_point="draw_umap_by_library")` in R. This reuses optional figure
+metadata, adds no API argument and records only a declaration. The name does not
+prove invocation or select among code files. Use `figure_sources.generating_code`
+for an exact code selector. Blank, absent or nonscalar entry points report null;
+large strings are omitted with a truncation marker. The full getter preserves raw
+metadata. Compact output remains capped at 4096 UTF-8 bytes.
+
+Existing revisions already preserve an explicit figure identity: use
+`save_figure(source, ref=old_exact_ref)` for a revised saved image, or
+`update_record(old_exact_ref, changes, reason)` for a metadata correction. The
+returned reference has the same figure ID and a new revision. Old exact refs
+remain readable; no relationship is inferred from filenames. Prefer managed
+`save_figure` copies when old image bytes must also remain available: metadata
+history alone cannot preserve an overwritten external file.

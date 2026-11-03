@@ -109,7 +109,7 @@ f2 = p.register_figure("genes.svg", type="qc", analysis=a)
 p.save()
 print(p.status())
 figures = p.find_figures(type="qc")
-figure = p.get_figure(figures[0].ref)
+figure = p.get_figure(path="library.svg")
 print(figure.inputs, figure.code, figure.params, figure.provenance)
 print(p.get_figure(f1, compact=True))
 preserved_source = p.read_figure_source(f1)
@@ -138,7 +138,7 @@ f2 <- p$register_figure("genes.svg", type = "qc", analysis = a)
 p$save()
 print(p$status())
 figures <- p$find_figures(type = "qc")
-figure <- p$get_figure(figures[[1]]$ref)
+figure <- p$get_figure(path = "library.svg")
 print(list(inputs = figure$inputs, code = figure$code, params = figure$params, provenance = figure$provenance))
 print(p$get_figure(f1, compact = TRUE))
 preserved_source <- p$read_figure_source(f1)
@@ -146,6 +146,11 @@ cat(rawToChar(preserved_source$content))
 ```
 
 </details>
+
+Project helpers can keep domain-specific loading outside BioDataLedger. Pass the
+opened project and an exact registered reference into a helper; call
+`resolve_data(..., verify="sha256")` once before loading through native R/Python.
+See the [portable helper example](docs/api/API_0.5.0.md#portable-project-helpers).
 
 ## Inspect and resume
 
@@ -156,7 +161,7 @@ not unavailable. Use `resolve_data(..., verify="sha256")` for verified input
 resolution and preserve the same exact reference or purpose. See the
 [migration pattern](docs/api/API_0.5.0.md#updating-older-input-helpers).
 
-Figure search matches names, types and descriptions, plus the name and description
+Figure search matches registered paths, explicit asset IDs, names, types and descriptions, plus the name and description
 of each figure's recorded analysis revision. Results contain the latest active
 figure revisions and their inherited context. Search reads loaded metadata only.
 

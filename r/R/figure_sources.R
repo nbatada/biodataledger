@@ -114,7 +114,9 @@
   candidates <- lapply(utils::head(alternatives,3L),short_code)
   truncated$code_candidates <- length(alternatives)-length(candidates)
   rendering <- lapply(utils::head(sources$rendering_details,3L),function(x) .obj(ref=ref(x$ref,'rendering_inputs'),parent=ref(x$parent,'parent'),transformation_ref=ref(x$transformation_ref,'transformation_ref'),available=x$available,integrity='not_checked'))
-  report <- .obj(ref=ref(view$ref,'ref'),path=text(view$path,'path'),available=view$available,availability_checked=view$availability_checked,integrity='not_checked',analysis=ref(view$analysis,'analysis'),
+  entry_point <- view$details$entry_point
+  if (!.design_text(entry_point)) entry_point <- NULL
+  report <- .obj(asset_id=text(view$asset_id,'asset_id'),entry_point=text(entry_point,'entry_point'),ref=ref(view$ref,'ref'),path=text(view$path,'path'),available=view$available,availability_checked=view$availability_checked,integrity='not_checked',analysis=ref(view$analysis,'analysis'),
                  analytical_inputs=refs(view$inputs,'analytical_inputs'),rendering_inputs=refs(view$rendering_inputs,'rendering_inputs'),rendering_relationship=view$rendering_relationship,
                  generating_code=short_code(sources$code),code_candidates=.arr(candidates),rendering_details=.arr(rendering),dependencies=.arr(dependencies),dependency_completeness='unknown',
                  method=text(view$method,'method',128L),params=params(view$params),execution='unknown',execution_evidence='not_captured',

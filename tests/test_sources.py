@@ -50,6 +50,39 @@ class FigureSourcesTests(unittest.TestCase):
         self.p.set_context({'next_task':'later default'});self.p.save()
         self.assertEqual(self.p.get_figure(f).analysis,self.analysis)
 
+    def test_discovery_and_compact_function_declaration(self):
+        f = self.marked()
+        details = self.p.get_figure(f).details
+        details['entry_point'] = 'draw_umap_by_library'
+        f = self.p.update_record(f, {'details': details}, 'record function declaration')
+        self.p.save()
+        before = (self.root / STATE_PATH).read_bytes()
+        with patch.object(Path, 'open', side_effect=AssertionError('payload read')), patch('os.scandir', side_effect=AssertionError('scan')):
+            self.assertEqual([v.ref for v in self.p.find_figures('study:panel-A')], [f])
+            self.assertEqual(len(self.p.find_figures('figure.svg')), 75)
+            report = self.p.get_figure(f, compact=True)
+        self.assertEqual(report['asset_id'], 'study:panel-A')
+        self.assertEqual(report['entry_point'], 'draw_umap_by_library')
+        self.assertEqual(report['execution'], 'unknown')
+        self.assertIsNone(self.p.get_figure(self.figure, compact=True)['entry_point'])
+        self.assertEqual((self.root / STATE_PATH).read_bytes(), before)
+        self.assertFalse(self.p.unsaved)
+        details['entry_point'] = {'nested': ['not a function name']}
+        revised = self.p.update_record(f, {'details': details}, 'legacy arbitrary metadata')
+        self.assertIsNone(self.p.get_figure(revised, compact=True)['entry_point'])
+
+    def test_nested_status_is_read_only(self):
+        nested = {'note': {'values': [None, 'é', {'levels': ['a', 'b']}]}}
+        self.p.register_analysis('nested', [self.analytical], params=nested, details=nested)
+        self.p.set_current(self.analytical, 'nested', 'synthetic selection')
+        self.p.save()
+        before = (self.root / STATE_PATH).read_bytes()
+        for args in ({}, {'purpose': 'nested'}, {'check_files': True}):
+            result = self.p.status(**args)
+            self.assertLessEqual(len(canonical(result)), 4096)
+            self.assertFalse(result['unsaved'])
+        self.assertEqual((self.root / STATE_PATH).read_bytes(), before)
+
     def test_source_reads_staged_preserved_and_no_fallback(self):
         f=self.marked();original=(self.root/'plot.R').read_bytes()
         self.assertEqual(self.p.read_figure_source(f)['content'],original)
@@ -161,7 +194,9 @@ class FigureSourcesTests(unittest.TestCase):
         self.assertIn('figure_file',report['missing'])
 
     def test_native_roundtrip_and_legacy_client_readability(self):
-        f=self.marked();self.p.save();key=f['id']+'@'+str(f['revision'])
+        f=self.marked()
+        details=self.p.get_figure(f).details;details['entry_point']='draw_umap_by_library'
+        f=self.p.update_record(f,{'details':details},'function declaration');self.p.save();key=f['id']+'@'+str(f['revision'])
         script=Path(__file__).with_name('r_sources_exchange.R')
         r=subprocess.run(['Rscript','--vanilla',str(script),os.environ['BDL_R_LIB'],str(self.root),key],capture_output=True,text=True,timeout=30)
         self.assertEqual(r.returncode,0,r.stderr)

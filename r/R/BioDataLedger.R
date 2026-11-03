@@ -846,7 +846,8 @@ ProjectBundle <- local({
         latest <- Filter(function(r) {
           a <- if (is.null(r$analysis)) NULL else .record(state, r$analysis)
           fields <- Filter(function(x) is.character(x) && length(x) == 1L && !is.na(x),
-                           list(r$name, r$type, r$details$description, a$name, a$details$description))
+                           list(r$name, r$type, r$details$description, a$name, a$details$description, r$locator$value,
+                                if (.sources_known(r$details[[.figure_sources_key]])) r$details[[.figure_sources_key]]$asset_id else NULL))
           hay <- stringi::stri_trans_casefold(paste(unlist(fields, use.names = FALSE), collapse = " "))
           all(vapply(tokens, function(t) grepl(t, hay, fixed = TRUE), logical(1)))
         }, latest)

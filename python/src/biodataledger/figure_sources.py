@@ -152,7 +152,10 @@ def compact(view, canonical):
     for item in sources['dependency_details'][:3]:
         dependencies.append({'path': text(item['relative_path'], 'dependency_path', 128), 'ref': ref(item['ref'], 'dependencies'), 'available': item['available']})
     truncated['dependencies'] = len(sources['dependency_details']) - len(dependencies)
-    report = {'ref': ref(view.ref, 'ref'), 'path': text(str(view.path) if view.path is not None else None, 'path'),
+    entry_point = view.details.get('entry_point')
+    if not isinstance(entry_point, str) or not entry_point.strip():
+        entry_point = None
+    report = {'asset_id': text(view.asset_id, 'asset_id'), 'entry_point': text(entry_point, 'entry_point'), 'ref': ref(view.ref, 'ref'), 'path': text(str(view.path) if view.path is not None else None, 'path'),
               'available': view.available, 'availability_checked': view.availability_checked, 'integrity': 'not_checked',
               'analysis': ref(view.analysis, 'analysis'), 'analytical_inputs': refs(view.inputs, 'analytical_inputs'),
               'rendering_inputs': refs(view.rendering_inputs, 'rendering_inputs'), 'rendering_relationship': view.rendering_relationship,

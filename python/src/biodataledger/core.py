@@ -936,7 +936,10 @@ class ProjectBundle:
             if rec["status"] != "active" or type is not None and rec["type"] != type:
                 continue
             if tokens:
-                fields = [rec["name"], rec["type"], rec["details"].get("description")]
+                from .figure_sources import KEY, recognized
+                sources = rec['details'].get(KEY)
+                fields = [rec["name"], rec["type"], rec["details"].get("description"), rec['locator']['value'],
+                          sources.get('asset_id') if recognized(sources) else None]
                 if rec["analysis"] is not None:
                     analysis = self._record(rec["analysis"], "analysis")
                     fields.extend((analysis["name"], analysis["details"].get("description")))

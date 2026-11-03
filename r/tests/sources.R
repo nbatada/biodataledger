@@ -21,6 +21,13 @@ main <- function() {
  stopifnot(identical(v$inputs,list(data)),identical(v$rendering_inputs,list(render)),v$evidence$execution=='unknown',v$rendering_relationship=='unknown',v$generating_code$integrity=='not_checked')
  stopifnot(identical(p$get_figure(asset_id='study:panel-A')$ref,f),identical(p$get_figure('FIG-075',revision=2L)$ref,f))
  fail<-function(expr) stopifnot(inherits(try(force(expr),silent=TRUE),'try-error'))
+ stopifnot(length(p$find_figures('study:panel-A'))==1L,length(p$find_figures('figure.svg'))==75L,
+           p$get_figure(f,compact=TRUE)$asset_id=='study:panel-A')
+ details<-p$get_figure(f)$details;details$entry_point<-'draw_umap_by_library'
+ named<-p$update_record(f,list(details=details),'record function declaration')
+ stopifnot(p$get_figure(named,compact=TRUE)$entry_point=='draw_umap_by_library',
+           is.null(p$get_figure(figure,compact=TRUE)$entry_point),
+           p$get_figure(named,compact=TRUE)$execution=='unknown')
  fail(p$get_figure('FIG-075'));fail(p$get_figure(path='figure.svg'))
  writeLines('# changed original',file.path(root,'plot.R'))
  stopifnot(identical(p$read_figure_source(f)$content,original))

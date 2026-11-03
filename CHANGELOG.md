@@ -2,6 +2,10 @@
 
 ## Unreleased — Lightweight agent workflow
 
+- Figure search also matches registered paths and explicit scientific asset IDs.
+- Compact figure reports expose asset IDs and optional `details.entry_point` function declarations without changing API signatures or the persisted schema.
+- Added nested-status and native figure-discovery regressions and portable project-helper guidance.
+
 - Native trial examples now resolve the selected input with explicit SHA-256 verification. Added migration guidance and regression coverage separating unchecked metadata from unavailable files; the core API and its metadata-only defaults are unchanged.
 
 - Figure search includes the name/description of its exact recorded analysis. R now excludes inactive/superseded latest figures and returns inherited context/evidence like Python. Both clients retain metadata-only search and existing indexes.
