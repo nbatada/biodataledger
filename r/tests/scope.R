@@ -109,3 +109,60 @@ stopifnot(inherits(try(b$get_data(role = 'input'), silent = TRUE), 'try-error'))
 reactivated <- b$update_record(original_inactive, list(status = 'active'), 'reactivation')
 stopifnot(identical(b$get_data(role = 'input')$ref, reactivated),
           identical(b$get_data(role = 'input')$scope, b$get_data(ref = reactivated)$scope))
+
+# Migrate unchecked metadata retrieval to strict native input resolution.
+check_native_input_resolution_migration <- function() {
+  root <- tempfile('native-input-migration-'); dir.create(root)
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  selected_path <- file.path(root, 'selected.rds')
+  other_path <- file.path(root, 'other.rds')
+  # These opaque bytes are not RDS objects and must never be deserialized.
+  original <- charToRaw('opaque-selected-v1')
+  writeBin(original, selected_path); writeBin(charToRaw('plausible-other-input'), other_path)
+  p <- ProjectBundle$create('native input migration', root)
+  selected <- p$register_data('selected.rds', 'analysis_ready', hash = TRUE)
+  other <- p$register_data('other.rds', 'analysis_ready', hash = TRUE)
+  p$set_current(selected, 'qc', 'explicit synthetic input selection'); p$save()
+  registry <- file.path(root, '.nb_project_bundle', 'project.json')
+  before <- readBin(registry, 'raw', file.info(registry)$size)
+  history <- jsonlite::fromJSON(rawToChar(before), simplifyVector = FALSE)$history
+  baseline <- p$get_data(ref = selected)
+  digest <- get('digest', asNamespace('digest'))
+  on.exit(assignInNamespace('digest', digest, ns = 'digest'), add = TRUE)
+  for (case in c('existing', 'tampered', 'missing')) {
+    if (case == 'tampered') {
+      changed <- charToRaw('opaque-selected-v2')
+      stopifnot(length(changed) == length(original)); writeBin(changed, selected_path)
+    }
+    if (case == 'missing') unlink(selected_path)
+    assignInNamespace('digest', function(...) stop('metadata retrieval must not hash'), ns = 'digest')
+    unchecked <- p$get_data(purpose = 'qc')
+    exists_only <- p$get_data(purpose = 'qc', check_files = TRUE)
+    assignInNamespace('digest', digest, ns = 'digest')
+    stopifnot(is.null(unchecked$available), identical(unchecked$availability_checked, FALSE),
+              identical(exists_only$availability_checked, TRUE),
+              identical(exists_only$available, case != 'missing'),
+              identical(unchecked$ref, selected), identical(unchecked$path, baseline$path),
+              identical(unchecked$sha256, baseline$sha256),
+              identical(p$get_data(ref = other)$status, 'active'), file.exists(other_path))
+    if (case == 'existing') {
+      verified <- p$resolve_data(purpose = 'qc', verify = 'sha256')
+      stopifnot(identical(verified$ref, selected), identical(verified$path, baseline$path),
+                identical(verified$path, normalizePath(selected_path)),
+                identical(verified$sha256, baseline$sha256), identical(verified$available, TRUE),
+                identical(verified$availability_checked, TRUE),
+                identical(verified$verification$file_integrity, 'match'),
+                identical(verified$verification$baseline_sha256, baseline$sha256),
+                identical(verified$verification$observed_sha256, baseline$sha256))
+    } else {
+      expect_code(if (case == 'tampered') 'DIGEST_MISMATCH' else 'MISSING_FILE',
+                  p$resolve_data(purpose = 'qc', verify = 'sha256'))
+    }
+    after <- readBin(registry, 'raw', file.info(registry)$size)
+    stopifnot(identical(after, before), !p$status()$unsaved,
+              identical(jsonlite::fromJSON(rawToChar(after), simplifyVector = FALSE)$history, history),
+              identical(p$get_data(purpose = 'qc')$ref, selected),
+              identical(p$get_data(purpose = 'qc')$sha256, baseline$sha256))
+  }
+}
+check_native_input_resolution_migration()

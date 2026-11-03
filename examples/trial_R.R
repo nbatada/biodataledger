@@ -11,7 +11,7 @@ main <- function(project_dir, input_dir) {
   p$set_current(data, purpose = "qc", reason = "Synthetic trial input; no scientific approval")
   p$save()
   p <- ProjectBundle$open(project_dir = project_dir)
-  data <- p$get_data(purpose = "qc")
+  data <- p$resolve_data(purpose = "qc", verify = "sha256")
   # Retain saved files; these declarations do not prove that the script executed.
   analysis <- p$register_analysis("Synthetic QC", inputs = list(data$ref), code = "qc.R",
                                   method = "synthetic display", params = list(min_genes = 200))

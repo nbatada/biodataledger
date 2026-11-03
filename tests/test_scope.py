@@ -1,5 +1,7 @@
 """Installed-client identity, explicit verification and loaded-query regressions."""
 import copy
+import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -46,6 +48,95 @@ class ScopeTests(unittest.TestCase):
             status = self.p.status()
         self.assertFalse(status["availability_checked"])
         self.assertEqual(status["missing"]["checked"], 0)
+
+    def test_input_resolution_migration_preserves_exact_record(self):
+        import biodataledger.core as core
+        selected_path = (self.root / "selected.rds").resolve()
+        selected_path.write_bytes(b"opaque fixture A")
+        alternative_path = (self.root / "alternative.rds").resolve()
+        alternative_path.write_bytes(b"opaque fixture B")
+        selected = self.p.register_data(selected_path, "selected", hash=True)
+        self.p.register_data(alternative_path, "selected", hash=True)
+        self.p.set_current(selected, "analysis", "synthetic selected input")
+        self.p.save()
+        registry = self.root / STATE_PATH
+        before = registry.read_bytes()
+        history = copy.deepcopy(self.p.state["history"])
+        expected_digest = hashlib.sha256(selected_path.read_bytes()).hexdigest()
+        with patch.object(core, "fingerprint", side_effect=AssertionError("metadata inspection hashed a file")):
+            metadata = self.p.get_data(purpose="analysis")
+        self.assertIsNone(metadata.available)
+        self.assertFalse(metadata.availability_checked)
+        self.assertTrue(selected_path.is_file())
+        with patch.object(core, "fingerprint", wraps=core.fingerprint) as hashes:
+            resolved = self.p.resolve_data(purpose="analysis", verify="sha256")
+        self.assertEqual([Path(call.args[0]) for call in hashes.call_args_list], [selected_path])
+        self.assertEqual(resolved.ref, metadata.ref)
+        self.assertEqual(resolved.ref, selected)
+        self.assertEqual(resolved.path, selected_path)
+        self.assertEqual(resolved.sha256, expected_digest)
+        self.assertEqual(resolved.verification["observed_sha256"], expected_digest)
+        self.assertTrue(resolved.available and resolved.availability_checked)
+        self.assertFalse(self.p.get_data(ref=selected).availability_checked)
+        selected_path.write_bytes(b"opaque fixture Z")
+        self.assertTrue(self.p.get_data(ref=selected, check_files=True).available)
+        with self.assertRaisesRegex(BundleError, "DIGEST_MISMATCH"):
+            self.p.resolve_data(purpose="analysis", verify="sha256")
+        selected_path.unlink()
+        with self.assertRaisesRegex(BundleError, "MISSING_FILE"):
+            self.p.resolve_data(purpose="analysis", verify="sha256")
+        self.assertTrue(alternative_path.is_file())
+        self.assertEqual(self.p.get_data(purpose="analysis").ref, selected)
+        self.assertEqual(self.p.get_data(ref=selected).sha256, expected_digest)
+        self.assertEqual(self.p.state["history"], history)
+        self.assertFalse(self.p.unsaved)
+        self.assertEqual(registry.read_bytes(), before)
+
+    def test_trial_refuses_input_drift_before_registering_outputs(self):
+        source = Path(__file__).resolve().parents[1] / "examples/trial_python.py"
+        spec = importlib.util.spec_from_file_location("trial_resolution", source)
+        trial = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(trial)
+        original_open = ProjectBundle.open
+        folder = self.root / "trial-drift"
+        def open_after_drift(project_dir):
+            project = original_open(project_dir)
+            path = Path(project_dir) / "input.csv"
+            raw = path.read_bytes()
+            changed = raw.replace(b"S1,300", b"S1,301")
+            self.assertNotEqual(raw, changed)
+            path.write_bytes(changed)
+            return project
+        with patch.object(ProjectBundle, "open", side_effect=open_after_drift):
+            with self.assertRaisesRegex(BundleError, "DIGEST_MISMATCH"):
+                trial.main(folder)
+        self.assertEqual(original_open(folder).summary()["counts"], {"data": 1, "analysis": 0, "figure": 0})
+        r_script = r'''
+args <- commandArgs(TRUE)
+library(BioDataLedger, lib.loc=Sys.getenv("BDL_R_LIB"))
+original_open <- ProjectBundle$open
+trial <- new.env(parent=globalenv())
+trial$ProjectBundle <- ProjectBundle
+trial$ProjectBundle$open <- function(project_dir) {
+  project <- original_open(project_dir)
+  path <- file.path(project_dir,"input.csv")
+  raw <- readChar(path,file.info(path)$size,useBytes=TRUE)
+  changed <- sub("S1,300","S1,301",raw,fixed=TRUE)
+  stopifnot(raw != changed)
+  writeBin(charToRaw(changed),path)
+  project
+}
+trial$commandArgs <- function(trailingOnly=FALSE) c(args[[2]],args[[3]])
+result <- try(sys.source(args[[1]],envir=trial),silent=TRUE)
+stopifnot(inherits(result,"try-error"),grepl("DIGEST_MISMATCH",as.character(result),fixed=TRUE))
+counts <- original_open(args[[2]])$summary()$counts
+stopifnot(counts$data == 1L,counts$analysis == 0L,counts$figure == 0L)
+'''
+        repo = Path(__file__).resolve().parents[1]
+        result = subprocess.run(["Rscript", "--vanilla", "-", str(repo / "examples/trial_R.R"),
+                                 str(self.root / "r-trial-drift"), str(repo / "examples/input-files")],
+                                input=r_script, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_clean_save_has_no_lock_or_registry_io(self):
         self.p.set_context({"next_task": None})

@@ -16,7 +16,7 @@ def main(project_dir):
     p.set_current(data, purpose="qc", reason="Synthetic trial input; no scientific approval")
     p.save()
     p = ProjectBundle.open(project_dir=root)
-    data = p.get_data(purpose="qc")
+    data = p.resolve_data(purpose="qc", verify="sha256")
     # Retain already-saved files. Parameters and source are declarations, not execution proof.
     analysis = p.register_analysis("Synthetic QC", inputs=[data.ref], code="qc.py",
                                    method="synthetic display", params={"min_genes": 200})

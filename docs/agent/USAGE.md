@@ -4,6 +4,13 @@ The package works without agents. Use the installed native R/Python API and the 
 
 Ordinary getters and status are metadata-only. Unknown availability is not a missing file. Before using a selected input, explicitly call `resolve_data(purpose=..., verify="sha256")`; this streams that file and refuses a missing baseline, changed bytes or contradictory required scope. Use `check_files=True`/`TRUE` only when existence checks are wanted. Do not repeatedly reopen or send the whole registry into context. A loaded object must be reopened deliberately to see another writer's changes.
 
+For an older input helper, replace its metadata lookup and unchecked-availability
+rejection with native `resolve_data(..., verify="sha256")`. Keep the original
+exact reference/purpose, function signature and return mapping. Do not substitute
+an existence check, auto-register a new digest or fall back to another dataset.
+The [migration guide](../api/API_0.5.0.md#updating-older-input-helpers) covers role
+selectors and missing digests.
+
 There is no mandatory operation on every chat turn. Keep one project object in
 the current R session or Python process and query it only when the task needs
 registered information. If each tool call starts a fresh process, open once in

@@ -20,6 +20,38 @@ Native Python `biodataledger` and R `BioDataLedger` expose `ProjectBundle`. R us
 
 Compact status is capped at 4096 UTF-8 bytes, with explicit omissions/truncation. Exact references are not shortened into different IDs. A byte cap is not a model-independent token guarantee. The ordinary summary aims to stay below 500 estimated tokens; full details are requested separately.
 
+### Updating older input helpers
+
+An older helper that treats `availability_checked=False` or unchecked
+`available=None`/`NULL` as a missing file will reject valid inputs. Replace its input
+retrieval with strict resolution; keep its signature and return mapping:
+
+```r
+data <- project$resolve_data(ref = data_ref, verify = "sha256")
+```
+
+```python
+data = project.resolve_data(ref=data_ref, verify="sha256")
+```
+
+`data_ref` must remain the same exact registered reference. For an existing
+current-for-purpose selector, use `purpose` instead of `ref`. Successful resolution
+returns the existing metadata fields, including `path`, `ref` and `sha256`, plus
+`verification`, with `available` and `availability_checked` true. Remove the old
+unchecked-availability rejection; preserve other helper behavior. Let resolution
+errors stop the caller instead of choosing another dataset.
+
+For role-based helpers, first inspect the unambiguous role with `get_data(role=...)`,
+then pass the returned exact `ref` to `resolve_data`. The resolver does not accept
+a role selector. `get_data(check_files=True)` checks existence only and cannot
+replace the digest check: a changed file may still exist.
+
+Resolution streams the selected file's bytes; it does not deserialize RDS, Seurat
+or H5AD objects, change selections, update hashes or save the registry. A missing
+digest is an error, not permission to create a new baseline automatically.
+Establish that baseline separately through authorized registration/revision.
+Keep ordinary metadata inspection cheap; verify only when the input will be used.
+
 ## Retain data, analyses and figures
 
 - `register_data(path, role, name=None, hash=False, **details)` records an existing file/URI. Hashing large local files is an explicit opt-in. Known parent/membership links use exact DATA refs in details; clustering_run uses an ANA ref.

@@ -140,6 +140,11 @@ print(list(inputs = figure$inputs, code = figure$code, params = figure$params, p
 
 Open the project once and use exact getters for frequent metadata lookups. In 0.4, availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 
+**Updating an older input helper:** `availability_checked=False` means unchecked,
+not unavailable. Use `resolve_data(..., verify="sha256")` for verified input
+resolution and preserve the same exact reference or purpose. See the
+[migration pattern](docs/api/API_0.5.0.md#updating-older-input-helpers).
+
 Figure search matches names, types and descriptions, plus the name and description
 of each figure's recorded analysis revision. Results contain the latest active
 figure revisions and their inherited context. Search reads loaded metadata only.

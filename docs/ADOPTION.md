@@ -9,3 +9,9 @@ BioDataLedger records a scientist's selected files and declared links. It does n
 5. Save meaningful changes once. Reopen in the other native client and retrieve the purpose view, exact DATA revision, pinned design and known figure/QC sources. Check original paths and bytes when required. If intake fails partway, report what was staged or saved; do not silently retry, delete or replace source files.
 
 A useful handoff names the purpose, exact DATA revision, scope and basis, pinned design and selected levels, known assay/layer/replicate, last integrity check and time, missing evidence, and one next action. It includes the strict native `resolve_data(purpose=..., verify="sha256", expected_scope=...)` call when the scope requirement is confirmed. Multiple plausible purposes need a scientist choice. A digest identifies bytes; it does not prove the analysis that produced them.
+
+When adopting older input helpers, follow the
+[native-resolution migration pattern](api/API_0.5.0.md#updating-older-input-helpers).
+Unchecked metadata from `get_data()` is not an unavailable file. Preserve the
+helper's original selection and return structure while using `resolve_data()`
+for verification.
