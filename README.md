@@ -18,6 +18,26 @@ The example illustrates records you supply; the package does not choose or verif
 
 Version **0.5.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
+**R — install the tested version from GitHub**
+
+Run this in R to install the verified 0.5.0 package at commit `a368f59`:
+
+```r
+if (!requireNamespace("remotes", quietly = TRUE))
+  install.packages("remotes", repos = "https://cloud.r-project.org")
+
+remotes::install_github(
+  "nbatada/biodataledger",
+  subdir = "r",
+  ref = "a368f591189199b8d59fae9e447b8c6df49c02a7",
+  upgrade = "never"
+)
+```
+
+Then load it with `library(BioDataLedger)`.
+
+**Source checkout — Python, repository examples, or an R source install**
+
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
@@ -33,7 +53,7 @@ python3 -m venv .venv
 
 Use `.venv/bin/python` or select this environment in your editor. Installation needs setuptools/wheel; the package has no Python runtime dependencies.
 
-**R**
+**R from the source checkout**
 
 ```sh
 mkdir -p .r-library

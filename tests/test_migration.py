@@ -145,7 +145,9 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(len(scope["q"].find_figures(type="qc")), 2)
 
     def test_readme_r_examples_installed(self):
-        blocks = re.findall(r"```r\n(.*?)```", (BASE / "README.md").read_text(), re.S)
+        # Installation is verified separately from the usage examples.
+        examples = (BASE / "README.md").read_text().split("## Record data, analyses and figures", 1)[1]
+        blocks = re.findall(r"```r\n(.*?)```", examples, re.S)
         self.assertEqual(len(blocks), 3)
         folder = self.root / "r-readme"
         shutil.copytree(BASE / "examples/input-files", folder)
