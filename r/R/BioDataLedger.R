@@ -373,10 +373,10 @@
   if (!.is_arr(state$records) || !.is_arr(state$history)) .fail("Records and history must be arrays")
   if (is.null(names(state$current)) || is.null(names(state$bindings))) .fail("Current and bindings must be objects")
   required <- c("schema_version","project","state_revision","last_transaction","records","current","bindings","history","imported")
-  if (!setequal(names(state), required) || !state$schema_version %in% c("0.1.0", "0.2.0", "0.3.0")) .fail("Unsupported state schema")
+  if (!setequal(names(state), required) || !state$schema_version %in% c("0.1.0", "0.2.0", "0.3.0", "0.4.0")) .fail("Unsupported state schema")
   if (!.is_int(state$state_revision, TRUE) || !.is_uuid(state$last_transaction)) .fail("Invalid state revision or transaction")
   project_fields <- c("id","name","purpose","raw_dir","metadata","next_task","questions","authorities")
-  if (!.is_obj(state$project) || !setequal(names(state$project), project_fields) && !(state$schema_version %in% c("0.2.0", "0.3.0") && setequal(names(state$project), c(project_fields, "design")))) .fail("Invalid project fields")
+  if (!.is_obj(state$project) || !setequal(names(state$project), project_fields) && !(state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0") && setequal(names(state$project), c(project_fields, "design")))) .fail("Invalid project fields")
   if (!.is_uuid(state$project$id) || !is.character(state$project$name) || length(state$project$name) != 1L || !nzchar(state$project$name) || !.is_arr(state$project$questions) || !.is_arr(state$project$authorities)) .fail("Invalid project identity or arrays")
   for (field in c("purpose", "next_task")) if (!is.null(state$project[[field]]) && (!is.character(state$project[[field]]) || length(state$project[[field]]) != 1L)) .fail("Invalid project text")
   for (field in c("raw_dir", "metadata")) if (!is.null(state$project[[field]])) .validate_locator(state$project[[field]])
@@ -386,8 +386,10 @@
   kinds <- c(DATA = "data", ANA = "analysis", FIG = "figure", DEC = "decision", DES = "design")
   fields <- c("kind","id","revision","name","created_at","locator","role","type","sha256","size","inputs","analysis","code","method","params","details","status","foreign_refs")
   for (r in if (is.null(record_only)) state$records else list(record_only)) {
-    optional_fields <- if (state$schema_version %in% c("0.2.0", "0.3.0") && r$kind %in% c("analysis", "figure") || identical(state$schema_version, "0.3.0") && r$kind == "data") "design" else character()
-    if (identical(state$schema_version, "0.3.0") && r$kind == "data") optional_fields <- c(optional_fields, "scope")
+    optional_fields <- if (state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0") && r$kind %in% c("analysis", "figure") || state$schema_version %in% c("0.3.0", "0.4.0") && r$kind == "data") "design" else character()
+    if (state$schema_version %in% c("0.3.0", "0.4.0") && r$kind == "data") optional_fields <- c(optional_fields, "scope")
+    if (state$schema_version == "0.4.0" && r$kind %in% c("analysis", "figure")) optional_fields <- c(optional_fields, "input_mode")
+    if (state$schema_version == "0.4.0" && r$kind == "figure") optional_fields <- c(optional_fields, "preservation")
     if (!.is_obj(r) || !all(fields %in% names(r)) || !all(names(r) %in% c(fields, optional_fields)) || anyDuplicated(names(r)) || !grepl("^(DATA|ANA|FIG|DEC|DES)-[0-9]{3,}$", r$id) || !identical(kinds[[sub("-.*", "", r$id)]], r$kind) || !.is_int(r$revision, TRUE) || !r$status %in% c("active","superseded","inactive")) .fail("Invalid record")
     if (!is.character(r$name) || length(r$name) != 1L || !.is_obj(r$details) || !.is_arr(r$code) || !.is_arr(r$foreign_refs) || (!is.null(r$params) && !.is_obj(r$params)) || (!is.null(r$inputs) && !.is_arr(r$inputs))) .fail("Invalid record fields")
     if (!nzchar(r$name) || !is.character(r$created_at) || length(r$created_at) != 1L) .fail("Record name and time required")
@@ -406,11 +408,17 @@
     if (!is.null(r$locator)) .validate_locator(r$locator)
     if (!is.null(r$inputs)) for (x in r$inputs) if (.record_kind(state, x) != "data") .fail("Input must reference data")
     if (!is.null(r$analysis) && .record_kind(state, r$analysis) != "analysis") .fail("Figure analysis must reference analysis")
+    if ("input_mode" %in% names(r) && (!is.character(r$input_mode) || length(r$input_mode) != 1L || !r$input_mode %in% c("separate", "combined") || !is.null(r$analysis))) .fail("Invalid input_mode")
+    if ("preservation" %in% names(r)) {
+      x <- r$preservation
+      if (!.is_obj(x) || !setequal(names(x), c("artifact_role", "source")) || !identical(x$artifact_role, "preserved_copy") || r$locator$kind != "project" || !startsWith(r$locator$value, ".nb_project_bundle/outputs/")) .fail("Invalid preservation")
+      .validate_locator(x$source)
+    }
     if (r$kind == "figure" && !is.null(r$analysis) && !is.null(r$design)) .fail("Linked figure cannot store a design reference")
     if (r$kind == "figure" && !is.null(r$analysis) && "design" %in% names(r)) .fail("Linked figure inherits its analysis design")
     if (!is.null(r$design) && .record_kind(state, r$design) != "design") .fail("Record design must reference design")
     if (r$kind == "design") {
-      if (!state$schema_version %in% c("0.2.0", "0.3.0") || r$id != "DES-001") .fail("Invalid design record identity")
+      if (!state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0") || r$id != "DES-001") .fail("Invalid design record identity")
       .validate_design_details(state, r$details)
     }
     if ("scope" %in% names(r)) .validate_scope(state, r$scope)
@@ -470,8 +478,12 @@ ProjectBundle <- local({
       out$availability_checked <- check_files
       out
     }
-    append_record <- function(rec, action, code_bytes = list()) {
-      .validate(state, record_only = rec)
+    append_record <- function(rec, action, code_bytes = list(), context_check = TRUE, version = NULL) {
+      proposed <- state
+      if (!is.null(version)) proposed$schema_version <- version
+      .validate(proposed, record_only = rec)
+      if (context_check && rec$kind %in% c("analysis", "figure") && identical(context_report(rec)$status, "inconsistent")) .fail(paste0("SCOPE_CONFLICT: ", paste(unlist(context_report(rec)$issues), collapse = "; ")))
+      state$schema_version <<- proposed$schema_version
       state$records[[length(state$records) + 1L]] <<- rec
       state <<- .index_add(state, rec)
       if (length(code_bytes)) pending_code[names(code_bytes)] <<- code_bytes
@@ -485,12 +497,100 @@ ProjectBundle <- local({
       captured <- list()
       if (!length(rec$code)) return(captured)
       for (entry in rec$code) if (!is.null(entry$snapshot)) {
+        dest <- entry$snapshot
+        if (!is.null(pending_code[[dest]])) {
+          if (.hash_raw(pending_code[[dest]]) != entry$sha256) .fail("Pending code snapshot changed")
+          next
+        }
+        snapshot <- .resolve(root, state, .obj(kind = "project", value = dest))
+        if (!is.null(snapshot) && file.exists(snapshot)) {
+          if (dir.exists(snapshot) || .hash(snapshot) != entry$sha256) .fail("Recorded code snapshot changed")
+          next
+        }
         source <- .resolve(root, state, entry$locator)
+        if (is.null(source) || !file.exists(source) || dir.exists(source) || file.info(source)$size > 1048576) .fail("Code snapshot source missing or oversized")
         bytes <- readBin(source, "raw", n = file.info(source)$size)
         if (.hash_raw(bytes) != entry$sha256) .fail("Code changed during registration")
-        captured[[entry$snapshot]] <- bytes
+        captured[[dest]] <- bytes
       }
       captured
+    }
+    select_design <- function(ref) {
+      if (is.null(ref)) return(NULL)
+      ref <- .ref(state, ref)
+      if (.record_kind(state, ref) != "design") .fail("Design reference required")
+      ref
+    }
+    context_report <- function(rec) {
+      if (rec$kind == "figure" && !is.null(rec$analysis)) rec <- .record(state, rec$analysis)
+      if (is.null(rec$design)) return(.obj(status = "unknown", issues = list(), unknown = list("design")))
+      design <- .record(state, rec$design)$details
+      inputs <- if (rec$kind == "data") list(rec) else lapply(rec$inputs, function(x) .record(state, x))
+      issues <- unknown <- character(); union <- character()
+      if (!length(inputs)) unknown <- "inputs"
+      mode <- if (is.null(rec$input_mode)) if (length(inputs) <= 1L) "separate" else "unknown" else rec$input_mode
+      if (mode == "unknown") unknown <- c(unknown, "input_mode")
+      scope_unknown <- FALSE
+      for (data in inputs) {
+        label <- paste0(data$id, "@", data$revision)
+        condition <- NULL
+        if (!is.null(data$design)) condition <- .record(state, data$design)$details$condition
+        if (is.null(condition)) {unknown <- c(unknown, paste(label, "condition")); scope_unknown <- TRUE; next}
+        if (!identical(condition, design$condition)) {issues <- c(issues, paste(label, "condition differs")); next}
+        values <- data$scope$condition_values
+        if (is.null(values)) {unknown <- c(unknown, paste(label, "condition_values")); scope_unknown <- TRUE; next}
+        values <- unlist(values, use.names = FALSE); union <- unique(c(union, values))
+        if (!all(values %in% unlist(design$levels, use.names = FALSE))) issues <- c(issues, paste(label, "undeclared levels"))
+        if (mode == "separate" && !all(unlist(design$selected_levels, use.names = FALSE) %in% values)) issues <- c(issues, paste(label, "selected levels absent"))
+      }
+      if (mode %in% c("combined", "unknown") && length(inputs) && !scope_unknown && !all(unlist(design$selected_levels, use.names = FALSE) %in% union)) issues <- c(issues, "combined selected levels absent")
+      .obj(status = if (length(issues)) "inconsistent" else if (length(unknown)) "unknown" else "consistent", issues = .arr(issues), unknown = .arr(unknown))
+    }
+    check_context <- function(ref) {
+      rec <- .record(state, ref)
+      if (!rec$kind %in% c("data", "analysis", "figure")) .fail("Context requires data, analysis or figure")
+      context_report(rec)
+    }
+    resolve_figure <- function(ref, verify) {
+      if (missing(verify) || !identical(verify, "sha256")) .fail("verify='sha256' required")
+      ref <- .ref(state, ref); rec <- .record(state, ref)
+      if (rec$kind != "figure") .fail("Figure required")
+      if (rec$status != "active") .fail("INACTIVE")
+      checked <- tryCatch(.verify_file(root, state, rec, ref), error = function(e) .fail(paste0(conditionMessage(e), "; ", if (is.null(rec$preservation)) "no preserved copy recorded" else "preserved copy unavailable or changed")))
+      out <- get_figure(ref); out$path <- checked$path; out$available <- TRUE; out$availability_checked <- TRUE
+      out$verification <- .obj(file_integrity = "match", baseline_sha256 = rec$sha256, observed_sha256 = checked$observed)
+      out
+    }
+    save_figure <- function(source, type = NULL, ref = NULL, ...) {
+      context <- list(...)
+      if (any(c("preservation", "artifact_role") %in% names(context))) .fail("Reserved preservation metadata")
+      loc <- .locator(root, source); path <- .resolve(root, state, loc)
+      if (is.null(path) || !file.exists(path) || dir.exists(path)) .fail("Source must be an existing regular file")
+      original <- if (is.null(ref)) NULL else .copy(.record(state, ref))
+      if (!is.null(original) && (original$kind != "figure" || length(context))) .fail("Figure revision retains its context; use update_record first")
+      if (is.null(type) && is.null(original)) .fail("Figure type required")
+      digest <- .hash(path)
+      base <- file.path(root, ".nb_project_bundle", "outputs")
+      dir.create(base, recursive = TRUE, showWarnings = FALSE)
+      base <- .resolve(root, state, .obj(kind = "project", value = ".nb_project_bundle/outputs"))
+      folder <- file.path(base, paste0("figure-", .uuid()))
+      if (!dir.create(folder, showWarnings = FALSE)) .fail("Cannot exclusively create output directory")
+      complete <- FALSE
+      on.exit(if (!complete) unlink(folder, recursive = TRUE), add = TRUE)
+      dest <- file.path(folder, basename(path))
+      if (!file.copy(path, dest, overwrite = FALSE) || !identical(.hash(dest), digest) || !identical(.hash(path), digest)) .fail("Source changed or copy failed")
+      preservation <- .obj(artifact_role = "preserved_copy", source = loc)
+      if (is.null(original)) {
+        rec <- do.call(figure_record, c(list(path = dest, type = type), context))
+      } else {
+        rec <- original; rec$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
+        rec$created_at <- .now(); rec$locator <- .locator(root, dest); rec$sha256 <- digest; rec$size <- as.numeric(file.info(dest)$size)
+        rec$details$format <- tolower(tools::file_ext(dest))
+        if (!is.null(type)) rec$type <- type
+      }
+      rec$preservation <- preservation
+      out <- append_record(rec, "save_figure", capture_code(rec), version = "0.4.0")
+      complete <- TRUE; out
     }
     register_data <- function(path, role, name = NULL, hash = FALSE, ...) {
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
@@ -502,26 +602,33 @@ ProjectBundle <- local({
       rec <- .new_record(state, "data", if (is.null(name)) basename(if (is.null(p)) loc$value else p) else name, loc, role = role, sha256 = digest, size = size, details = details)
       append_record(rec, "register_data")
     }
-    register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, ...) {
+    register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Analysis inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = validate_details(.obj(...)), design = state$project$design)
-      append_record(rec, "register_analysis", capture_code(rec))
+      rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = validate_details(.obj(...)), design = select_design(design_ref))
+      rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
+      append_record(rec, "register_analysis", capture_code(rec), version = "0.4.0")
     }
-    register_figure <- function(path, type, analysis = NULL, name = NULL, inputs = NULL, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, ...) {
+    figure_record <- function(path, type, analysis = NULL, name = NULL, inputs = NULL, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (is.null(p) || dir.exists(p)) .fail("Figure must be a local regular file")
       if (!is.null(analysis)) {
         analysis <- .ref(state, analysis)
         if (.record_kind(state, analysis) != "analysis") .fail("Figure analysis must reference analysis")
-        if (!is.null(inputs) || !is.null(code) || !is.null(method) || !is.null(params)) .fail("Direct analytical fields conflict with analysis")
+        if (!is.null(inputs) || !is.null(code) || !is.null(method) || !is.null(params) || !missing(design_ref) || !missing(input_mode)) .fail("Direct analytical fields conflict with analysis")
       }
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- validate_details(.obj(...)); details$format <- tolower(tools::file_ext(p)); details$provenance$file <- "captured"
-      design <- if (is.null(analysis)) state$project$design else NULL
+      details <- validate_details(.obj(...)); if (any(c("preservation", "artifact_role") %in% names(details))) .fail("Reserved preservation metadata")
+      details$format <- tolower(tools::file_ext(p)); details$provenance$file <- "captured"
+      design <- if (is.null(analysis)) select_design(design_ref) else NULL
       rec <- .new_record(state, "figure", if (is.null(name)) tools::file_path_sans_ext(basename(p)) else name, loc, type = type, sha256 = .hash(p), size = file.info(p)$size, inputs = inputs, analysis = analysis, code = entries, method = method, params = params, details = details, design = design)
-      append_record(rec, "register_figure", capture_code(rec))
+      if (is.null(analysis)) {rec["design"] <- list(design); rec$input_mode <- input_mode}
+      rec
+    }
+    register_figure <- function(...) {
+      rec <- figure_record(...)
+      append_record(rec, "register_figure", capture_code(rec), version = "0.4.0")
     }
     get_data <- function(ref = NULL, role = NULL, purpose = NULL, check_files = FALSE) {
       if (!is.logical(check_files) || length(check_files) != 1L || is.na(check_files)) .fail("Invalid check_files")
@@ -549,7 +656,7 @@ ProjectBundle <- local({
       }
       new <- .copy(rec); new$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
       new$created_at <- .now(); new$scope <- scope; new["design"] <- list(design_ref)
-      proposed <- .copy(state); proposed$schema_version <- "0.3.0"
+      proposed <- .copy(state); proposed$schema_version <- if (state$schema_version == "0.4.0") "0.4.0" else "0.3.0"
       proposed$records[[length(proposed$records) + 1L]] <- new
       .validate(proposed, record_only = new)
       state <<- .index_state(proposed)
@@ -611,6 +718,7 @@ ProjectBundle <- local({
       out$analysis_details <- if (is.null(rec$analysis)) .copy(rec$details) else .copy(.record(state, rec$analysis)$details)
       out$analysis_details$provenance$file <- NULL # Analysis context is not the figure file.
       analytical_source <- if (is.null(rec$analysis)) rec else .record(state, rec$analysis)
+      out["input_mode"] <- list(.copy(analytical_source$input_mode))
       out$provenance <- .obj(figure_file = if (is.null(rec$details$provenance$file)) "unknown" else rec$details$provenance$file,
                              analytical = if (is.null(analytical_source$details$provenance$analytical)) "unknown" else analytical_source$details$provenance$analytical,
                              execution = "unknown")
@@ -661,7 +769,7 @@ ProjectBundle <- local({
       existing <- Filter(function(r) identical(r$kind, "design"), state$records)
       rec <- .new_record(state, "design", "Experimental design", details = details)
       if (length(existing)) {rec$id <- "DES-001"; rec$revision <- max(vapply(existing, function(r) r$revision, numeric(1))) + 1L}
-      proposed <- .copy(state); if (!identical(proposed$schema_version, "0.3.0")) proposed$schema_version <- "0.2.0"
+      proposed <- .copy(state); if (identical(proposed$schema_version, "0.1.0")) proposed$schema_version <- "0.2.0"
       proposed$records[[length(proposed$records) + 1L]] <- rec
       proposed$project$design <- .make_ref(proposed, rec)
       .validate(proposed)
@@ -733,11 +841,22 @@ ProjectBundle <- local({
     update_record <- function(ref, changes, reason) {
       rec <- .record(state, ref)
       if (rec$kind == "design") .fail("Use set_design to revise design")
-      allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path")
+      allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
       new <- .copy(rec); new$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
       if (rec$kind == "data" && !is.null(rec$scope) && identical(rec$scope$membership_evidence$status, "verification_recorded") && ("path" %in% names(changes) || "details" %in% names(changes))) .fail("MEMBERSHIP_EVIDENCE: revise scope before changing bound file or membership")
+      if (any(c("preservation", "artifact_role") %in% names(changes$details))) .fail("Reserved preservation metadata")
+      if (!is.null(rec$preservation) && "path" %in% names(changes)) .fail("Use save_figure for preserved bytes")
+      if (any(c("design_ref", "input_mode") %in% names(changes)) && !rec$kind %in% c("analysis", "figure")) .fail("Use set_data_scope for DATA design")
+      if ("analysis" %in% names(changes) && any(c("inputs", "code", "method", "params", "design_ref", "input_mode") %in% names(changes))) .fail("Do not override inherited analysis context")
+      if (rec$kind == "figure" && !is.null(rec$analysis) && any(c("inputs", "code", "method", "params", "design_ref", "input_mode") %in% names(changes))) .fail("Linked figure inherits analysis context")
+      if ("design_ref" %in% names(changes)) new["design"] <- list(select_design(changes$design_ref))
+      if ("analysis" %in% names(changes)) {
+        if (rec$kind != "figure" || is.null(changes$analysis)) .fail("Exact figure analysis required")
+        new$analysis <- .ref(state, changes$analysis); new$design <- NULL; new$input_mode <- NULL
+        new["inputs"] <- list(NULL); new$code <- list(); new["method"] <- list(NULL); new["params"] <- list(NULL)
+      }
       if (!is.null(changes$path)) {
         if (!rec$kind %in% c("data", "figure")) .fail("Path correction needs file record")
         loc <- .locator(root, changes$path); file <- .resolve(root, state, loc)
@@ -745,8 +864,8 @@ ProjectBundle <- local({
         new$locator <- loc; new$sha256 <- .hash(file); new$size <- as.numeric(file.info(file)$size)
       }
       new$created_at <- .now()
-      for (key in setdiff(names(changes), "path")) new[key] <- list(.copy(changes[[key]]))
-      out <- append_record(new, "update_record"); state$history[[length(state$history)]]$reason <<- reason; out
+      for (key in setdiff(names(changes), c("path", "design_ref", "analysis"))) new[key] <- list(.copy(changes[[key]]))
+      out <- append_record(new, "update_record", context_check = any(c("inputs", "design_ref", "input_mode", "analysis") %in% names(changes)), version = if (any(c("design_ref", "input_mode", "analysis") %in% names(changes))) "0.4.0" else NULL); state$history[[length(state$history)]]$reason <<- reason; out
     }
     record_decision <- function(text, reason, targets = list()) {
       if (!nzchar(text) || !nzchar(reason)) .fail("Decision text and reason required")
@@ -920,7 +1039,7 @@ ProjectBundle <- local({
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
-    self <- list(register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

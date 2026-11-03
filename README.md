@@ -12,11 +12,11 @@ Use it when your analysis spans multiple sessions, your datasets change, or some
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.4.0.md)
+[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.5.0.md)
 
 ## Install
 
-Version **0.4.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.5.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
@@ -120,7 +120,7 @@ print(list(inputs = figure$inputs, code = figure$code, params = figure$params, p
 
 Open the project once and use exact getters for frequent metadata lookups. In 0.4, availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 
-Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.4.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
+Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.5.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
 
 ## Conditions and levels
 
@@ -166,7 +166,27 @@ p$get_design_summary()
 
 </details>
 
-Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.4.0.md#experimental-design) for verification rules and getters.
+Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.5.0.md#experimental-design-and-saved-object-scope) for verification rules and getters.
+
+Analysis registration uses the project design as a default and pins that exact
+revision once. Pass `design_ref` to choose another exact design, or explicit
+`None` (R: `NULL`) to record unknown design. DATA scope describes available file
+contents; selected design levels describe the intended comparison. Extra
+available levels do not mean the file was filtered.
+
+`input_mode="separate"` checks each known input's declared scope. Use explicit
+`input_mode="combined"` when separate condition files jointly support a comparison;
+this declaration does not pool or merge files. `check_context(ref)` reports known
+contradictions and missing context without reading scientific data. Declared
+consistency does not establish biological correctness or scientific approval.
+
+To check a retained figure's bytes, use `resolve_figure(ref, verify="sha256")`.
+Ordinary `get_figure` remains a metadata lookup. To preserve an existing saved
+figure, call `save_figure(source, type, analysis=...)`, then `save()`. This copies
+one file into an exclusive managed location. Pass `ref` instead of analytical
+context to append an existing figure's revision. Older copies and external files
+are never overwritten. An external file's hash alone provides no preserved copy.
+See the [full contract](docs/api/API_0.5.0.md#exact-designs-and-saved-figure-copies--050).
 
 ## Share a result
 
@@ -230,7 +250,7 @@ The [agent guide](docs/agent/USAGE.md) gives the full usage rules. You can also 
 
 Records describe the sources you supply; they are not proof that code ran or that a result is scientifically valid. Data remain native files, and selecting levels does not subset an object.
 
-Older projects remain readable. Saving experimental design requires clients ≥0.3.0; new DATA scope/design records require clients ≥0.4.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
+Older projects remain readable. Saving experimental design requires clients ≥0.3.0; DATA scope/design records require clients ≥0.4.0; explicit analysis input modes and managed figure copies require clients ≥0.5.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
 
 ## Tests
 
@@ -239,5 +259,5 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.4.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.5.0.tar.gz
 ```

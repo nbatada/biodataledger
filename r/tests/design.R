@@ -44,7 +44,7 @@ figure_record <- Filter(function(r) r$kind == "figure", persisted$records)[[1]]
 stopifnot(!"design" %in% names(figure_record))
 stopifnot(reopened$get_design()$ref$revision == 3L,
           reopened$get_analysis(a)$design_ref$revision == 1L,
-          jsonlite::fromJSON(registry)$schema_version == "0.2.0")
+          jsonlite::fromJSON(registry)$schema_version == "0.4.0")
 saved <- readBin(registry, "raw", file.info(registry)$size)
 text <- rawToChar(saved)
 tampered <- sub('"evidence_source":"metadata-verified"', '"evidence_source":"scientist-declared"', text, fixed = TRUE)

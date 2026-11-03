@@ -7,6 +7,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import socket
+import shutil
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -20,6 +21,8 @@ from .design import validate_design, check_metadata, compact_design, summary_tex
 VERSION = "0.1.0"
 DESIGN_VERSION = "0.2.0"
 SCOPE_VERSION = "0.3.0"
+CONTEXT_VERSION = "0.4.0"
+_DEFAULT = object()
 STATE_PATH = ".nb_project_bundle/project.json"
 MAX_JSON = 20 * 1024 * 1024
 PREFIXES = {"data": "DATA", "analysis": "ANA", "figure": "FIG", "decision": "DEC", "design": "DES"}
@@ -132,7 +135,7 @@ def ref_key(ref):
 
 def validate_record(rec, version):
     validate_values(rec)
-    require(isinstance(rec, dict) and RECORD_KEYS <= set(rec) <= RECORD_KEYS | {"design", "scope"}, "invalid record fields")
+    require(isinstance(rec, dict) and RECORD_KEYS <= set(rec) <= RECORD_KEYS | {"design", "scope", "input_mode", "preservation"}, "invalid record fields")
     require(rec["kind"] in PREFIXES, "invalid record kind")
     require(isinstance(rec["id"], str) and re.fullmatch(PREFIXES[rec["kind"]] + r"-\d{3,}", rec["id"]), "invalid record ID")
     require(type(rec["revision"]) is int and rec["revision"] >= 1, "invalid record revision")
@@ -164,8 +167,17 @@ def validate_record(rec, version):
         if code["snapshot"] is not None:
             require(code["snapshot"] == ".nb_project_bundle/code/" + str(code["sha256"]), "invalid snapshot path")
     require(version != VERSION or "design" not in rec and rec["kind"] != "design", "design requires schema 0.2.0")
-    require("scope" not in rec or version == SCOPE_VERSION and rec["kind"] == "data", "scope requires schema 0.3.0 DATA")
-    require(rec["kind"] != "data" or "design" not in rec or version == SCOPE_VERSION, "DATA design requires schema 0.3.0")
+    require("scope" not in rec or version in (SCOPE_VERSION, CONTEXT_VERSION) and rec["kind"] == "data", "scope requires schema 0.3.0 DATA")
+    require(rec["kind"] != "data" or "design" not in rec or version in (SCOPE_VERSION, CONTEXT_VERSION), "DATA design requires schema 0.3.0")
+    if "input_mode" in rec:
+        require(version == CONTEXT_VERSION and rec["kind"] in ("analysis", "figure") and rec["input_mode"] in ("separate", "combined"), "invalid input_mode")
+        require(rec["analysis"] is None, "linked figure inherits input mode")
+    if "preservation" in rec:
+        value = rec["preservation"]
+        require(version == CONTEXT_VERSION and rec["kind"] == "figure" and isinstance(value, dict) and set(value) == {"artifact_role", "source"}, "invalid preservation")
+        require(value["artifact_role"] == "preserved_copy", "invalid artifact role")
+        validate_locator(value["source"])
+        require(rec["locator"]["kind"] == "project" and rec["locator"]["value"].startswith(".nb_project_bundle/outputs/"), "invalid preserved path")
     if "scope" in rec:
         from .scope import normalize_scope
         require(normalize_scope(rec["scope"], require) == rec["scope"], "scope must use canonical fields")
@@ -204,7 +216,7 @@ def validate_links(rec, check_ref):
 def validate_state(state):
     validate_values(state)
     require(isinstance(state, dict) and set(state) == STATE_KEYS, "unexpected/missing state fields")
-    require(state["schema_version"] in (VERSION, DESIGN_VERSION, SCOPE_VERSION), "unsupported schema version")
+    require(state["schema_version"] in (VERSION, DESIGN_VERSION, SCOPE_VERSION, CONTEXT_VERSION), "unsupported schema version")
     project = state["project"]
     require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design"}, "invalid project fields")
     require(valid_uuid(project["id"]) and isinstance(project["name"], str) and project["name"], "invalid project identity")
@@ -407,7 +419,7 @@ class ProjectBundle:
                 "type": None, "sha256": None, "size": None, "inputs": None, "analysis": None,
                 "code": [], "method": None, "params": None, "details": {}, "status": "active", "foreign_refs": []}
 
-    def _stage(self, rec, action="register", reason=None, version=None):
+    def _stage(self, rec, action="register", reason=None, version=None, context_check=True):
         version = version or self.state["schema_version"]
         validate_record(rec, version)
         require(ref_key(rec) not in self._index, "duplicate record revision")
@@ -417,6 +429,9 @@ class ProjectBundle:
                 return rec
             return self._record(ref, kind)
         validate_links(rec, check_ref)
+        if context_check and rec["kind"] in ("analysis", "figure"):
+            report = self._context_report(rec)
+            require(report["status"] != "inconsistent", "SCOPE_CONFLICT: " + "; ".join(report["issues"]))
         snapshots = {}
         for code in rec["code"]:
             dest = code["snapshot"]
@@ -470,23 +485,25 @@ class ProjectBundle:
         rec["details"]["provenance"] = {"file": "captured" if hash else "unknown", "analytical": "declared"}
         return self._stage(rec)
 
-    def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True, **details):
+    def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True,
+                          design_ref=_DEFAULT, input_mode="separate", **details):
         rec = self._new("analysis", name)
         require(inputs is None or isinstance(inputs, list), "inputs must be list or None")
         rec.update(inputs=None if inputs is None else [self._ref(self._record(x, "data")) for x in inputs],
                    code=self._code(code, snapshot_code), method=method, params=copy.deepcopy(params), details=copy.deepcopy(details))
         rec["details"]["provenance"] = {"file": "unknown", "analytical": "declared"}
-        if self.state["project"].get("design") is not None:
-            rec["design"] = copy.deepcopy(self.state["project"]["design"])
-        return self._stage(rec)
+        rec["design"] = self._select_design(design_ref)
+        rec["input_mode"] = input_mode
+        return self._stage(rec, version=CONTEXT_VERSION)
 
-    def register_figure(self, path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None,
-                        snapshot_code=True, **details):
+    def _figure_record(self, path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None,
+                        snapshot_code=True, design_ref=_DEFAULT, input_mode=_DEFAULT, **details):
+        require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
         locator = self._locator(path)
         file = self._resolve(locator)
         require(file is not None and file.is_file(), "figure must be an existing regular file")
         if analysis is not None:
-            require(all(x is None for x in (inputs, code, method, params)), "do not override inherited analysis fields")
+            require(all(x is None for x in (inputs, code, method, params)) and design_ref is _DEFAULT and input_mode is _DEFAULT, "do not override inherited analysis fields")
         rec = self._new("figure", name or file.stem)
         rec.update(locator=locator, type=type, size=file.stat().st_size, sha256=fingerprint(file),
                    analysis=self._ref(self._record(analysis, "analysis")) if analysis is not None else None,
@@ -494,9 +511,117 @@ class ProjectBundle:
                    code=self._code(code, snapshot_code), method=method, params=copy.deepcopy(params), details=copy.deepcopy(details))
         rec["details"]["format"] = file.suffix.lstrip(".").lower()
         rec["details"]["provenance"] = {"file": "captured", "analytical": "declared" if analysis or inputs or code else "unknown"}
-        if analysis is None and self.state["project"].get("design") is not None:
-            rec["design"] = copy.deepcopy(self.state["project"]["design"])
-        return self._stage(rec)
+        if analysis is None:
+            rec["design"] = self._select_design(design_ref)
+            rec["input_mode"] = "separate" if input_mode is _DEFAULT else input_mode
+        return rec
+
+    def register_figure(self, path, type, *args, **context):
+        return self._stage(self._figure_record(path, type, *args, **context), version=CONTEXT_VERSION)
+
+    def _select_design(self, ref):
+        if ref is _DEFAULT:
+            ref = self.state["project"].get("design")
+        return self._ref(self._record(ref, "design")) if ref is not None else None
+
+    def _context_report(self, rec):
+        """Check only exact declared metadata; no payloads or default reinterpretation."""
+        if rec["kind"] == "figure" and rec["analysis"]:
+            rec = self._record(rec["analysis"], "analysis")
+        issues, unknown = [], []
+        design_ref = rec.get("design")
+        if design_ref is None:
+            return {"status": "unknown", "issues": [], "unknown": ["design"]}
+        design = self._record(design_ref, "design")["details"]
+        inputs = [rec] if rec["kind"] == "data" else [self._record(x, "data") for x in rec["inputs"] or []]
+        if not inputs:
+            unknown.append("inputs")
+        mode = rec.get("input_mode", "separate" if len(inputs) <= 1 else "unknown")
+        if mode == "unknown":
+            unknown.append("input_mode")
+        scope_unknown = False
+        union = set()
+        for data in inputs:
+            label = data["id"] + "@" + str(data["revision"])
+            scope = data.get("scope") or {}
+            condition = None
+            if data.get("design"):
+                condition = self._record(data["design"], "design")["details"]["condition"]
+            if condition is None:
+                unknown.append(label + " condition")
+                scope_unknown = True
+                continue
+            if condition != design["condition"]:
+                issues.append(label + " condition differs")
+                continue
+            values = scope.get("condition_values")
+            if values is None:
+                unknown.append(label + " condition_values")
+                scope_unknown = True
+                continue
+            values = set(values)
+            union.update(values)
+            if not values <= set(design["levels"]):
+                issues.append(label + " undeclared levels")
+            if mode == "separate" and not set(design["selected_levels"]) <= values:
+                issues.append(label + " selected levels absent")
+        if mode in ("combined", "unknown") and inputs and not scope_unknown and not set(design["selected_levels"]) <= union:
+            issues.append("combined selected levels absent")
+        return {"status": "inconsistent" if issues else "unknown" if unknown else "consistent", "issues": issues, "unknown": unknown}
+
+    def check_context(self, ref):
+        rec = self._record(ref)
+        require(rec["kind"] in ("data", "analysis", "figure"), "context requires data, analysis or figure")
+        return self._context_report(rec)
+
+    def resolve_figure(self, ref, *, verify):
+        require(verify == "sha256", "verify='sha256' required")
+        rec = self._record(ref, "figure")
+        require(rec["status"] == "active", "INACTIVE")
+        try:
+            path, actual = self._verify_file(rec)
+        except BundleError as exc:
+            note = "preserved copy unavailable or changed" if rec.get("preservation") else "no preserved copy recorded"
+            raise BundleError(str(exc) + "; " + note) from exc
+        view = self.get_figure(ref)
+        view.path, view.available, view.availability_checked = path, True, True
+        view.verification = {"file_integrity": "match", "baseline_sha256": rec["sha256"], "observed_sha256": actual}
+        return view
+
+    def save_figure(self, source, type=None, ref=None, **context):
+        """Copy an already saved figure; never execute plotting or copy DATA."""
+        require(not ({"preservation", "artifact_role", "source"} & set(context)), "reserved preservation metadata")
+        source_locator = self._locator(source)
+        source_path = self._resolve(source_locator)
+        require(source_path is not None and source_path.is_file(), "source must be an existing regular file")
+        original = copy.deepcopy(self._record(ref, "figure")) if ref is not None else None
+        if original is not None:
+            require(not context, "revise saved context with update_record before saving a new copy")
+        require(type is not None or original is not None, "figure type required")
+        digest = fingerprint(source_path)
+        base = self._internal(".nb_project_bundle/outputs")
+        base.mkdir(parents=True, exist_ok=True)
+        folder = Path(tempfile.mkdtemp(prefix="figure-", dir=base))
+        dest = folder / source_path.name
+        try:
+            with source_path.open("rb") as inp, dest.open("xb") as out:
+                shutil.copyfileobj(inp, out, length=1024 * 1024)
+            require(fingerprint(dest) == digest and fingerprint(source_path) == digest, "source changed during copy")
+            preservation = {"artifact_role": "preserved_copy", "source": source_locator}
+            if original is None:
+                # Build through ordinary registration, then attach reserved captured facts.
+                rec = self._figure_record(dest, type, **context)
+                rec["preservation"] = preservation
+                return self._stage(rec, "save_figure", version=CONTEXT_VERSION)
+            rec = original
+            rec["details"]["format"] = dest.suffix.lstrip(".").lower()
+            rec.update(revision=self._latest_index[rec["id"]]["revision"] + 1, created_at=now(),
+                       locator=self._locator(dest), sha256=digest, size=dest.stat().st_size,
+                       type=type or rec["type"], preservation=preservation)
+            return self._stage(rec, "save_figure", version=CONTEXT_VERSION)
+        except BaseException:
+            shutil.rmtree(folder)
+            raise
 
     def _verify_file(self, rec, max_bytes=None):
         label = rec["id"] + "@" + str(rec["revision"])
@@ -572,7 +697,7 @@ class ProjectBundle:
             self._membership_report(rec, scope, False)
         rec.update(revision=self._latest_index[rec["id"]]["revision"] + 1,
                    created_at=now(), scope=scope, design=design_ref)
-        return self._stage(rec, "set_data_scope", reason, version=SCOPE_VERSION)
+        return self._stage(rec, "set_data_scope", reason, version=CONTEXT_VERSION if self.state["schema_version"] == CONTEXT_VERSION else SCOPE_VERSION)
 
     def resolve_data(self, ref=None, purpose=None, *, verify, expected_scope=None, require_membership=False):
         from .scope import validate_expected, same_value
@@ -664,6 +789,7 @@ class ProjectBundle:
             setattr(view, key, copy.deepcopy(source[key]))
         view.design_ref = copy.deepcopy(source.get("design"))
         view.design = self.get_design(view.design_ref) if view.design_ref else None
+        view.input_mode = copy.deepcopy(source.get("input_mode"))
         view.analysis_details = copy.deepcopy(source["details"])
         # Analysis context has no figure file; its generic null file marker is not a figure gap.
         view.analysis_details.get("provenance", {}).pop("file", None)
@@ -705,20 +831,38 @@ class ProjectBundle:
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
         require(rec["kind"] != "design", "use set_design to revise experimental design")
-        allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path"}
+        allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis"}
         require(set(changes) <= allowed, "protected or unknown correction field")
         if rec.get("scope", {}).get("membership_evidence", {}).get("status") == "verification_recorded":
             require(not ({"path", "details"} & set(changes)), "clear membership evidence through set_data_scope before changing subject/bindings")
+        require(not ({"preservation", "artifact_role"} & set(changes.get("details", {}))), "reserved preservation metadata")
+        if rec.get("preservation"):
+            require("path" not in changes, "use save_figure to revise preserved bytes")
+        if {"design_ref", "input_mode"} & set(changes):
+            require(rec["kind"] in ("analysis", "figure"), "use set_data_scope for DATA design")
+        if "analysis" in changes:
+            require(not ({"inputs", "code", "method", "params", "design_ref", "input_mode"} & set(changes)), "do not override inherited analysis context")
+        if rec["kind"] == "figure" and rec["analysis"] is not None:
+            require(not ({"inputs", "code", "method", "params", "design_ref", "input_mode"} & set(changes)), "linked figure inherits analysis context")
+        if "design_ref" in changes:
+            rec["design"] = self._select_design(changes["design_ref"])
+        if "analysis" in changes:
+            require(rec["kind"] == "figure" and changes["analysis"] is not None, "exact figure analysis required")
+            rec["analysis"] = self._ref(self._record(changes["analysis"], "analysis"))
+            rec.pop("design", None)
+            rec.pop("input_mode", None)
+            rec.update(inputs=None, code=[], method=None, params=None)
         if "path" in changes:
             require(rec["kind"] in ("data", "figure"), "path correction requires file record")
             loc = self._locator(changes["path"])
             file = self._resolve(loc)
             require(file is not None and file.is_file(), "new revision file missing")
             rec.update(locator=loc, sha256=fingerprint(file), size=file.stat().st_size)
-        rec.update(copy.deepcopy({k: v for k, v in changes.items() if k != "path"}))
+        rec.update(copy.deepcopy({k: v for k, v in changes.items() if k not in ("path", "design_ref", "analysis")}))
         rec["revision"] = self._latest_index[rec["id"]]["revision"] + 1
         rec["created_at"] = now()
-        return self._stage(rec, "update_record", reason)
+        return self._stage(rec, "update_record", reason, version=CONTEXT_VERSION if {"design_ref", "input_mode", "analysis"} & set(changes) else None,
+                           context_check=bool({"inputs", "design_ref", "input_mode", "analysis"} & set(changes)))
 
     def set_context(self, changes):
         allowed = {"purpose", "next_task", "questions", "authorities", "raw_dir", "metadata"}
@@ -771,7 +915,7 @@ class ProjectBundle:
             details.update(evidence_source="metadata-verified", metadata_check=report)
         rec = self._new("design", "Experimental design")
         rec.update(id="DES-001", revision=self._latest_index.get("DES-001", {}).get("revision", 0) + 1, details=details)
-        version = SCOPE_VERSION if self.state["schema_version"] == SCOPE_VERSION else DESIGN_VERSION
+        version = DESIGN_VERSION if self.state["schema_version"] == VERSION else self.state["schema_version"]
         ref = self._stage(rec, "set_design", selection_reason, version=version)
         self.state["project"]["design"] = copy.deepcopy(ref)
         return ref

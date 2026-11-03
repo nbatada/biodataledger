@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "BioDataLedger state 0.1.0–0.3.0: design and dataset scope",
+  "title": "BioDataLedger state 0.1.0\u20130.4.0: design, dataset scope and figure preservation",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -19,7 +19,8 @@
       "enum": [
         "0.1.0",
         "0.2.0",
-        "0.3.0"
+        "0.3.0",
+        "0.4.0"
       ]
     },
     "project": {
@@ -390,6 +391,28 @@
         },
         "scope": {
           "$ref": "#/$defs/scope"
+        },
+        "input_mode": {
+          "enum": [
+            "separate",
+            "combined"
+          ]
+        },
+        "preservation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "artifact_role",
+            "source"
+          ],
+          "properties": {
+            "artifact_role": {
+              "const": "preserved_copy"
+            },
+            "source": {
+              "$ref": "#/$defs/locator"
+            }
+          }
         }
       },
       "allOf": [
@@ -459,6 +482,50 @@
             "properties": {
               "kind": {
                 "const": "data"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "input_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "analysis",
+                  "figure"
+                ]
+              },
+              "analysis": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "preservation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "figure"
+              },
+              "locator": {
+                "properties": {
+                  "kind": {
+                    "const": "project"
+                  },
+                  "value": {
+                    "pattern": "^\\.nb_project_bundle/outputs/"
+                  }
+                }
               }
             }
           }
@@ -846,7 +913,7 @@
       }
     }
   },
-  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation. Dataset scope and DATA design pins require schema 0.3.0. Clients validate reference kinds and canonical scope/report evidence; no implicit scientific verification.",
+  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation. Dataset scope and DATA design pins require schema 0.3.0. Clients validate reference kinds and canonical scope/report evidence; no implicit scientific verification. Schema 0.4.0 adds explicit input mode and captured figure preservation; context consistency is checked on new or revised analytical context, not legacy load.",
   "allOf": [
     {
       "if": {
@@ -925,6 +992,43 @@
                         "design"
                       ]
                     }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "enum": [
+              "0.1.0",
+              "0.2.0",
+              "0.3.0"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "records": {
+            "items": {
+              "allOf": [
+                {
+                  "not": {
+                    "required": [
+                      "input_mode"
+                    ]
+                  }
+                },
+                {
+                  "not": {
+                    "required": [
+                      "preservation"
+                    ]
                   }
                 }
               ]

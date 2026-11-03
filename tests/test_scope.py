@@ -67,7 +67,7 @@ class ScopeTests(unittest.TestCase):
         f = self.p.register_figure("plot.svg", "qc", analysis=a)
         self.p.save()
         self.p.set_design("treatment", ["Vehicle", "LowDose", "HighDose"])
-        self.assertEqual(self.p.state["schema_version"], "0.3.0")
+        self.assertEqual(self.p.state["schema_version"], "0.4.0")
         self.assertEqual(self.p.get_figure(f).inputs, [d])
         self.assertEqual(self.p.status(purpose="cd8")["dataset"]["design_ref"], self.design)
         self.assertFalse(self.p.resolve_data(ref=d, verify="sha256").verification["verified_scope_fields"])
