@@ -2,6 +2,8 @@
 
 ## Unreleased — Lightweight agent workflow
 
+- Added native `save_and_confirm()` receipts for all pending changes, including previous/new committed revision, transaction ID and explicit persisted/no-changes status. Reuses existing atomic/stale-write safeguards; no autosave, schema change or scientific-approval claim.
+
 - Added the R-only `check_object` prototype for read-only live membership, metadata, selected representation and cluster checks against existing registered references. Required FAIL/UNKNOWN returns BLOCKED; printed cards distinguish observations from declarations and unverified downstream use. Generic lists work without optional SeuratObject. No Python checker, execution engine or registry schema change.
 
 - Figure search also matches registered paths and explicit scientific asset IDs.

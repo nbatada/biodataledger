@@ -9,7 +9,7 @@ main <- function(project_dir, input_dir) {
   p <- ProjectBundle$create("Synthetic trial", project_dir = project_dir)
   data <- p$register_data("input.csv", role = "analysis_ready", hash = TRUE)
   p$set_current(data, purpose = "qc", reason = "Synthetic trial input; no scientific approval")
-  p$save()
+  receipt <- p$save_and_confirm()
   p <- ProjectBundle$open(project_dir = project_dir)
   data <- p$resolve_data(purpose = "qc", verify = "sha256")
   # Retain saved files; these declarations do not prove that the script executed.
@@ -17,7 +17,8 @@ main <- function(project_dir, input_dir) {
                                   method = "synthetic display", params = list(min_genes = 200))
   first <- p$register_figure("library.svg", type = "qc", analysis = analysis)
   p$register_figure("genes.svg", type = "qc", analysis = analysis)
-  p$save()
+  receipt <- p$save_and_confirm()
+  print(receipt)
   print(first)
   message("Four retention calls; shared context entered once. No rerun verified.")
 }

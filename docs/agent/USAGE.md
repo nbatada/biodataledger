@@ -43,3 +43,15 @@ declarations, including labels that say "observed" or "verified".
 Obtain actual scientist authority before changing current-for-purpose inputs or scientific decisions. Preserve external scientific owners. Preview all files and metadata before an authorized export. Import is inert. Distinguish inspectability, readiness for a named next task, and an actual verified rerun.
 
 This is short guidance, not a security boundary against an unrestricted shell/interpreter, not an LLM-session recorder and not a required agent integration.
+
+## Persistence boundary
+
+In a build providing save_and_confirm, use `p.save_and_confirm()` (Python) or
+`p$save_and_confirm()` (R) immediately after a completed critical input/design/
+decision change, or once after a related registration batch. It commits every
+pending edit, not just the last record. Only a returned `persisted` receipt with
+registry_written true confirms this write; include its revision/transaction when
+reporting durable retention. A clean `no_changes` result does not check freshness.
+Propagate save errors and preserve pending edits for reconciliation. Do not claim
+scientific verification or approval from the receipt. Older builds still require
+explicit `save()`; do not claim a helper is installed without checking that build.

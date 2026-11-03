@@ -1276,6 +1276,18 @@ class ProjectBundle:
                 owner.unlink()
             lock.rmdir()
 
+    def save_and_confirm(self):
+        """Commit all pending edits; a clean call reports no_changes, not freshness."""
+        previous = self._loaded_revision
+        result = self.save()
+        written = result["state_revision"] != previous
+        return {"status": "persisted" if written else "no_changes",
+                "scope": "all_pending_changes",
+                "previous_committed_revision": previous,
+                "committed_revision": result["state_revision"],
+                "transaction_id": result["transaction"],
+                "registry_written": written}
+
     def preview_export(self, mode, include=None, exclude=None, redact=None):
         from .archives import preview_export
         return preview_export(self, mode, include, exclude, redact)

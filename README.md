@@ -351,3 +351,19 @@ BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 't
 R CMD build r
 R CMD check --no-manual BioDataLedger_0.5.0.tar.gz
 ```
+
+## Confirm a saved change (local development build)
+
+The local development build adds `ledger.save_and_confirm()` in Python and
+`ledger$save_and_confirm()` in R. This helper is not in the pinned GitHub build
+above. Call it after a related result batch and immediately after a completed
+current-input, design or scientific-decision change. It saves **all pending edits**,
+including figures registered earlier, and returns the previous/new registry
+revision, transaction ID and `scope="all_pending_changes"`.
+
+`status="persisted"` and `registry_written=True/TRUE` confirm successful registry
+publication, not scientific approval. A failed save raises an error and retains
+pending edits. A clean call returns `no_changes`, performs no disk I/O and does not
+refresh a stale session. Registration/setters still need an explicit save boundary;
+there is no background autosave or rollback transaction. See the
+[receipt contract](docs/api/API_0.5.0.md#save-and-confirm-persistence).

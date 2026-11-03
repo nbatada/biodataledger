@@ -347,3 +347,38 @@ origin/downstream use. No Python checker or automatic execution gate is added.
 See [object-check v1](OBJECT_CHECK_V1.md) for the native interface, CSV authorities,
 required-field rules, manual helper example and language-neutral report contract.
 This local prototype is not included in the README's pinned published build.
+
+## Save and confirm persistence
+
+`save_and_confirm()` in Python and R saves **all pending changes** through the
+existing `save()` path. Registration and setters still stage edits; they do not
+autosave. Use this explicit boundary immediately after a completed dataset-choice,
+design or scientific-decision change, and once after registering a related result
+batch. The operation saves earlier pending edits too, including unrelated figures;
+it does not isolate the latest setter or roll back an incomplete batch.
+
+The returned receipt has these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `status` | `persisted` after a successful write; `no_changes` for a clean call |
+| `scope` | Always `all_pending_changes`; no exact changed-record inventory is claimed |
+| `previous_committed_revision` | Revision on which the loaded session was based |
+| `committed_revision` | Revision returned by the successful save |
+| `transaction_id` | Transaction ID for that committed revision |
+| `registry_written` | True only when this call published a new registry revision |
+
+On a clean call, the two revisions are equal and the transaction ID is the loaded
+revision's existing ID. No disk read/write or freshness check occurs. A stale clean
+session is not refreshed: open a new session to read the latest saved state.
+Save errors propagate without a success receipt; pending edits remain available
+for inspection/reconciliation. Do not automatically reload/discard them or retry a
+stale write. Successful registry persistence is not scientific verification or
+approval, does not copy every external dataset, and is not a power-loss guarantee.
+
+Python: `receipt = ledger.save_and_confirm()`.
+R: `receipt <- ledger$save_and_confirm()`.
+Report durable registration only after this returns `status="persisted"` and
+`registry_written=True/TRUE`. `save()` remains supported with its original return
+shape. This additive helper changes no schema, storage architecture or getter.
+It provides no background, timer or session-exit autosave.
