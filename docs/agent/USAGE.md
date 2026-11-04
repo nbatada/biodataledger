@@ -55,3 +55,14 @@ reporting durable retention. A clean `no_changes` result does not check freshnes
 Propagate save errors and preserve pending edits for reconciliation. Do not claim
 scientific verification or approval from the receipt. Older builds still require
 explicit `save()`; do not claim a helper is installed without checking that build.
+
+## Derived results in 0.6.0
+
+Use register_result for an existing derived file or exact DATA source; it references
+the file by default. Declare the exact producer and embedding selector/observation
+reference. Do not claim validation from registration. check_result explicitly
+measures CSV evidence; native Seurat/AnnData selectors remain UNKNOWN until an
+adapter measures them. Use exact rendering_inputs for figures, dependencies for
+bounded metadata lookup, and save_and_confirm once after a retained-result batch.
+Unknown provenance must remain unknown; never reconstruct historical links from
+filenames, equal counts or registration order. See docs/api/RESULTS_V1.md.

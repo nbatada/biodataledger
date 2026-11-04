@@ -459,6 +459,7 @@ ProjectBundle <- local({
     root <- normalizePath(project_dir, mustWork = TRUE); path <- file.path(root, ".nb_project_bundle", "project.json")
     if (!file.exists(path)) .fail("Project registry missing")
     state <- .validate(.read_json(path))
+    result_graph <- .result_graph(state)
     loaded_digest <- .hash(path); loaded_revision <- state$state_revision
     pending_code <- list(); dirty <- FALSE
     event <- function(action, reason = NULL, target = NULL) {
@@ -481,6 +482,7 @@ ProjectBundle <- local({
       state$schema_version <<- proposed$schema_version
       state$records[[length(state$records) + 1L]] <<- rec
       state <<- .index_add(state, rec)
+      .result_index_record(result_graph,state,rec)
       if (length(code_bytes)) pending_code[names(code_bytes)] <<- code_bytes
       ref <- .make_ref(state, rec); event(action, target = ref); ref
     }
@@ -588,6 +590,7 @@ ProjectBundle <- local({
       complete <- TRUE; out
     }
     register_data <- function(path, role, name = NULL, hash = FALSE, ...) {
+      if (.result_key %in% names(list(...))) .fail('Use register_result for result declarations')
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (!is.null(p) && !file.access(p, 4) == 0) .fail("Unreadable file")
       size <- if (!is.null(p) && !dir.exists(p)) file.info(p)$size else NULL
@@ -632,7 +635,7 @@ ProjectBundle <- local({
       if (!is.logical(check_files) || length(check_files) != 1L || is.na(check_files)) .fail("Invalid check_files")
       if (sum(!vapply(list(ref, role, purpose), is.null, logical(1))) != 1L) .fail("Choose exactly one selector")
       if (!is.null(purpose)) {ref <- state$current[[purpose]]; if (is.null(ref)) .fail("No current data for purpose")}
-      if (!is.null(ref)) {rec <- .record(state, ref); if (rec$kind != "data") .fail("Not data"); out <- view(rec, check_files); out["design_ref"] <- list(.copy(rec$design)); out["design"] <- list(if (is.null(rec$design)) NULL else get_design(rec$design)); out["scope"] <- list(.copy(rec$scope)); return(out)}
+      if (!is.null(ref)) {rec <- .record(state, ref); if (rec$kind != "data") .fail("Not data"); out <- view(rec, check_files); out["design_ref"] <- list(.copy(rec$design)); out["design"] <- list(if (is.null(rec$design)) NULL else get_design(rec$design)); out["scope"] <- list(.copy(rec$scope)); out["result"] <- list(.result_summary(state,rec)); return(out)}
       index <- attr(state, "record_index")
       if (!.design_text(role) || !exists(role, index$role_counts, inherits = FALSE) || get(role, index$role_counts) != 1L) .fail("Role selector is missing or ambiguous")
       id <- get(role, index$roles)[[1L]]
@@ -654,10 +657,12 @@ ProjectBundle <- local({
       }
       new <- .copy(rec); new$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
       new$created_at <- .now(); new$scope <- scope; new["design"] <- list(design_ref)
+      if (!is.null(rec$details[[.result_key]]) && !.result_valid(state,new)) .fail('Invalid result declaration')
       proposed <- .copy(state); proposed$schema_version <- if (state$schema_version == "0.4.0") "0.4.0" else "0.3.0"
       proposed$records[[length(proposed$records) + 1L]] <- new
       .validate(proposed, record_only = new)
       state <<- .index_state(proposed)
+      .result_index_record(result_graph,state,new)
       out <- .make_ref(state, new); event("set_data_scope", reason, out); out
     }
     resolve_data <- function(ref = NULL, purpose = NULL, verify, expected_scope = NULL, require_membership = FALSE) {
@@ -930,6 +935,11 @@ ProjectBundle <- local({
       allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
+      if (!is.null(rec$details[[.result_key]]) && ('path' %in% names(changes) ||
+          'details' %in% names(changes) && (!.result_equal(changes$details[[.result_key]],rec$details[[.result_key]]) ||
+          !.result_equal(changes$details$membership,rec$details$membership)))) .fail('Use register_result to revise result identity')
+      if (is.null(rec$details[[.result_key]]) && 'details' %in% names(changes) &&
+          !is.null(changes$details[[.result_key]])) .fail('Use register_result to declare a result')
       new <- .copy(rec); new$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
       if (rec$kind == "data" && !is.null(rec$scope) && identical(rec$scope$membership_evidence$status, "verification_recorded") && ("path" %in% names(changes) || "details" %in% names(changes))) .fail("MEMBERSHIP_EVIDENCE: revise scope before changing bound file or membership")
       if (any(c("preservation", "artifact_role") %in% names(changes$details))) .fail("Reserved preservation metadata")
@@ -951,6 +961,7 @@ ProjectBundle <- local({
       }
       new$created_at <- .now()
       for (key in setdiff(names(changes), c("path", "design_ref", "analysis", "figure_sources"))) new[key] <- list(.copy(changes[[key]]))
+      if (!is.null(rec$details[[.result_key]]) && !.result_valid(state,new)) .fail('Invalid result declaration')
       if ("figure_sources" %in% names(changes)) {
         if (rec$kind!="figure") .fail("figure_sources requires a figure")
         if (is.null(changes$figure_sources)) new$details[[.figure_sources_key]] <- NULL else new$details[[.figure_sources_key]] <- .sources_normalize(state,changes$figure_sources)
@@ -1126,10 +1137,68 @@ ProjectBundle <- local({
       }
       result
     }
+    register_result <- function(source, analysis_ref, ref = NULL, embedding = NULL, copy = FALSE, hash = FALSE) {
+      if (!is.logical(copy) || length(copy)!=1L || is.na(copy) || !is.logical(hash) || length(hash)!=1L || is.na(hash)) .fail('Invalid copy/hash')
+      producer <- .result_ref(state,analysis_ref,'analysis')
+      info <- .result_embedding(state,embedding)
+      old <- if (is.null(ref)) NULL else .record(state,.result_ref(state,ref))
+      if (!is.null(old) && !.result_valid(state,old)) .fail('Existing result declaration invalid')
+      source_ref <- if (is.list(source) || is.character(source) && length(source)==1L && grepl('^DATA-[0-9]+@[0-9]+$',source)) .result_ref(state,source) else NULL
+      if (!is.null(source_ref)) {
+        source_rec <- .record(state,source_ref)
+        if (!identical(source_rec$status,'active')) .fail('Inactive source data')
+        loc <- source_rec$locator; baseline <- source_rec$sha256; size <- source_rec$size
+      } else { loc <- .locator(root,source); baseline <- NULL; size <- NULL }
+      if (identical(loc$kind,'uri')) .fail('Local result file required')
+      path <- .resolve(root,state,loc)
+      if (is.null(path) || !file.exists(path) || dir.exists(path)) .fail('Existing regular result file required')
+      before <- file.info(path)
+      observed <- if (copy || hash) .hash(path) else NULL
+      after <- file.info(path)
+      if (copy || hash) {
+        if (!identical(before$size,after$size) || !identical(before$mtime,after$mtime) ||
+            !identical(before$ctime,after$ctime)) .fail('Source changed during registration')
+      }
+      if (!is.null(baseline) && !is.null(observed) && !identical(tolower(baseline),tolower(observed))) .fail('Source digest mismatch')
+      digest <- if (!is.null(baseline)) baseline else observed
+      if (is.null(size) || copy || hash) size <- as.numeric(after$size)
+      target <- loc
+      if (copy) {
+        base <- file.path(root,'.nb_project_bundle','outputs')
+        dir.create(base,recursive=TRUE,showWarnings=FALSE)
+        folder <- file.path(base,paste0('result-',.uuid()))
+        if (!dir.create(folder,showWarnings=FALSE)) .fail('Cannot create result folder')
+        complete <- FALSE
+        on.exit(if (!complete) unlink(folder,recursive=TRUE),add=TRUE)
+        dest <- file.path(folder,basename(path))
+        if (!file.copy(path,dest,overwrite=FALSE) || !identical(.hash(dest),observed) || !identical(.hash(path),observed)) .fail('Result copy verification failed')
+        target <- .locator(root,dest)
+      }
+      details <- if (is.null(old)) .obj() else .copy(old$details)
+      details[[.result_key]] <- .obj(version=.result_version,artifact_source_ref=source_ref,
+                                     storage=.obj(mode=if (copy) 'copy' else 'reference',source_locator=loc),embedding=info$embedding)
+      details['membership'] <- list(info$membership)
+      details <- validate_details(details)
+      details$provenance$file <- if (is.null(digest)) 'unknown' else 'captured'
+      rec <- if (is.null(old)) .new_record(state,'data',basename(path),target,role='derived_result',sha256=digest,size=size,details=details) else .copy(old)
+      if (!is.null(old)) {
+        rec$revision <- state$records[[get(rec$id,attr(state,'record_index')$latest)]]$revision+1L
+        rec$created_at <- .now();rec$locator <- target;rec$sha256 <- digest;rec$size <- size;rec$details <- details
+      }
+      rec$scope <- .normalize_scope(.obj(transformation_ref=producer))
+      rec['design'] <- list(if (is.null(producer)) NULL else .record(state,producer)$design)
+      version <- if (state$schema_version %in% c('0.3.0','0.4.0')) state$schema_version else '0.3.0'
+      if (!.result_valid(state,rec)) .fail('Invalid result declaration')
+      out <- append_record(rec,'register_result',version=version)
+      if (copy) complete <- TRUE
+      out
+    }
+    check_result <- function(ref) .result_check(root,state,.result_ref(state,ref))
+    dependencies <- function(ref,direction,depth=1,limit=20) .result_dependencies(state,result_graph,.ref(state,ref),direction,depth,limit)
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
-    self <- list(check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(register_result = register_result, check_result = check_result, dependencies = dependencies, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

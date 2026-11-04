@@ -368,6 +368,7 @@ class ProjectBundle:
         return self._dirty
 
     def _reindex(self):
+        self._lineage = None
         self._index = {}
         self._latest_index = {}
         self._kind_counts = {kind: 0 for kind in PREFIXES}
@@ -376,6 +377,8 @@ class ProjectBundle:
         for rec in self.state["records"]:
             self._index_record(rec)
         self._purposes = sorted(self.state["current"])
+        from .results import LineageIndex
+        self._lineage = LineageIndex(self)
 
     def _index_record(self, rec):
         self._index[ref_key(rec)] = rec
@@ -389,6 +392,9 @@ class ProjectBundle:
             self._latest_index[rec["id"]] = rec
             if rec["kind"] == "data" and rec["status"] == "active":
                 self._roles[rec["role"]].add(rec["id"])
+
+        if self._lineage is not None:
+            self._lineage.add(self, rec)
 
     def _locator(self, path):
         path = str(path)
@@ -471,6 +477,9 @@ class ProjectBundle:
         if context_check and rec["kind"] in ("analysis", "figure"):
             report = self._context_report(rec)
             require(report["status"] != "inconsistent", "SCOPE_CONFLICT: " + "; ".join(report["issues"]))
+        from .results import KEY as RESULT_KEY, validate_result
+        if RESULT_KEY in rec["details"]:
+            validate_result(self, rec)
         snapshots = {}
         for code in rec["code"]:
             dest = code["snapshot"]
@@ -511,6 +520,8 @@ class ProjectBundle:
         return entries
 
     def register_data(self, path, role, name=None, hash=False, **details):
+        from .results import KEY as RESULT_KEY
+        require(RESULT_KEY not in details, "use register_result to declare a result")
         require(isinstance(role, str) and role, "data role required")
         locator = self._locator(path)
         file = self._resolve(locator)
@@ -821,6 +832,8 @@ class ProjectBundle:
         view.design_ref = copy.deepcopy(rec.get("design"))
         view.design = self.get_design(view.design_ref) if view.design_ref else None
         view.scope = copy.deepcopy(rec.get("scope"))
+        from .results import describe_result
+        view.result = describe_result(self, rec)
         return view
 
     def _figure_selector(self, ref=None, asset_id=None, path=None, revision=None):
@@ -962,6 +975,8 @@ class ProjectBundle:
     def update_record(self, ref, changes, reason):
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
+        from .results import guard_update
+        guard_update(rec, changes)
         require(rec["kind"] != "design", "use set_design to revise experimental design")
         allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources"}
         require(set(changes) <= allowed, "protected or unknown correction field")
@@ -1275,6 +1290,17 @@ class ProjectBundle:
             if owner.exists():
                 owner.unlink()
             lock.rmdir()
+
+    def register_result(self, source, analysis_ref, ref=None, embedding=None, copy=False, hash=False):
+        from .results import register_result
+        return register_result(self, source, analysis_ref, ref, embedding, copy, hash)
+
+    def check_result(self, ref):
+        from .results import check_result
+        return check_result(self, ref)
+
+    def dependencies(self, ref, direction, depth=1, limit=20):
+        return self._lineage.query(self, ref, direction, depth, limit)
 
     def save_and_confirm(self):
         """Commit all pending edits; a clean call reports no_changes, not freshness."""

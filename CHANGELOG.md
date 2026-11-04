@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 — local, unpublished
+
+- Added equivalent native register_result, check_result and dependencies APIs. Result files are referenced by default; hashing/copying is explicit.
+- Preserve exact artifact, producer, observation and rendering references. CSV checks report measured properties; native Seurat/AnnData selectors remain declarations with unknown unmeasured alignment.
+- Added bounded in-memory dependency lookup and cross-language result tests. No new registry schema, database, workflow engine or mandatory scientific container.
+
 ## Unreleased — Lightweight agent workflow
 
 - Added native `save_and_confirm()` receipts for all pending changes, including previous/new committed revision, transaction ID and explicit persisted/no-changes status. Reuses existing atomic/stale-write safeguards; no autosave, schema change or scientific-approval claim.
