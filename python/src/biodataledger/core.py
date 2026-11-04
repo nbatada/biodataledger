@@ -1268,13 +1268,18 @@ class ProjectBundle:
                 "evidence": _execution_evidence()}
 
     def summary_text(self, purpose=None):
+        from . import __version__
+
+        inspection = (f"\nPackage version: {__version__}"
+                      f"\nRegistry revision: {self.state['state_revision']}"
+                      f"\nUnsaved changes: {'yes' if self.unsaved else 'no'}")
         counts = {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}
         evidence_text = "\nRegistration does not capture execution; inspect explicit run receipts."
         if purpose is None:
-            return summary_text(self.state["project"], self.get_design(), counts) + evidence_text
+            return summary_text(self.state["project"], self.get_design(), counts) + inspection + evidence_text
         status = self.status(purpose=purpose)
         return ("BioDataLedger: " + status["project"]["name"] + "\nPurpose: " + status["purpose"]
-                + "\n" + json.dumps(status.get("dataset"), ensure_ascii=False, indent=2) + evidence_text)
+                + "\n" + json.dumps(status.get("dataset"), ensure_ascii=False, indent=2) + inspection + evidence_text)
 
 
     def __repr__(self):
@@ -1342,7 +1347,10 @@ class ProjectBundle:
                     found += 1
                     if len(missing) < 5:
                         missing.append({"ref": reference(ref), "role": role, "reason": "unresolved" if path is None else "missing"})
-        result = {"project": {"id": self.state["project"]["id"], "name": text(self.state["project"]["name"], 80)},
+        from . import __version__
+
+        result = {"package_version": __version__,
+                  "project": {"id": self.state["project"]["id"], "name": text(self.state["project"]["name"], 80)},
                   "registry_revision": self.state["state_revision"], "current": current,
                   "active_question": None, "next_task": text(self.state["project"]["next_task"], 160),
                   "missing": {"checked": min(100, len(candidates)), "unchecked": max(0, len(candidates) - 100) if check_files else None,

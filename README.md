@@ -200,6 +200,15 @@ This R-only prototype is included. See the [manual example and report contract](
 
 ## Inspect and resume
 
+Inspect the loaded project with `print(ledger)` in R or `print(p)` in Python.
+The card shows the loaded package version, registry revision, unsaved changes,
+registered dataset/analysis/figure counts and experimental design. Paste this card
+with feedback to identify the runtime version. Use `ledger$summary_text(purpose="comparison")`
+or `p.summary_text(purpose="comparison")` for a selected purpose; `status()` returns
+compact structured metadata including `package_version`. These views do not reload
+the registry, read scientific payloads or hash files by default. Unsaved changes
+remain in memory until an explicit save or an execution-receipt save.
+
 Open the project once and use exact getters for frequent metadata lookups. Availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 
 **Updating an older input helper:** `availability_checked=False` means unchecked,

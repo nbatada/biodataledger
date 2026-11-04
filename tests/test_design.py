@@ -9,7 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from biodataledger import BundleError, ProjectBundle
+from biodataledger import BundleError, ProjectBundle, __version__
 from biodataledger.core import STATE_PATH, canonical
 from test_interop import R_LIBRARY
 
@@ -242,6 +242,26 @@ class DesignTests(unittest.TestCase):
             with self.assertRaises(BundleError):
                 ProjectBundle.open(self.root)
             self.assertEqual(r_design("invalid", self.root).strip(), "REJECTED")
+
+    def test_inspection_runtime_version_and_pending_state_without_io(self):
+        self.populate()
+        before = canonical(self.p.state)
+        with patch.object(Path, "open", side_effect=AssertionError("unexpected read")), \
+                patch.object(Path, "exists", side_effect=AssertionError("unexpected probe")), \
+                patch("builtins.open", side_effect=AssertionError("unexpected read")), \
+                patch("biodataledger.core.fingerprint", side_effect=AssertionError("unexpected hash")):
+            for purpose in (None, "comparison"):
+                text = self.p.summary_text(purpose)
+                self.assertIn(f"Package version: {__version__}", text)
+                self.assertIn(f"Registry revision: {self.p.state['state_revision']}", text)
+                self.assertIn("Unsaved changes: no", text)
+                self.assertEqual(self.p.status(purpose=purpose)["package_version"], __version__)
+            self.assertIn(f"Package version: {__version__}", repr(self.p))
+            self.assertEqual(canonical(self.p.state), before)
+            self.p.set_context({"next_task": "staged task"})
+            self.assertIn("Unsaved changes: yes", repr(self.p))
+            self.assertTrue(self.p.status()["unsaved"])
+        self.assertNotIn("package_version", self.p.state)
 
     def test_compact_print_and_design_endpoint(self):
         self.populate()

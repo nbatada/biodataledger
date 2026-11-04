@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Show the loaded package version, registry revision and unsaved changes in project
+  inspection cards; include `package_version` in compact status and the runtime
+  version in R input-check cards. Inspection remains read-only.
+
 - Reuse exact unchanged JSON fragments during repeated R saves in one loaded
   session. Every dirty save still validates the full state and preserves existing
   file verification, stale-write, locking and atomic publication safeguards.

@@ -13,7 +13,8 @@ unlink(file.path(root, "data.txt")); unlink(file.path(root, "code.R"))
 s <- b$status(check_files = TRUE)
 json <- jsonlite::toJSON(s, auto_unbox = TRUE, null = "null", digits = 15, force = TRUE)
 stopifnot(nchar(json, type = "bytes") <= 4096L,
-          identical(names(s), c("project", "registry_revision", "current", "active_question", "next_task", "missing", "availability_checked", "counts", "unsaved", "truncated", "evidence")),
+          identical(names(s), c("package_version", "project", "registry_revision", "current", "active_question", "next_task", "missing", "availability_checked", "counts", "unsaved", "truncated", "evidence")),
+          identical(s$package_version, as.character(getNamespaceVersion("BioDataLedger"))),
           s$unsaved, s$truncated$current == 2L, s$truncated$text,
           s$missing$checked == 2L, s$missing$found == 2L,
           all(vapply(s$missing$items, function(x) x$reason == "missing", logical(1))),
@@ -51,3 +52,23 @@ for (args in list(list(),list(purpose='scope_summary'),list(check_files=TRUE))) 
   stopifnot(nchar(jsonlite::toJSON(result,auto_unbox=TRUE,null='null'),type='bytes')<=4096L,
             !result$unsaved,identical(before,readBin(registry,'raw',n=file.info(registry)$size)))
 }
+
+# Loaded inspection cards use runtime metadata without filesystem work or hashing.
+local({
+  ns <- asNamespace('BioDataLedger')
+  blocked <- list(c('file.exists','base'), c('file.info','base'), c('readBin','base'),
+                  c('readLines','base'), c('read.dcf','base'), c('.hash','BioDataLedger'))
+  for (entry in blocked) trace(entry[[1]], where=asNamespace(entry[[2]]),
+                              tracer=quote(stop('unexpected inspection I/O')), print=FALSE)
+  on.exit(for (entry in rev(blocked)) untrace(entry[[1]], where=asNamespace(entry[[2]])))
+  for (purpose in list(NULL, 'scope_summary')) {
+    text <- b$summary_text(purpose)
+    stopifnot(grepl(paste0('Package version: ',getNamespaceVersion('BioDataLedger')),text,fixed=TRUE),
+              grepl(paste0('Registry revision: ',b$summary()$state_revision),text,fixed=TRUE),
+              grepl('Unsaved changes: no',text,fixed=TRUE),
+              identical(b$status(purpose=purpose)$package_version,as.character(getNamespaceVersion('BioDataLedger'))))
+  }
+  stopifnot(any(grepl('Package version:',capture.output(print(b)),fixed=TRUE)))
+  b$set_context(list(next_task='staged task'))
+  stopifnot(grepl('Unsaved changes: yes',b$summary_text(),fixed=TRUE),b$status()$unsaved)
+})

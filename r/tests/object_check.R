@@ -79,7 +79,9 @@ main <- function() {
   stopifnot(identical(before,readBin(registry,'raw',n=file.info(registry)$size)),!ledger$status()$unsaved,
             !grepl('S1_AA',paste(capture.output(print(good)),collapse=''),fixed=TRUE),
             grepl('declaration',paste(capture.output(print(good)),collapse=''),fixed=TRUE),
-            grepl('Unverified:',paste(capture.output(print(good)),collapse=''),fixed=TRUE))
+            grepl('Unverified:',paste(capture.output(print(good)),collapse=''),fixed=TRUE),
+            grepl(paste0('Package version: ',getNamespaceVersion('BioDataLedger')),
+                  paste(capture.output(print(good)),collapse=''),fixed=TRUE))
   revise <- function(config=config, membership=member, target=data) {
     details<-ledger$get_data(ref=target)$details
     details$object_check<-config;details['membership']<-list(membership)

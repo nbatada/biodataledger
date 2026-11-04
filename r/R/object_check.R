@@ -237,6 +237,7 @@
 }
 print.BioDataLedgerInputCheck <- function(x, ...) {
   cat('BioDataLedger -- Input Check\n')
+  cat('Package version: ', as.character(getNamespaceVersion('BioDataLedger')), '\n', sep='')
   cat('Requirement: ',.ref_text(x$requirement_ref),' | project ',x$requirement_ref$project_id,'\n',sep='')
   cat('Checker: ',x$checker,' | ',x$checked_at,'\n',sep='')
   for(name in setdiff(names(x$references),'dataset')) {

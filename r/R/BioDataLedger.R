@@ -1516,7 +1516,7 @@ ProjectBundle <- local({
                      "  File integrity: not checked")
         }
       }
-      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure), "Registration does not capture execution; inspect explicit run receipts."), collapse = "\n")
+      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure), paste0("Package version: ", getNamespaceVersion("BioDataLedger")), paste0("Registry revision: ", state$state_revision), paste0("Unsaved changes: ", if (dirty) "yes" else "no"), "Registration does not capture execution; inspect explicit run receipts."), collapse = "\n")
     }
     status <- function(compact = TRUE, purpose = NULL, check_files = FALSE) {
       if (!is.null(purpose) && !.design_text(purpose)) .fail("Invalid purpose")
@@ -1593,7 +1593,7 @@ ProjectBundle <- local({
         } else dataset <- .obj(ref = .make_ref(state, rec), design_ref = .copy(rec$design), design = short_design,
                              scope = short_scope, file_integrity = "not_checked")
       }
-      result <- .obj(project = .obj(id = state$project$id, name = clip(state$project$name, 80L)), registry_revision = state$state_revision,
+      result <- .obj(package_version = as.character(getNamespaceVersion("BioDataLedger")), project = .obj(id = state$project$id, name = clip(state$project$name, 80L)), registry_revision = state$state_revision,
                      current = .arr(current), active_question = NULL, next_task = clip(state$project$next_task, 160L),
                      missing = .obj(checked = checked, unchecked = if (check_files) length(candidates) - checked else NULL, found = if (check_files) found else NULL, items = .arr(items)),
                      availability_checked = check_files, counts = .copy(attr(state, "record_index")$summary$counts), unsaved = dirty, truncated = .obj(current = max(0L, length(purposes) - 5L), missing = found - length(items), text = clipped), evidence = .execution_summary())
