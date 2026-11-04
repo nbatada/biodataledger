@@ -268,7 +268,7 @@ class DesignTests(unittest.TestCase):
         with patch.object(Path, "open", side_effect=AssertionError("unexpected read")):
             text = repr(self.p)
             compact = self.p.get_design_summary()
-        for expected in ("BioDataLedger: PRMT5 (synthetic)", "Selected levels:  Vehicle, LowDose", "Excluded:         HighDose", "1 registered datasets"):
+        for expected in ("BioDataLedger: PRMT5 (synthetic)", "Selected levels:  Vehicle, LowDose", "Excluded:         HighDose", "Data/artifact records: 1"):
             self.assertIn(expected, text)
         self.assertEqual(compact["revision"], 1)
         self.assertFalse(compact["truncated"])
@@ -280,6 +280,34 @@ class DesignTests(unittest.TestCase):
         self.assertEqual(len(self.p.get_design_summary()["selected_levels"]), 5)
         self.assertEqual(json.loads(r_design("inspect", self.root))["compact"], self.p.get_design_summary())
         self.assertLessEqual(len(canonical(self.p.status())), 4096)
+
+    def test_card_counts_data_artifacts_and_template_run_as_records(self):
+        refs = []
+        for i in range(8):
+            path = self.root / f"input-{i}.txt"
+            path.write_text("synthetic input\n")
+            refs.append(self.p.register_data(path, "analysis_ready", hash=True))
+        self.p.update_record(refs[0], {"name": "Corrected input label"}, "synthetic correction")
+        (self.root / "operation.py").write_text(
+            "def run(*, inputs, params, seeds, outputs):\n"
+            "    for path in outputs:\n"
+            "        with open(path, 'w') as stream: stream.write('synthetic output\\n')\n")
+        template = self.p.register_analysis("Synthetic template", refs, code="operation.py")
+        (self.root / "figure.svg").write_text("synthetic figure")
+        self.p.register_figure("figure.svg", "qc", analysis=template)
+        self.p.save()
+        self.p.run_analysis(template, "run", outputs=[
+            {"path": f"output-{i}.txt", "kind": "result"} for i in range(6)])
+        before = (self.root / STATE_PATH).read_bytes()
+        text = self.p.summary_text()
+        native = json.loads(r_design("inspect", self.root))
+        for card in (text, native["text"]):
+            self.assertIn("Data/artifact records: 14", card)
+            self.assertIn("Analysis records:      2", card)
+            self.assertNotIn("registered datasets", card)
+        self.assertEqual(self.p.summary()["counts"]["data"], 14)
+        self.assertEqual(native["counts"]["analysis"], 2)
+        self.assertEqual((self.root / STATE_PATH).read_bytes(), before)
 
     def test_design_stale_writers_in_both_directions(self):
         self.populate()

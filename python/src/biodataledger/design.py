@@ -108,6 +108,6 @@ def summary_text(project, design, counts):
                              ("Replicate", design["replicate"]), ("Excluded", [x for x in design["levels"] if x not in design["selected_levels"]]),
                              ("Reason", design["selection_reason"]), ("Design revision", design["ref"]["revision"])):
             lines.append("  " + (label + ":").ljust(18) + display(value))
-    lines.extend(["Project:", "  Data:             %d registered datasets" % counts["data"],
-                  "  Analyses:         %d" % counts["analysis"], "  Figures:          %d" % counts["figure"]])
+    lines.extend(["Project:", "  Data/artifact records: %d" % counts["data"],
+                  "  Analysis records:      %d" % counts["analysis"], "  Figures:               %d" % counts["figure"]])
     return "\n".join(lines)

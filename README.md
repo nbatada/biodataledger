@@ -209,7 +209,10 @@ This R-only prototype is included. See the [manual example and report contract](
 
 Inspect the loaded project with `print(ledger)` in R or `print(p)` in Python.
 The card shows the loaded package version, registry revision, unsaved changes,
-registered dataset/analysis/figure counts and experimental design. Paste this card
+data/artifact record, analysis record and figure counts, and experimental design.
+Data/artifact records include inputs and retained outputs; analysis records can
+include a template and its execution run. These counts do not measure distinct
+biological datasets or independent analyses. Paste this card
 with feedback to identify the runtime version. Use `ledger$summary_text(purpose="comparison")`
 or `p.summary_text(purpose="comparison")` for a selected purpose; `status()` returns
 compact structured metadata including `package_version`. These views do not reload

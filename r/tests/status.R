@@ -63,7 +63,10 @@ local({
   on.exit(for (entry in rev(blocked)) untrace(entry[[1]], where=asNamespace(entry[[2]])))
   for (purpose in list(NULL, 'scope_summary')) {
     text <- b$summary_text(purpose)
-    stopifnot(grepl(paste0('Package version: ',getNamespaceVersion('BioDataLedger')),text,fixed=TRUE),
+    stopifnot(grepl(paste0('Data/artifact records: ',b$summary()$counts$data),text,fixed=TRUE),
+              grepl(paste0('Analysis records:      ',b$summary()$counts$analysis),text,fixed=TRUE),
+              !grepl('registered datasets',text,fixed=TRUE),
+              grepl(paste0('Package version: ',getNamespaceVersion('BioDataLedger')),text,fixed=TRUE),
               grepl(paste0('Registry revision: ',b$summary()$state_revision),text,fixed=TRUE),
               grepl('Unsaved changes: no',text,fixed=TRUE),
               identical(b$status(purpose=purpose)$package_version,as.character(getNamespaceVersion('BioDataLedger'))))

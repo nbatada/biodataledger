@@ -1516,7 +1516,7 @@ ProjectBundle <- local({
                      "  File integrity: not checked")
         }
       }
-      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure), paste0("Package version: ", getNamespaceVersion("BioDataLedger")), paste0("Registry revision: ", state$state_revision), paste0("Unsaved changes: ", if (dirty) "yes" else "no"), "Registration does not capture execution; inspect explicit run receipts."), collapse = "\n")
+      paste(c(lines, "Project:", sprintf("  Data/artifact records: %d", counts$data), sprintf("  Analysis records:      %d", counts$analysis), sprintf("  Figures:               %d", counts$figure), paste0("Package version: ", getNamespaceVersion("BioDataLedger")), paste0("Registry revision: ", state$state_revision), paste0("Unsaved changes: ", if (dirty) "yes" else "no"), "Registration does not capture execution; inspect explicit run receipts."), collapse = "\n")
     }
     status <- function(compact = TRUE, purpose = NULL, check_files = FALSE) {
       if (!is.null(purpose) && !.design_text(purpose)) .fail("Invalid purpose")

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Label inspection-card totals as data/artifact records and analysis records.
+  Counts include registered outputs and template/run records; they do not count
+  distinct biological datasets or independent analyses.
+
 ## 0.12.2 — maintenance release, 2026-11-04
 
 - Show the loaded package version, registry revision and unsaved changes in project
