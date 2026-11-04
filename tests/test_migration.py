@@ -28,7 +28,7 @@ class MigrationTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
 
     def test_installed_identity_and_legacy_archives(self):
-        self.assertEqual(__version__, "0.12.1")
+        self.assertEqual(__version__, "0.12.2")
         import biodataledger
         self.assertIn("site-packages", biodataledger.__file__)
         for mode in ("context", "working"):
@@ -52,6 +52,119 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual((project / STATE_PATH).read_bytes(), before)
         self.assertEqual((BASE / "schema/project.schema.json").read_bytes(),
                          (BASE / "python/src/biodataledger/project.schema.json").read_bytes())
+
+    def test_previous_release_upgrade_preserves_native_projects(self):
+        """Release gate: old installed clients produce fixtures; new clients inspect/save."""
+        previous_python = os.environ.get("BDL_PREVIOUS_PYTHON")
+        previous_r = os.environ.get("BDL_PREVIOUS_R_LIB")
+        if not previous_python or not previous_r:
+            self.skipTest("set BDL_PREVIOUS_PYTHON and BDL_PREVIOUS_R_LIB for the 0.12.1 upgrade gate")
+        python_script = r'''
+import json, sys
+from pathlib import Path
+import biodataledger
+from biodataledger import ProjectBundle
+root, action, expected_version = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+assert biodataledger.__version__ == expected_version
+assert "site-packages" in biodataledger.__file__
+if action == "create":
+    root.mkdir()
+    (root / "input.csv").write_text("sample,value\nS1,1\n")
+    (root / "source.py").write_text("# Synthetic retained source\n")
+    (root / "figure.svg").write_text("<svg/>")
+    p = ProjectBundle.create("Synthetic upgrade", root)
+    d = p.register_data("input.csv", "input", hash=True)
+    p.set_current(d, "qc", "synthetic explicit selection")
+    a = p.register_analysis("Synthetic", [d], code="source.py", method="declared", params={"cutoff": 2})
+    p.register_figure("figure.svg", "qc", analysis=a)
+    p.save()
+else:
+    p = ProjectBundle.open(root)
+    status = p.status()
+    assert status["package_version"] == expected_version and not status["unsaved"]
+    assert expected_version in repr(p)
+    assert p.get_data(purpose="qc").ref == p.get_data(ref="DATA-001@1").ref
+    assert p.get_figure("FIG-001@1").analysis == p.get_analysis("ANA-001@1").ref
+    assert p.read_figure_source("FIG-001@1")["content"]
+    if action == "save":
+        p.set_context({"next_task": "synthetic unrelated edit"})
+        assert p.status()["unsaved"]
+        assert p.save_and_confirm()["status"] == "persisted"
+        assert p.save_and_confirm()["status"] == "no_changes"
+        assert not p.status()["unsaved"]
+'''
+        r_script = r'''
+args <- commandArgs(TRUE)
+library(BioDataLedger, lib.loc = args[[4]])
+root <- args[[1]]; action <- args[[2]]
+stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == args[[3]])
+same_ref <- function(a, b) identical(a$project_id, b$project_id) && identical(a$id, b$id) && isTRUE(a$revision == b$revision)
+if (action == "create") {
+  dir.create(root)
+  writeLines("sample,value\nS1,1", file.path(root, "input.csv"))
+  writeLines("# Synthetic retained source", file.path(root, "source.R"))
+  writeLines("<svg/>", file.path(root, "figure.svg"))
+  p <- ProjectBundle$create("Synthetic upgrade", root)
+  d <- p$register_data("input.csv", "input", hash = TRUE)
+  p$set_current(d, "qc", "synthetic explicit selection")
+  a <- p$register_analysis("Synthetic", list(d), code = "source.R", method = "declared", params = list(cutoff = 2))
+  p$register_figure("figure.svg", "qc", analysis = a)
+  p$save()
+} else {
+  p <- ProjectBundle$open(root)
+  status <- p$status()
+  stopifnot(identical(status$package_version, args[[3]]), !status$unsaved,
+            any(grepl(args[[3]], capture.output(print(p)), fixed = TRUE)),
+            same_ref(p$get_data(purpose = "qc")$ref, p$get_data(ref = "DATA-001@1")$ref),
+            same_ref(p$get_figure("FIG-001@1")$analysis, p$get_analysis("ANA-001@1")$ref),
+            length(p$read_figure_source("FIG-001@1")$content) > 0)
+  if (action == "save") {
+    p$set_context(list(next_task = "synthetic unrelated edit"))
+    stopifnot(p$status()$unsaved, p$save_and_confirm()$status == "persisted",
+              p$save_and_confirm()$status == "no_changes", !p$status()$unsaved)
+  }
+}
+'''
+        def run(language, root, action, previous=False):
+            version = "0.12.1" if previous else __version__
+            env = dict(os.environ)
+            if language == "Python":
+                command = [previous_python if previous else sys.executable, "-c", python_script,
+                           str(root), action, version]
+                source = None
+            else:
+                library = previous_r if previous else R_LIBRARY
+                env["R_LIBS_USER"] = os.pathsep.join(filter(None, (library, env.get("R_LIBS_USER", ""))))
+                command = ["Rscript", "--vanilla", "-", str(root), action, version, library]
+                source = r_script
+            result = subprocess.run(command, input=source, env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        for producer in ("Python", "R"):
+            for writer in ("Python", "R"):
+                with self.subTest(producer=producer, first_new_writer=writer):
+                    root = self.root / (producer + "-to-" + writer)
+                    run(producer, root, "create", previous=True)
+                    registry = root / STATE_PATH
+                    before_bytes = registry.read_bytes()
+                    before = json.loads(before_bytes)
+                    retained = {p.relative_to(root): p.read_bytes() for p in root.rglob("*")
+                                if p.is_file() and p != registry}
+                    for reader in ("Python", "R"):
+                        run(reader, root, "inspect")
+                        self.assertEqual(registry.read_bytes(), before_bytes)
+                    run(writer, root, "save")
+                    after = json.loads(registry.read_bytes())
+                    for key in ("schema_version", "records", "current", "bindings", "imported"):
+                        self.assertEqual(after[key], before[key])
+                    self.assertEqual(after["project"]["id"], before["project"]["id"])
+                    self.assertEqual(after["state_revision"], before["state_revision"] + 1)
+                    for path, content in retained.items():
+                        self.assertEqual((root / path).read_bytes(), content)
+                    saved = registry.read_bytes()
+                    for reader in ("Python", "R"):
+                        run(reader, root, "inspect")
+                        self.assertEqual(registry.read_bytes(), saved)
 
     def test_compact_status_parity_bound_and_no_payload_reads(self):
         p, d, f, *_ = make_project(self.root / "status")

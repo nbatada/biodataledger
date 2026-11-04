@@ -5,7 +5,7 @@ checks an already-loaded object. Supply exactly one exact DATA reference or
 current-for-purpose selector. The selected DATA revision supplies the requirements.
 The method returns a `BioDataLedgerInputCheck` list with a native R print method.
 There is no Python checker yet; the report and ordinary registry metadata are
-language-neutral. This prototype is local and is not in the pinned GitHub build.
+language-neutral. This prototype is included in the pinned GitHub build.
 
 ## What is measured
 

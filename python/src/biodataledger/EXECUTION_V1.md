@@ -176,7 +176,7 @@ protect run evidence/context; they cannot constrain an unrestricted interpreter.
 Existing registry schemas, source snapshots and ZIP formats are unchanged. Older
 clients preserve optional metadata but cannot validate or enforce this contract.
 
-## Input-control checkpoints — 0.11.1 (local development)
+## Input-control checkpoints — introduced in 0.11.1
 
 Verified execution now reuses strict `resolve_data` eligibility and SHA-256 checks
 at preflight, immediately after top-level code before callback invocation, and

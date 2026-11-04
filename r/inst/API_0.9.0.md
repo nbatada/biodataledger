@@ -347,7 +347,7 @@ cards distinguish observed values, declared identity/selection and unverified
 origin/downstream use. No Python checker or automatic execution gate is added.
 See [object-check v1](OBJECT_CHECK_V1.md) for the native interface, CSV authorities,
 required-field rules, manual helper example and language-neutral report contract.
-This local prototype is not included in the README's pinned published build.
+This prototype is included in the README's pinned published build.
 
 ## Save and confirm persistence
 

@@ -4,19 +4,20 @@ A lightweight local scientific project registry for finding retained figures and
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Install 0.12.1
+## Install 0.12.2
 
 Requires Python 3.9 or newer. The package has no Python runtime dependencies.
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.1#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.2#subdirectory=python"
 python3 -c 'import biodataledger; print(biodataledger.__version__)'
 ```
 
 Use an isolated Python environment as needed. For an immutable installation,
-replace `v0.12.1` with the release's full commit SHA.
+replace `v0.12.2` with the release's full commit SHA. For an existing project or live
+session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.12.2/docs/UPDATING.md).
 
-Version 0.12.1 includes exact input/design references, retained-result lineage,
+Version 0.12.2 includes exact input/design references, retained-result lineage,
 optional execution receipts, scientific decisions, related-work retrieval,
 ordered protocols, execution history and scoped reproduce/reapply/rerender
 comparison evidence. Comparison outcomes never supply scientific approval.

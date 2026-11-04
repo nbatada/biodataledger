@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.12.2 — maintenance release, 2026-11-04
 
 - Show the loaded package version, registry revision and unsaved changes in project
   inspection cards; include `package_version` in compact status and the runtime
@@ -9,6 +9,12 @@
 - Reuse exact unchanged JSON fragments during repeated R saves in one loaded
   session. Every dirty save still validates the full state and preserves existing
   file verification, stale-write, locking and atomic publication safeguards.
+  In a local synthetic 5,000-revision benchmark, repeated saves and execution
+  receipts were about 2.9× faster; the first dirty save was about 19.5% slower.
+  Reuse adds memory proportional to registry metadata; large-file hashing is unchanged.
+  These timings do not establish performance on scientific workloads.
+- Add safe upgrade instructions for existing projects and live R/Python sessions.
+  No registry conversion, schema/API change or dependency upgrade is required.
 
 ## 0.12.1 — consolidated release, 2026-11-04
 

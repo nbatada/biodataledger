@@ -12,19 +12,22 @@ Use it when your analysis spans multiple sessions, your datasets change, or some
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
+[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
 
 ## Install
 
-Version **0.12.1** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.12.2** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-This consolidated release includes exact input checks, save confirmations, derived-
-result lineage, execution receipts, scientific decisions, related-work discovery,
-ordered protocols, execution history and scoped comparison evidence.
+This maintenance release adds version and unsaved-state inspection cards and speeds
+repeated R saves using one loaded handle. The first dirty save can take longer; see
+the [changelog](CHANGELOG.md). Existing registry formats and exact references are unchanged.
+
+Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
+prompt](docs/UPDATING.md) before changing a live R or Python session.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.12.1 from its release tag:
+Run this in R to install version 0.12.2 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -33,28 +36,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.12.1",
+  ref = "v0.12.2",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.12.1 directly from GitHub**
+**Python — install version 0.12.2 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.1#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.2#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.12.1` with the release's full commit SHA in either installation command.
+`v0.12.2` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.12.1
+git checkout v0.12.2
 ```
 
 **Python 3.9 or newer**
@@ -396,7 +399,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.12.1.tar.gz
+R CMD check --no-manual BioDataLedger_0.12.2.tar.gz
 ```
 
 ## Confirm a saved change

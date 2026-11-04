@@ -1,8 +1,8 @@
 # Derived results and dependency lineage — v1
 
-Available in the local **0.6.0** Python/R packages. This is a package API version,
-not a new registry schema. The pinned GitHub installation in the README predates
-these methods. No new schema or ZIP format is introduced.
+Introduced in the **0.6.0** Python/R packages and included in the pinned GitHub
+installation in the README. This is a package API version, not a new registry
+schema. No new schema or ZIP format is introduced.
 
 A derived result is an ordinary exact DATA revision. The library records
 `DATA → ANA → result DATA → FIG` using existing identities. It never reconstructs
