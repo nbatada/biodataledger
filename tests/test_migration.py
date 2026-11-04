@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -27,7 +28,7 @@ class MigrationTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
 
     def test_installed_identity_and_legacy_archives(self):
-        self.assertEqual(__version__, "0.12.0")
+        self.assertEqual(__version__, "0.12.1")
         import biodataledger
         self.assertIn("site-packages", biodataledger.__file__)
         for mode in ("context", "working"):
@@ -158,6 +159,56 @@ class MigrationTests(unittest.TestCase):
         result = subprocess.run(["Rscript", "--vanilla", str(script)], env=env, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.root / "r-import" / STATE_PATH).is_file())
+
+    def test_trial_archives_transfer_without_the_original_project(self):
+        native_script = r'''
+args <- commandArgs(TRUE)
+library(BioDataLedger)
+expected <- jsonlite::fromJSON(args[[4]], simplifyVector = FALSE)
+q <- ProjectBundle$import_zip(args[[1]], project_dir = args[[2]])
+f <- q$get_figure(expected$figure, check_files = TRUE)
+d <- q$get_data(ref = expected$input, check_files = TRUE)
+stopifnot(identical(isTRUE(f$available), args[[3]] == "working"),
+          identical(isTRUE(d$available), args[[3]] == "working"),
+          identical(f$evidence$execution, "unknown"))
+if (args[[3]] == "working") stopifnot(length(q$read_figure_source(expected$figure)$content) > 0)
+cat(jsonlite::toJSON(list(figure = f$ref, input = d$ref), auto_unbox = TRUE))
+'''
+        env = dict(os.environ)
+        env["R_LIBS_USER"] = os.pathsep.join(filter(None, (R_LIBRARY, env.get("R_LIBS_USER", ""))))
+        for language in ("R", "python"):
+            source = self.root / (language + "-trial")
+            command = (["Rscript", "--vanilla", str(BASE / "examples/trial_R.R"), str(source), str(BASE / "examples/input-files")]
+                       if language == "R" else [sys.executable, str(BASE / "examples/trial_python.py"), str(source)])
+            trial = subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(trial.returncode, 0, trial.stdout + trial.stderr)
+            self.assertIn("Execution evidence remains unknown", trial.stdout + trial.stderr)
+            p = ProjectBundle.open(source)
+            data = p.get_data(purpose="qc")
+            first = p.get_figure(path="library.svg")
+            expected = {"figure": first.ref, "input": data.ref}
+            source_bytes = p.read_figure_source(first.ref)["content"]
+            archives = {}
+            for mode in ("context", "working"):
+                archives[mode] = self.root / (language + "-" + mode + ".zip")
+                shutil.copyfile(source / ("trial-" + mode + ".zip"), archives[mode])
+            shutil.rmtree(source)
+            for mode, archive in archives.items():
+                q = ProjectBundle.import_zip(archive, self.root / (language + "-python-" + mode))
+                figure = q.get_figure(first.ref, check_files=True)
+                self.assertEqual(figure.ref, first.ref)
+                self.assertEqual(figure.inputs, [data.ref])
+                self.assertEqual(figure.available, mode == "working")
+                self.assertEqual(q.get_data(ref=data.ref, check_files=True).available, mode == "working")
+                self.assertEqual(figure.evidence["execution"], "unknown")
+                if mode == "working":
+                    self.assertEqual(q.read_figure_source(first.ref)["content"], source_bytes)
+                    self.assertEqual(q.resolve_data(ref=data.ref, verify="sha256").sha256, data.sha256)
+                result = subprocess.run(["Rscript", "--vanilla", "-", str(archive),
+                                         str(self.root / (language + "-R-" + mode)), mode, json.dumps(expected)],
+                                        input=native_script, env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(json.loads(result.stdout), expected)
 
 
 if __name__ == "__main__":

@@ -16,14 +16,15 @@ The example illustrates records you supply; the package does not choose or verif
 
 ## Install
 
-Version **0.9.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.12.1** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
 This consolidated release includes exact input checks, save confirmations, derived-
-result lineage, execution receipts, scientific decisions and related-work discovery.
+result lineage, execution receipts, scientific decisions, related-work discovery,
+ordered protocols, execution history and scoped comparison evidence.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.9.0 from its release tag:
+Run this in R to install version 0.12.1 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -32,28 +33,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.9.0",
+  ref = "v0.12.1",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.9.0 directly from GitHub**
+**Python — install version 0.12.1 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.9.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.1#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.9.0` with the release's full commit SHA in either installation command.
+`v0.12.1` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.9.0
+git checkout v0.12.1
 ```
 
 **Python 3.9 or newer**
@@ -82,14 +83,37 @@ Offline installation requires the build tools and dependencies to be available l
 
 ## Try it
 
-From the repository root, run either synthetic example:
+From the repository root, run the R example (or the Python equivalent):
 
 ```sh
-.venv/bin/python examples/trial_python.py "$PWD/trial-python"
 R_LIBS_USER="$PWD/.r-library" Rscript examples/trial_R.R "$PWD/trial-r" "$PWD/examples/input-files"
+.venv/bin/python examples/trial_python.py "$PWD/trial-python"
 ```
 
-Each creates a new project with one dataset, one analysis and two figures. Existing destinations are never overwritten.
+Each creates and reopens a new project with one dataset, one analysis and two
+retained figures. It prints exact project/record/revision references and missing
+execution evidence, then writes `trial-context.zip` and `trial-working.zip` inside
+that project. Existing destinations are never overwritten.
+
+The context ZIP contains metadata and history. The working ZIP also contains the
+selected synthetic input, both figures and their code snapshot. On the receiving
+Mac, set these two paths and open the copied working ZIP in R:
+
+```r
+library(BioDataLedger)
+archive_path <- "/absolute/path/to/trial-working.zip"
+import_root <- "/absolute/path/to/new-project"
+q <- ProjectBundle$import_zip(archive_path, project_dir = import_root)
+q$status()
+input <- q$resolve_data(purpose = "qc", verify = "sha256")
+figures <- q$find_figures(type = "qc")
+q$get_figure(figures[[1]]$ref, compact = TRUE)
+```
+
+Either native client can inspect either client's ZIP; import preserves exact
+references and runs no analysis. Data objects such as Seurat/RDS and AnnData/H5AD
+remain in their native formats. A context ZIP supports metadata inspection;
+its omitted input must be supplied separately before it can be resolved.
 
 ## Record data, analyses and figures
 
@@ -169,11 +193,11 @@ references. It prints PASS/FAIL/UNKNOWN for each field and returns BLOCKED when 
 required field is not PASS. Seurat support is optional; a generic R interface works
 without it. The checker does not prove downstream use or scientific validity.
 
-This R-only prototype is included in version 0.9.0. See the [manual example and report contract](docs/api/OBJECT_CHECK_V1.md).
+This R-only prototype is included. See the [manual example and report contract](docs/api/OBJECT_CHECK_V1.md).
 
 ## Inspect and resume
 
-Open the project once and use exact getters for frequent metadata lookups. In 0.4, availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
+Open the project once and use exact getters for frequent metadata lookups. Availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 
 **Updating an older input helper:** `availability_checked=False` means unchecked,
 not unavailable. Use `resolve_data(..., verify="sha256")` for verified input
@@ -343,11 +367,13 @@ object retains its revision; reopen deliberately for another writer's updates.
 Records describe the sources you supply; they are not proof that code ran or that a result is scientifically valid. Data remain native files, and selecting levels does not subset an object.
 
 `get_analysis(ref).evidence` and `get_figure(ref).evidence` distinguish declared
-input/code relationships from execution evidence (R uses `$evidence`). The
-registry currently captures no analysis execution, so execution remains unknown
-and `execution_evidence` appears in the missing-information list even when every
-declared field is present. Compact status and summaries state this explicitly.
-Hashes, code snapshots and successful imports do not change that status.
+input/code relationships from execution evidence (R uses `$evidence`).
+Ordinary registration does not capture analysis execution, so execution remains
+unknown and `execution_evidence` appears in the missing-information list even when
+every declared field is present. Explicit `run_analysis` receipts are inspected
+separately with `get_execution`; they record invocation and boundary checks while
+input consumption and scientific validity remain unknown. Hashes, code snapshots
+and successful imports do not establish execution.
 
 Older projects remain readable. Saving experimental design requires clients ≥0.3.0; DATA scope/design records require clients ≥0.4.0; explicit analysis input modes and managed figure copies require clients ≥0.5.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
 
@@ -358,13 +384,13 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.11.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.12.1.tar.gz
 ```
 
 ## Confirm a saved change
 
 Use `ledger.save_and_confirm()` in Python and
-`ledger$save_and_confirm()` in R; both are included in version 0.9.0. Call it after a related result batch and immediately after a completed
+`ledger$save_and_confirm()` in R. Call it after a related result batch and immediately after a completed
 current-input, design or scientific-decision change. It saves **all pending edits**,
 including figures registered earlier, and returns the previous/new registry
 revision, transaction ID and `scope="all_pending_changes"`.
@@ -387,7 +413,7 @@ scientific payloads. Commit the related batch with `save_and_confirm()`.
 `check_result()` explicitly checks CSV coordinates, qualified cell identities,
 alignment and available independent membership evidence. Seurat reduction and
 AnnData obsm references are supported without loading objects; their unmeasured
-alignment remains UNKNOWN. These methods are included in version 0.9.0.
+alignment remains UNKNOWN.
 See the [result contract](docs/api/RESULTS_V1.md) for examples, limits and compatibility.
 
 
@@ -426,30 +452,27 @@ or approved reuse; missing and ambiguous matches stay explicit.
 Queries read metadata without loading scientific objects or changing the registry.
 See [matching rules, native examples and limits](docs/api/RELATED_WORK_V1.md).
 
-### Ordered protocols (0.10.0 development, unreleased)
+### Ordered protocols
 
-The local development version can retain ordered protocols and compare selected
+Retain ordered protocols and compare selected
 execution receipts with their exact inputs, methods, fixed parameters and required
 outputs. It separates data-dependent results and unknown evidence. Approval is a
 scientist-submitted decision pinned to one protocol revision.
 See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
-[development API](docs/api/API_0.10.0.md). The installation commands above still
-select the published 0.9.0 release, which does not include these methods.
+[protocol API](docs/api/API_0.10.0.md).
 
-### Execution chronology (0.11.0 development, unreleased)
+### Execution chronology
 
 `execution_history()` retrieves bounded recorded runs by project, exact analysis
 or protocol. Pairwise timing evidence preserves overlaps, ties, failures and
 unknowns; display order is not an inferred execution sequence.
 `execution_history_summary()` returns compact text in Python and R. See
-[the chronology contract](docs/api/CHRONOLOGY_V1.md). Published 0.9.0 does not
-include these methods.
+[the chronology contract](docs/api/CHRONOLOGY_V1.md).
 
-### Comparison evidence (0.12.0 development, unreleased)
+### Comparison evidence
 
 Record explicit reproduce/reapply/rerender plans and exact candidate assessments
 with `register_comparison_plan`, `record_comparison_assessment` and `get_comparison`.
 Required evidence yields scoped PASS/FAIL/UNKNOWN; comparison records cannot act
 as scientific approval. No analysis or hashing is triggered. See the
-[comparison contract](docs/api/COMPARISONS_V1.md). Published 0.9.0 does not include
-these methods.
+[comparison contract](docs/api/COMPARISONS_V1.md).

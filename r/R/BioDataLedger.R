@@ -468,6 +468,7 @@
 }
 .scientific_decision_for_record <- function(state, rec) {
   if (any(.comparison_keys %in% names(rec$details))) return(list(scientific = NULL, issue = "comparison_not_scientific_decision"))
+  if (.analysis_protocol_key %in% names(rec$details)) return(list(scientific = NULL, issue = "protocol_is_not_scientific_decision"))
   parsed <- .read_scientific_descriptor(state, rec$details[[.scientific_decision_key]])
   if (is.null(parsed$scientific)) return(parsed)
   result <- tryCatch({
@@ -1240,7 +1241,7 @@ ProjectBundle <- local({
       if (isTRUE(state$imported)) unknown <- c(unknown, list("untrusted_imported_claim"))
       .obj(ref = .make_ref(state, rec), text = rec$name, reason = .copy(rec$details$reason),
            targets = .copy(if (is.null(rec$details$targets)) list() else rec$details$targets), record_status = rec$status,
-           scientific = parsed$scientific, approval = "not_authenticated", unknown = .arr(unknown),
+           scientific = parsed$scientific, approval = if (.analysis_protocol_key %in% names(rec$details)) "not_applicable" else "not_authenticated", unknown = .arr(unknown),
            imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL)
     }
     register_protocol <- function(name, steps, reason, ref = NULL) {

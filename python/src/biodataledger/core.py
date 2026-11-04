@@ -499,6 +499,8 @@ class ProjectBundle:
     def _scientific_decision_for_record(self, rec):
         if {"comparison_plan", "comparison_assessment"} & set(rec["details"]):
             return None, "comparison_is_not_scientific_decision"
+        if ANALYSIS_PROTOCOL_KEY in rec["details"]:
+            return None, "protocol_is_not_scientific_decision"
         scientific, issue = self._read_scientific_descriptor(rec["details"].get(SCIENTIFIC_DECISION_KEY))
         if scientific is None:
             return None, issue
@@ -1168,7 +1170,7 @@ class ProjectBundle:
             unknown.append("untrusted_imported_claim")
         return {"ref": self._ref(rec), "text": rec["name"], "reason": copy.deepcopy(rec["details"].get("reason")),
                 "targets": copy.deepcopy(rec["details"].get("targets", [])), "record_status": rec["status"],
-                "scientific": scientific, "approval": "not_applicable" if {"comparison_plan", "comparison_assessment"} & set(rec["details"]) else "not_authenticated", "unknown": unknown,
+                "scientific": scientific, "approval": "not_applicable" if {ANALYSIS_PROTOCOL_KEY, "comparison_plan", "comparison_assessment"} & set(rec["details"]) else "not_authenticated", "unknown": unknown,
                 "imported_claim": "untrusted_imported_claim" if self.state["imported"] else None}
 
     def register_protocol(self, name, steps, reason, ref=None):

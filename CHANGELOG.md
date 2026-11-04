@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.12.0 — bounded comparison evidence, unreleased
+## 0.12.1 — consolidated release, 2026-11-04
+
+Includes the 0.10–0.12 development series: ordered protocols, evidence-qualified
+execution history, fresh runner input checkpoints and bounded comparison evidence.
+The existing native R/Python API, registry schemas and ZIP format are preserved.
+Scientific acceptance and input consumption remain separate from software checks.
+
+- Reject mixed scientific-decision/protocol metadata as scientific approval in
+  both native clients; valid separate approvals of exact protocols are preserved.
+- Refresh pinned installation instructions and package checks, and extend the
+  synthetic native trials with context/working ZIP handoffs and explicit unknowns.
+
+## 0.12.0 — development milestone, included in 0.12.1
 
 - Add explicit comparison plan/assessment types, separate from scientific decisions
   and approvals, reusing DEC storage without schema migration.
@@ -10,7 +22,7 @@
   and perform no new payload hashing, scientific execution or automatic reruns.
 
 
-## 0.11.1 — local P0 correction, unreleased
+## 0.11.1 — development milestone, included in 0.12.1
 
 - Align runner input eligibility with strict exact DATA resolution.
 - Recheck files before callback and after callback/error; retain checkpoint evidence.
@@ -18,7 +30,7 @@
 - Preserve unknown consumption and legacy receipt compatibility; no sandbox claim.
 
 
-## 0.11.0 — local development, unreleased
+## 0.11.0 — development milestone, included in 0.12.1
 
 - Add bounded execution-history retrieval by project, exact analysis or protocol,
   reusing existing receipts without persisted format or registration changes.
@@ -28,7 +40,7 @@
   evidence qualifications. Queries do not load scientific data or write records.
 
 
-## 0.10.0 — local development, unreleased
+## 0.10.0 — development milestone, included in 0.12.1
 
 - Add versioned ordered protocols that pin existing analysis revisions, separate
   fixed parameters from data-dependent results, and declare required outputs.

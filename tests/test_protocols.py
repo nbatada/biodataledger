@@ -113,6 +113,46 @@ class ProtocolTests(unittest.TestCase):
         report = self.compare(numeric, self.run_record(self.analysis_record(params={'n': 1.0})))['steps'][0]
         self.assertNotIn('params.n', report['mismatches'])
 
+    def test_mixed_protocol_descriptor_cannot_supply_scientific_approval(self):
+        protocol = self.protocol()
+        approval = self.p.record_scientific_decision('approved', 'submitted', [{'ref': protocol}], 'approved')
+        self.assertEqual(self.p.compare_protocol(protocol, [], approval_ref=approval)['approval']['status'], 'match')
+        self.p.save_and_confirm()
+        state_path = self.root / '.nb_project_bundle/project.json'
+        state = json.loads(state_path.read_text())
+        # Simulate malformed external metadata; supported writers reject this conversion.
+        record = next(rec for rec in state['records'] if rec['id'] == approval['id'])
+        record['details']['analysis_protocol'] = copy.deepcopy(self.p._record(protocol)['details']['analysis_protocol'])
+        state_path.write_text(json.dumps(state))
+        project = ProjectBundle.open(self.root)
+        view = project.get_decision(approval)
+        from biodataledger.comparison import _approval
+        observed = {
+            'scientific': view['scientific'], 'approval': view['approval'],
+            'protocol_approval': project.compare_protocol(protocol, [], approval_ref=approval)['approval']['status'],
+            'comparison_approval': _approval(project, approval, protocol),
+        }
+        script = r'''
+args <- commandArgs(TRUE)
+library(BioDataLedger)
+p <- ProjectBundle$open(args[[1]])
+view <- p$get_decision(args[[3]])
+report <- p$compare_protocol(args[[2]], list(), approval_ref = args[[3]])
+cat(jsonlite::toJSON(list(scientific = view$scientific, approval = view$approval,
+  protocol_approval = report$approval$status), auto_unbox = TRUE, null = "null"))
+'''
+        env = dict(os.environ)
+        library = env.get('BDL_R_LIB', str(Path(__file__).resolve().parents[1] / '.r-library'))
+        env['R_LIBS_USER'] = os.pathsep.join(filter(None, (library, env.get('R_LIBS_USER', ''))))
+        result = subprocess.run(['Rscript', '--vanilla', '-', str(self.root),
+                                 protocol['id'] + '@1', approval['id'] + '@1'],
+                                input=script, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        native = json.loads(result.stdout)
+        expected = {'scientific': None, 'approval': 'not_applicable', 'protocol_approval': 'unknown'}
+        self.assertEqual({'python': observed, 'R': native},
+                         {'python': dict(expected, comparison_approval='UNKNOWN'), 'R': expected})
+
     def test_wrong_exact_inputs_method_code_design_and_input_mode(self):
         protocol = self.protocol()
         other = self.p.register_data('input.txt', 'other identity', hash=True)

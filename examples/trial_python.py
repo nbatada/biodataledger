@@ -1,5 +1,6 @@
 """Register an existing tiny synthetic input and two figures in a new trial folder."""
 from pathlib import Path
+import json
 import shutil
 import sys
 from biodataledger import ProjectBundle
@@ -21,10 +22,21 @@ def main(project_dir):
     analysis = p.register_analysis("Synthetic QC", inputs=[data.ref], code="qc.py",
                                    method="synthetic display", params={"min_genes": 200})
     first = p.register_figure("library.svg", type="qc", analysis=analysis)
-    p.register_figure("genes.svg", type="qc", analysis=analysis)
+    second = p.register_figure("genes.svg", type="qc", analysis=analysis)
     receipt = p.save_and_confirm()
+    p = ProjectBundle.open(project_dir=root)
+    print("Reopened:", p.status())
+    print("Exact references:", json.dumps({"input": data.ref, "analysis": analysis, "figures": [first, second]}))
+    print("Retained figure:", p.get_figure(first, compact=True))
+    # These fixture files and metadata are synthetic; review real export plans before sharing.
+    for mode in ("context", "working"):
+        selected = [data.ref, first, second] if mode == "working" else None
+        plan = p.preview_export(mode, include=selected)
+        archive = root / ("trial-" + mode + ".zip")
+        p.export_zip(plan, path=archive)
+        print(mode, "ZIP:", archive, "payload files:", len(plan["files"]))
     print("Persisted", first, "in", root, "receipt:", receipt)
-    print("Four retention calls; shared source/method/parameters entered once. No rerun verified.")
+    print("Four retention calls; shared source/method/parameters entered once. Execution evidence remains unknown; no rerun verified.")
 
 
 if __name__ == "__main__":
