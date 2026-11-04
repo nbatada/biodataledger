@@ -358,7 +358,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.9.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.10.0.tar.gz
 ```
 
 ## Confirm a saved change
@@ -425,3 +425,13 @@ or approved reuse; missing and ambiguous matches stay explicit.
 
 Queries read metadata without loading scientific objects or changing the registry.
 See [matching rules, native examples and limits](docs/api/RELATED_WORK_V1.md).
+
+### Ordered protocols (0.10.0 development, unreleased)
+
+The local development version can retain ordered protocols and compare selected
+execution receipts with their exact inputs, methods, fixed parameters and required
+outputs. It separates data-dependent results and unknown evidence. Approval is a
+scientist-submitted decision pinned to one protocol revision.
+See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
+[development API](docs/api/API_0.10.0.md). The installation commands above still
+select the published 0.9.0 release, which does not include these methods.

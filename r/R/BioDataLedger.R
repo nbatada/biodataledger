@@ -22,6 +22,7 @@
 .json <- function(x) as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = 15, force = TRUE))
 .metadata_limit <- 20971520
 .scientific_decision_key <- "scientific_decision"
+.analysis_protocol_key <- "analysis_protocol"
 .scientific_decision_version <- "biodataledger-scientific-decision/1"
 .scientific_statuses <- c("proposed", "provisional", "approved", "superseded")
 # Parse only the bounded bytes that were actually read.
@@ -644,6 +645,7 @@ ProjectBundle <- local({
       if (.result_key %in% names(list(...))) .fail('Use register_result for result declarations')
       if ("execution_receipt" %in% names(list(...))) .fail("Execution receipt is runner-managed")
       if (.scientific_decision_key %in% names(list(...))) .fail("Scientific decision metadata is reserved")
+      if (.analysis_protocol_key %in% names(list(...))) .fail("Analysis protocol metadata is reserved")
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (!is.null(p) && !file.access(p, 4) == 0) .fail("Unreadable file")
       size <- if (!is.null(p) && !dir.exists(p)) file.info(p)$size else NULL
@@ -659,6 +661,7 @@ ProjectBundle <- local({
       details <- .obj(...)
       if ("execution_receipt" %in% names(details)) .fail("Execution receipt is runner-managed")
       if (.scientific_decision_key %in% names(details)) .fail("Scientific decision metadata is reserved")
+      if (.analysis_protocol_key %in% names(details)) .fail("Analysis protocol metadata is reserved")
       details$provenance <- .obj(file = "unknown", analytical = "declared")
       rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
@@ -674,7 +677,7 @@ ProjectBundle <- local({
       }
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt", .scientific_decision_key) %in% names(details))) .fail("Reserved metadata")
+      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt", .scientific_decision_key, .analysis_protocol_key) %in% names(details))) .fail("Reserved metadata")
       if (!is.null(figure_sources)) details[[.figure_sources_key]] <- .sources_normalize(state, figure_sources)
       details$format <- tolower(tools::file_ext(p))
       details$provenance <- .obj(file = "captured", analytical = if (!is.null(analysis) || length(inputs) || length(entries)) "declared" else "unknown")
@@ -1131,7 +1134,9 @@ ProjectBundle <- local({
       if ("execution_receipt" %in% names(rec$details)) .fail("Execution runs are runner-managed")
       if ("details" %in% names(changes) && "execution_receipt" %in% names(changes$details)) .fail("Execution receipt is runner-managed")
       if ("details" %in% names(changes) && .scientific_decision_key %in% names(changes$details)) .fail("Scientific decision metadata is writer-managed")
+      if ("details" %in% names(changes) && .analysis_protocol_key %in% names(changes$details)) .fail("Analysis protocol metadata is writer-managed")
       if (rec$kind == "decision" && .scientific_decision_key %in% names(rec$details) && !identical(names(changes), "status")) .fail("Typed scientific decisions allow lifecycle status correction only")
+      if (.analysis_protocol_key %in% names(rec$details)) .fail("Use register_protocol to revise analysis protocols")
       if (!is.null(rec$details[[.result_key]]) && ('path' %in% names(changes) ||
           'details' %in% names(changes) && (!.result_equal(changes$details[[.result_key]],rec$details[[.result_key]]) ||
           !.result_equal(changes$details$membership,rec$details$membership)))) .fail('Use register_result to revise result identity')
@@ -1179,6 +1184,7 @@ ProjectBundle <- local({
         if (old$kind != "decision") .fail("Not decision")
         latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
         if (old$revision != latest$revision) .fail("Scientific decision revision must be current")
+        if (.analysis_protocol_key %in% names(old$details)) .fail("Cannot convert analysis protocol to scientific decision")
         prior <- .scientific_decision_for_record(state, old)
         if (!is.null(prior$issue) && prior$issue != "legacy_untyped_decision") .fail("Cannot revise unsupported or malformed scientific decision")
         if (!is.null(prior$scientific)) {
@@ -1203,6 +1209,88 @@ ProjectBundle <- local({
            targets = .copy(if (is.null(rec$details$targets)) list() else rec$details$targets), record_status = rec$status,
            scientific = parsed$scientific, approval = "not_authenticated", unknown = .arr(unknown),
            imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL)
+    }
+    register_protocol <- function(name, steps, reason, ref = NULL) {
+      if (!is.character(name) || length(name) != 1L || !nzchar(name)) .fail("Protocol name required")
+      descriptor <- .protocol_descriptor(state, steps, reason)
+      if (is.null(ref)) rec <- .new_record(state, "decision", name) else {
+        old <- .record(state, ref); latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
+        if (old$kind != "decision" || old$revision != latest$revision) .fail("Protocol revision must be current")
+        if (.scientific_decision_key %in% names(old$details)) .fail("Cannot convert scientific decision to analysis protocol")
+        prior <- .protocol_read(state, old)
+        if (is.null(prior$protocol)) .fail("Cannot revise unsupported or malformed protocol")
+        rec <- .copy(old); rec$revision <- old$revision + 1L; rec$created_at <- .now()
+      }
+      rec$name <- name; rec$details <- .obj(reason = reason, targets = .copy(descriptor$targets), approval = "not_authenticated")
+      rec$details[[.analysis_protocol_key]] <- descriptor
+      out <- append_record(rec, "register_protocol"); state$history[[length(state$history)]]$reason <<- reason; out
+    }
+    get_protocol <- function(ref) {
+      rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
+      parsed <- .protocol_read(state, rec); unknown <- if (is.null(parsed$issue)) list() else list(parsed$issue)
+      if (isTRUE(state$imported)) unknown <- c(unknown, list("untrusted_imported_claim"))
+      .obj(ref = .make_ref(state, rec), name = rec$name, record_status = rec$status, protocol = parsed$protocol,
+           unknown = .arr(unknown), imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL)
+    }
+    compare_protocol <- function(ref, executions, approval_ref = NULL) {
+      rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
+      parsed <- .protocol_read(state, rec); if (is.null(parsed$protocol)) .fail(paste0("Protocol unavailable: ", parsed$issue))
+      protocol <- parsed$protocol
+      if (!.is_arr(executions) || length(executions) > 100L) .fail("executions must be an array of at most 100 items")
+      ids <- character(); expanded <- 0L; selected <- lapply(executions, function(item) {
+        if (!.is_obj(item) || !setequal(names(item), c("step_id", "analysis_ref")) || !is.character(item$step_id) || length(item$step_id) != 1L || !nzchar(item$step_id) || item$step_id %in% ids) .fail("Invalid execution selection")
+        ids <<- c(ids, item$step_id); analysis <- .record(state, item$analysis_ref); if (analysis$kind != "analysis") .fail("Execution analysis_ref must reference analysis")
+        bytes <- nchar(.json(analysis), type = "bytes")
+        if (bytes > .protocol_limit) .fail("Protocol analysis metadata exceeds 64 KiB limit")
+        expanded <<- expanded + bytes
+        if (expanded > 1048576L) .fail("Selected analysis metadata exceeds 1 MiB limit")
+        .obj(step_id = item$step_id, analysis_ref = .make_ref(state, analysis))
+      })
+      expected_ids <- vapply(protocol$steps, `[[`, "step_id", FUN.VALUE = character(1)); selected_ids <- vapply(selected, `[[`, "step_id", FUN.VALUE = character(1))
+      by_id <- setNames(selected, selected_ids)
+      receipts <- setNames(lapply(selected, function(item) get_execution(item$analysis_ref)), selected_ids)
+      step_reports <- lapply(protocol$steps, function(expected) {
+        item <- by_id[[expected$step_id]]
+        if (is.null(item)) return(.obj(step_id = expected$step_id, expected_analysis_ref = .copy(expected$analysis_ref), selected_analysis_ref = NULL, mismatches = list("missing_step"), unknown = list()))
+        result <- .obj(step_id = expected$step_id, expected_analysis_ref = .copy(expected$analysis_ref), selected_analysis_ref = .copy(item$analysis_ref), mismatches = list(), unknown = list(), data_dependent_observations = .obj())
+        receipt <- receipts[[item$step_id]]; result$receipt_status <- receipt$status
+        if (identical(receipt$status, "unknown") || isTRUE(state$imported)) { result$unknown <- c(result$unknown, list("execution_receipt")); return(result) }
+        result$receipt_template_ref <- .copy(receipt$template_ref)
+        if (!identical(receipt$status, "succeeded")) result$mismatches <- c(result$mismatches, list(paste0("execution_status.", receipt$status)))
+        observed <- .record(state, item$analysis_ref); template <- .record(state, expected$analysis_ref)
+        for (field in c("inputs", "method", "code", "design", "input_mode")) if (!.protocol_same(observed[[field]], template[[field]])) result$mismatches <- c(result$mismatches, list(field))
+        if (is.null(template$params) || is.null(observed$params)) { if (!.protocol_same(template$params, observed$params)) result$mismatches <- c(result$mismatches, list("params")) } else {
+          keys <- sort(unique(c(names(template$params), names(observed$params))), method = "radix")
+          for (key in keys) if (key %in% unlist(expected$data_dependent_params, use.names = FALSE)) {
+            if (!key %in% names(observed$params)) result$unknown <- c(result$unknown, list(paste0("data_dependent_param.", key))) else result$data_dependent_observations[key] <- list(.copy(observed$params[[key]]))
+          } else if ((key %in% names(template$params)) != (key %in% names(observed$params)) || !.protocol_same(template$params[[key]], observed$params[[key]])) result$mismatches <- c(result$mismatches, list(paste0("params.", key)))
+        }
+        if (is.null(expected$seeds)) result$unknown <- c(result$unknown, list("seeds")) else if (!.protocol_same(receipt$seeds, expected$seeds)) result$mismatches <- c(result$mismatches, list("seeds"))
+        got <- lapply(Filter(function(x) identical(x$status, "registered"), receipt$outputs), function(x) { out <- .obj(kind = x$kind); if (!is.null(x$type)) out$type <- x$type; out })
+        if (!.protocol_same(.arr(got), expected$required_outputs)) result$mismatches <- c(result$mismatches, list("required_outputs"))
+        if (any(vapply(receipt$inputs, function(item) !identical(item$identity, "match"), logical(1)))) result$unknown <- c(result$unknown, list("input_identity"))
+        result$unknown <- c(result$unknown, list("environment", "input_consumption", "scientific_validity", "actual_parameter_use")); result
+      })
+      approval <- if (is.null(approval_ref)) .obj(status = "not_supplied") else tryCatch({ view <- get_decision(approval_ref); scientific <- view$scientific; if (isTRUE(state$imported) || is.null(scientific) || !identical(scientific$scientific_status, "approved")) .obj(status = "unknown", reason = "approval_not_approved_or_malformed") else .obj(status = if (.protocol_same(.arr(lapply(scientific$subjects, `[[`, "ref")), .arr(list(.make_ref(state, rec)))) ) "match" else "mismatch", ref = .copy(view$ref)) }, error = function(e) .obj(status = "unknown", reason = "approval_reference_unavailable"))
+      extra <- selected_ids[!selected_ids %in% expected_ids]
+      starts <- lapply(receipts, function(item) .protocol_timestamp(item$started_at_utc))
+      ends <- lapply(receipts, function(item) .protocol_timestamp(item$ended_at_utc))
+      observed_order <- "unknown"
+      valid_times <- !isTRUE(state$imported) && length(receipts) > 1L &&
+        all(vapply(receipts, function(item) identical(item$status, "succeeded"), logical(1))) &&
+        all(vapply(c(starts, ends), function(x) length(x) == 1L && !is.na(x), logical(1))) &&
+        all(vapply(seq_along(receipts), function(i) starts[[i]] < ends[[i]], logical(1)))
+      if (valid_times) {
+        pairs <- seq_len(length(receipts) - 1L)
+        if (all(vapply(pairs, function(i) ends[[i]] < starts[[i + 1L]], logical(1)))) observed_order <- "strict_nonoverlap_in_submitted_order"
+        else if (any(vapply(pairs, function(i) starts[[i]] > ends[[i + 1L]], logical(1)))) observed_order <- "different_from_submitted_order"
+      }
+      report <- .obj(report_version = .protocol_version, protocol_ref = .make_ref(state, rec), registry_revision = state$state_revision, unsaved = dirty,
+           imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL,
+           approval = approval, submitted_order = .arr(as.list(selected_ids)), expected_order = .arr(as.list(expected_ids)), order = if (identical(selected_ids, expected_ids)) "match" else "mismatch", observed_order = observed_order, extra_steps = .arr(as.list(extra)), steps = .arr(step_reports),
+           coverage = .obj(protocol = "intended_declared", execution = "selected_receipts_only", environment = "unknown", scientific_validity = "unknown", input_consumption = "unknown"))
+      if (nchar(.json(report), type = "bytes") > .protocol_limit) .fail("Protocol comparison exceeds 64 KiB report limit")
+      report
     }
     rebind_external <- function(ref, path, reason) {
       rec <- .record(state, ref)
@@ -1429,7 +1517,7 @@ ProjectBundle <- local({
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
-    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, related_work = related_work, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

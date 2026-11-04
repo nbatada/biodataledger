@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0 — local development, unreleased
+
+- Add versioned ordered protocols that pin existing analysis revisions, separate
+  fixed parameters from data-dependent results, and declare required outputs.
+- Reuse exact scientific decisions for declared protocol approval; revisions do
+  not inherit approval. Prior protocol revisions remain unchanged.
+- Compare selected execution receipts with intended steps and report differences,
+  missing evidence and chronology limits without running or loading analyses.
+- Preserve native R/Python, existing state/ZIP formats and dependency footprint.
+  Metadata agreement does not establish scientific compliance or input consumption.
+
+
 ## 0.9.0 — consolidated release, 2026-11-03
 
 First public release of the 0.6–0.9 development series. Includes the R live-object

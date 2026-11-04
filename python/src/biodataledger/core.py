@@ -30,6 +30,7 @@ RECORD_KEYS = set("kind id revision name created_at locator role type sha256 siz
 STATE_KEYS = set("schema_version project state_revision last_transaction records current bindings history imported".split())
 PROJECT_KEYS = set("id name purpose raw_dir metadata next_task questions authorities".split())
 SCIENTIFIC_DECISION_KEY = "scientific_decision"
+ANALYSIS_PROTOCOL_KEY = "analysis_protocol"
 SCIENTIFIC_DECISION_VERSION = "biodataledger-scientific-decision/1"
 SCIENTIFIC_STATUSES = {"proposed", "provisional", "approved", "superseded"}
 
@@ -588,6 +589,7 @@ class ProjectBundle:
         require(RESULT_KEY not in details, "use register_result to declare a result")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
+        require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
         require(isinstance(role, str) and role, "data role required")
         locator = self._locator(path)
         file = self._resolve(locator)
@@ -605,6 +607,7 @@ class ProjectBundle:
                           design_ref=_DEFAULT, input_mode="separate", **details):
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
+        require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
         rec = self._new("analysis", name)
         require(inputs is None or isinstance(inputs, list), "inputs must be list or None")
         rec.update(inputs=None if inputs is None else [self._ref(self._record(x, "data")) for x in inputs],
@@ -619,6 +622,7 @@ class ProjectBundle:
         require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
+        require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
         locator = self._locator(path)
         file = self._resolve(locator)
         require(file is not None and file.is_file(), "figure must be an existing regular file")
@@ -1048,8 +1052,11 @@ class ProjectBundle:
         require("execution_receipt" not in rec["details"], "execution runs are runner-managed")
         require(not ("details" in changes and isinstance(changes["details"], dict) and SCIENTIFIC_DECISION_KEY in changes["details"]),
                 "scientific decision metadata is writer-managed")
+        require(not ("details" in changes and isinstance(changes["details"], dict) and ANALYSIS_PROTOCOL_KEY in changes["details"]),
+                "analysis protocol metadata is writer-managed")
         if rec["kind"] == "decision" and SCIENTIFIC_DECISION_KEY in rec["details"]:
             require(set(changes) == {"status"}, "typed scientific decisions allow lifecycle status correction only")
+        require(ANALYSIS_PROTOCOL_KEY not in rec["details"], "use register_protocol to revise analysis protocols")
         from .results import guard_update
         guard_update(rec, changes)
         require(rec["kind"] != "design", "use set_design to revise experimental design")
@@ -1126,6 +1133,7 @@ class ProjectBundle:
         else:
             old = self._record(ref, "decision")
             require(old["revision"] == self._latest_index[old["id"]]["revision"], "scientific decision revision must be current")
+            require(ANALYSIS_PROTOCOL_KEY not in old["details"], "cannot convert analysis protocol to scientific decision")
             prior, issue = self._scientific_decision_for_record(old)
             require(issue in (None, "legacy_untyped_decision"), "cannot revise unsupported or malformed scientific decision")
             if prior is not None:
@@ -1154,6 +1162,18 @@ class ProjectBundle:
                 "targets": copy.deepcopy(rec["details"].get("targets", [])), "record_status": rec["status"],
                 "scientific": scientific, "approval": "not_authenticated", "unknown": unknown,
                 "imported_claim": "untrusted_imported_claim" if self.state["imported"] else None}
+
+    def register_protocol(self, name, steps, reason, ref=None):
+        from .protocol import register_protocol
+        return register_protocol(self, name, steps, reason, ref)
+
+    def get_protocol(self, ref):
+        from .protocol import get_protocol
+        return get_protocol(self, ref)
+
+    def compare_protocol(self, ref, executions, approval_ref=None):
+        from .protocol import compare_protocol
+        return compare_protocol(self, ref, executions, approval_ref)
 
     def rebind_external(self, ref, path, reason):
         require(isinstance(reason, str) and reason.strip(), "rebind reason required")

@@ -98,3 +98,13 @@ refs, execution evidence and truncation. Text similarity does not establish scie
 equivalence, approval or safe reuse. Follow exact refs for detail and use explicit
 verification where needed. The package cannot force an unrestricted agent to query
 or reuse correctly. [Full contract](../api/RELATED_WORK_V1.md).
+
+## Protocols in 0.10.0 development
+
+Use `register_protocol` only for scientist-selected intended work, pinning exact
+analysis revisions. Preserve prior revisions. Record approval through an exact
+scientific decision about that protocol revision; never infer approval.
+`compare_protocol` compares explicitly selected analysis/receipt references and
+reports differences and unknown evidence. It does not execute steps or prove
+scientific compliance, parameter use or input consumption. See
+[the protocol contract](../api/PROTOCOLS_V1.md).
