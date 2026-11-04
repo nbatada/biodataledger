@@ -43,7 +43,7 @@ class EvidenceTests(unittest.TestCase):
                     "missing": ["execution_evidence"]}
         self.assertEqual(self.p.status()["evidence"], expected)
         self.assertEqual(self.p.summary()["evidence"], expected)
-        self.assertIn("Execution evidence: not captured by registry.", self.p.summary_text())
+        self.assertIn("Registration does not capture execution; inspect explicit run receipts.", self.p.summary_text())
 
     def test_legacy_claims_are_unverified_and_queries_preserve_bytes(self):
         raw = copy.deepcopy(self.p.state)
@@ -112,7 +112,7 @@ cat(jsonlite::toJSON(list(evidence=f$evidence, provenance=f$provenance, unknown=
         self.assertEqual(native["unknown"], view.unknown)
         self.assertEqual(native["status"], self.p.status()["evidence"])
         self.assertEqual(native["summary"], self.p.summary()["evidence"])
-        self.assertIn("Execution evidence: not captured by registry.", native["text"])
+        self.assertIn("Registration does not capture execution; inspect explicit run receipts.", native["text"])
         reopened = ProjectBundle.open(self.root)
         declared = reopened.get_figure(native["claimed_figure"])
         self.assertEqual(declared.evidence["input_relationships"], "declared")

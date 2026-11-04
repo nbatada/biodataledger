@@ -591,6 +591,7 @@ ProjectBundle <- local({
     }
     register_data <- function(path, role, name = NULL, hash = FALSE, ...) {
       if (.result_key %in% names(list(...))) .fail('Use register_result for result declarations')
+      if ("execution_receipt" %in% names(list(...))) .fail("Execution receipt is runner-managed")
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (!is.null(p) && !file.access(p, 4) == 0) .fail("Unreadable file")
       size <- if (!is.null(p) && !dir.exists(p)) file.info(p)$size else NULL
@@ -603,7 +604,9 @@ ProjectBundle <- local({
     register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Analysis inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- .obj(...); details$provenance <- .obj(file = "unknown", analytical = "declared")
+      details <- .obj(...)
+      if ("execution_receipt" %in% names(details)) .fail("Execution receipt is runner-managed")
+      details$provenance <- .obj(file = "unknown", analytical = "declared")
       rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
       append_record(rec, "register_analysis", capture_code(rec), version = "0.4.0")
@@ -618,7 +621,7 @@ ProjectBundle <- local({
       }
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- .obj(...); if (any(c("preservation", "artifact_role") %in% names(details))) .fail("Reserved preservation metadata")
+      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt") %in% names(details))) .fail("Reserved preservation metadata")
       if (!is.null(figure_sources)) details[[.figure_sources_key]] <- .sources_normalize(state, figure_sources)
       details$format <- tolower(tools::file_ext(p))
       details$provenance <- .obj(file = "captured", analytical = if (!is.null(analysis) || length(inputs) || length(entries)) "declared" else "unknown")
@@ -810,6 +813,143 @@ ProjectBundle <- local({
       out$evidence <- .analytical_evidence(rec)
       out
     }
+    run_analysis <- function(analysis_ref, entry_point, outputs = list(), seeds = NULL,
+                             verify_inputs = TRUE, verify_code = TRUE) {
+      template_ref <- .ref(state, analysis_ref)
+      template <- .record(state, template_ref)
+      if (template$kind != "analysis" || !is.character(entry_point) || length(entry_point) != 1L ||
+          !nzchar(entry_point) || !grepl("^[A-Za-z.][A-Za-z0-9._]*$", entry_point) ||
+          !is.logical(verify_inputs) || length(verify_inputs) != 1L || is.na(verify_inputs) ||
+          !is.logical(verify_code) || length(verify_code) != 1L || is.na(verify_code) ||
+          (!is.null(seeds) && !.is_obj(seeds)) || length(template$code) != 1L ||
+          is.null(template$code[[1L]]$snapshot)) .fail("Execution requires one snapshotted code file and valid arguments")
+      if (length(template$inputs) > 100L) .fail("Execution supports at most 100 inputs")
+      specs <- .execution_output_specs(outputs, root)
+      code <- template$code[[1L]]
+      receipt <- .obj(version = .execution_version, status = "started", template_ref = .copy(template_ref),
+        run_ref = .obj(project_id = state$project$id, id = .next_id(state, "analysis"), revision = 1L), receipt_ref = NULL, started_at_utc = .now(), ended_at_utc = NULL,
+        entry_point = entry_point, language = "r",
+        code = .obj(path = code$locator$value, digest = code$sha256,
+                    snapshot_digest = code$sha256, snapshot = code$snapshot),
+        method = .copy(template$method), params = .copy(template$params), seeds = .copy(seeds),
+        inputs = .arr(lapply(template$inputs, function(input_ref) .obj(ref = .copy(input_ref), path = NULL, identity = "unknown", reason = "not_checked"))), outputs = .arr(lapply(specs, .execution_output_view)),
+        phases = .obj(execution_started = FALSE, code_executed = FALSE, callback_invoked = FALSE),
+        input_consumption = "unknown", scientific_validity = "unknown", downstream_consumption = "unknown",
+        error = NULL)
+      run <- .copy(template); run$id <- receipt$run_ref$id; run$revision <- 1L
+      receipt$receipt_ref <- .copy(receipt$run_ref)
+      run$name <- paste0(template$name, " execution"); run$created_at <- .now()
+      run$details$execution_receipt <- receipt
+      run_ref <- append_record(run, "run_analysis_started", context_check = FALSE)
+      # The started revision is intentionally durable before any file verification or callback.
+      started <- save_and_confirm()
+      terminal <- function(status, message = NULL) {
+        receipt$status <<- status; receipt$ended_at_utc <<- .now(); receipt["error"] <<- list(message)
+        final <- .copy(run); final$revision <- state$records[[get(run$id, attr(state, "record_index")$latest)]]$revision + 1L
+        final$created_at <- .now(); receipt$receipt_ref <<- .obj(project_id = state$project$id, id = final$id, revision = final$revision)
+        final$details$execution_receipt <- .copy(receipt)
+        append_record(final, "run_analysis_terminal", context_check = FALSE)
+        persisted <- save_and_confirm()
+        returned <- .copy(receipt); returned$persistence <- persisted
+        returned
+      }
+      fail_terminal <- function(status, message) {
+        final <- terminal(status, message)
+        .execution_stop(message, final)
+      }
+      checked_inputs <- tryCatch(lapply(template$inputs, function(input_ref) {
+        input <- .record(state, input_ref); path <- .resolve(root, state, input$locator)
+        item <- .obj(ref = .copy(input_ref), path = path, identity = "unknown", reason = "verification_not_requested")
+        if (is.null(path) || input$locator$kind == "uri" || !file.exists(path) || dir.exists(path)) {
+          item$identity <- "unknown"; item$reason <- "local_path_unavailable"
+          return(item)
+        }
+        if (verify_inputs) {
+          if (is.null(input$sha256)) item$reason <- "digest_unknown"
+          else {
+            observed <- .hash(path)
+            if (identical(tolower(observed), tolower(input$sha256))) {item$identity <- "match"; item$reason <- "sha256_match"}
+            else {item$identity <- "mismatch"; item$reason <- "digest_mismatch"}
+          }
+        }
+        item
+      }), error = function(e) e)
+      if (inherits(checked_inputs, "error")) fail_terminal("blocked", .execution_text(checked_inputs))
+      receipt$inputs <- .arr(checked_inputs)
+      if (any(vapply(checked_inputs, function(x) is.null(x$path) || identical(x$reason, "local_path_unavailable") || !identical(x$identity, "match") && verify_inputs, logical(1))))
+        fail_terminal("blocked", "Input verification blocked")
+      snapshot_path <- .resolve(root, state, .obj(kind = "project", value = code$snapshot))
+      verification <- tryCatch({
+        if (is.null(snapshot_path) || !file.exists(snapshot_path) || dir.exists(snapshot_path) || file.info(snapshot_path)$size > 1048576) .execution_stop("Code snapshot unavailable")
+        bytes <- readBin(snapshot_path, "raw", n = 1048577L)
+        if (length(bytes) > 1048576 || !identical(.hash_raw(bytes), code$sha256)) .execution_stop("Code snapshot integrity mismatch")
+        if (verify_code) {
+          current <- .resolve(root, state, code$locator)
+          if (is.null(current) || !file.exists(current) || dir.exists(current) || !identical(.hash(current), code$sha256)) .execution_stop("Current code verification failed")
+        }
+        bytes
+      }, BioDataLedgerExecutionError = function(e) e, error = function(e) .execution_error(conditionMessage(e)))
+      if (inherits(verification, "BioDataLedgerExecutionError")) fail_terminal("blocked", conditionMessage(verification))
+      receipt$phases$execution_started <- TRUE
+      result <- tryCatch({
+        execution_env <- new.env(parent = globalenv())
+        expression <- parse(text = rawToChar(verification), keep.source = FALSE)
+        receipt$phases$code_executed <- TRUE
+        eval(expression, envir = execution_env)
+        callback <- get(entry_point, envir = execution_env, inherits = FALSE)
+        if (!is.function(callback)) .fail("Execution entry point is not a function")
+        receipt$phases$callback_invoked <- TRUE
+        do.call(callback, list(inputs = unname(vapply(checked_inputs, function(x) x$path, character(1))),
+                               params = .copy(template$params), seeds = .copy(seeds),
+                               outputs = unname(vapply(specs, function(x) x$path, character(1)))))
+        NULL
+      }, interrupt = function(e) .execution_error("Execution interrupted"), error = function(e) .execution_error(conditionMessage(e)))
+      capture_failure <- NULL
+      captured <- lapply(seq_along(specs), function(i) {
+        spec <- specs[[i]]; item <- .execution_output_view(spec)
+        if (!file.exists(spec$path) || dir.exists(spec$path)) {item$status <- "missing"; return(item)}
+        digest <- tryCatch(.hash(spec$path), error = function(e) e)
+        if (inherits(digest, "error")) {item$status <- "unreadable"; item$error <- .execution_text(digest); return(item)}
+        item$digest <- digest; item$status <- "observed"
+        registered <- tryCatch(if (identical(spec$kind, "result"))
+          register_result(spec$path, run_ref, hash = TRUE) else register_figure(spec$path, type = spec$type, analysis = run_ref),
+          error = function(e) e)
+        if (inherits(registered, "error")) {item$status <- "registration_failed"; item$error <- .execution_text(registered); capture_failure <<- item$error}
+        else if (!identical(tolower(.record(state, registered)$sha256), tolower(digest))) {
+          item$status <- "registration_failed"; item$error <- "Registered output digest mismatch"; capture_failure <<- item$error
+        } else {item$status <- "registered"; item$record_ref <- registered}
+        item
+      })
+      receipt$outputs <- .arr(captured)
+      if (!is.null(result)) fail_terminal("failed", conditionMessage(result))
+      if (any(vapply(captured, function(x) !identical(x$status, "registered"), logical(1))))
+        fail_terminal("incomplete", if (is.null(capture_failure)) "Declared output missing or unreadable" else capture_failure)
+      final <- terminal("succeeded")
+      final
+    }
+    get_execution <- function(ref) {
+      rec <- .record(state, ref)
+      if (rec$kind != "analysis") .fail("Not analysis")
+      receipt <- rec$details$execution_receipt
+      if (!.execution_receipt_valid(state, rec, receipt))
+        return(.obj(status = "unknown", receipt_ref = .make_ref(state, rec), reason = "absent_or_malformed_execution_receipt"))
+      out <- .execution_receipt_view(receipt)
+      out$receipt_ref <- .make_ref(state, rec)
+      if (isTRUE(state$imported)) out$authenticity <- "untrusted_imported_claim"
+      out
+    }
+    execution_summary <- function(ref) {
+      receipt <- get_execution(ref)
+      text <- if (identical(receipt$status, "unknown")) "Execution receipt: unknown for this exact analysis revision." else
+        {
+          inputs <- vapply(receipt$inputs, function(x) identical(x$identity, "match"), logical(1))
+          error <- if (is.null(receipt$error)) NULL else .execution_text(receipt$error, 512L)
+          paste(c(paste0("Execution ", receipt$status, ": ", .execution_ref_text(receipt$receipt_ref), " (", receipt$entry_point, ")."),
+                  paste0("Inputs matched: ", sum(inputs), "/", length(inputs), "; code: ", substr(receipt$code$digest, 1L, 12L), "; callback invoked: ", receipt$phases$callback_invoked, "."),
+                  paste0("Outputs captured: ", sum(vapply(receipt$outputs, function(x) identical(x$status, "registered"), logical(1))), "/", length(receipt$outputs), ". Input use/science: unknown."), if (!is.null(error)) paste0("Error: ", error)), collapse = " ")
+        }
+      .execution_text(text, 4096L)
+    }
     get_design <- function(ref = NULL) {
       if (is.null(ref)) ref <- state$project$design
       if (is.null(ref)) return(NULL)
@@ -935,6 +1075,8 @@ ProjectBundle <- local({
       allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
+      if ("execution_receipt" %in% names(rec$details)) .fail("Execution runs are runner-managed")
+      if ("details" %in% names(changes) && "execution_receipt" %in% names(changes$details)) .fail("Execution receipt is runner-managed")
       if (!is.null(rec$details[[.result_key]]) && ('path' %in% names(changes) ||
           'details' %in% names(changes) && (!.result_equal(changes$details[[.result_key]],rec$details[[.result_key]]) ||
           !.result_equal(changes$details$membership,rec$details$membership)))) .fail('Use register_result to revise result identity')
@@ -1043,7 +1185,7 @@ ProjectBundle <- local({
                      "  File integrity: not checked")
         }
       }
-      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure), "Execution evidence: not captured by registry."), collapse = "\n")
+      paste(c(lines, "Project:", sprintf("  Data:             %d registered datasets", counts$data), sprintf("  Analyses:         %d", counts$analysis), sprintf("  Figures:          %d", counts$figure), "Registration does not capture execution; inspect explicit run receipts."), collapse = "\n")
     }
     status <- function(compact = TRUE, purpose = NULL, check_files = FALSE) {
       if (!is.null(purpose) && !.design_text(purpose)) .fail("Invalid purpose")
@@ -1198,7 +1340,7 @@ ProjectBundle <- local({
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
-    self <- list(register_result = register_result, check_result = check_result, dependencies = dependencies, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

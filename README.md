@@ -12,11 +12,11 @@ Use it when your analysis spans multiple sessions, your datasets change, or some
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.6.0.md)
+[Install](#install) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.7.0.md)
 
 ## Install
 
-Version **0.6.0 local development build** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.7.0 local development build** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
 The pinned GitHub version includes figure-source reporting, preserved-source
 retrieval and figure discovery by registered path or scientific asset ID.
@@ -148,7 +148,7 @@ cat(rawToChar(preserved_source$content))
 Project helpers can keep domain-specific loading outside BioDataLedger. Pass the
 opened project and an exact registered reference into a helper; call
 `resolve_data(..., verify="sha256")` once before loading through native R/Python.
-See the [portable helper example](docs/api/API_0.6.0.md#portable-project-helpers).
+See the [portable helper example](docs/api/API_0.7.0.md#portable-project-helpers).
 
 ## Check a loaded scientific input (local R prototype)
 
@@ -169,13 +169,13 @@ Open the project once and use exact getters for frequent metadata lookups. In 0.
 **Updating an older input helper:** `availability_checked=False` means unchecked,
 not unavailable. Use `resolve_data(..., verify="sha256")` for verified input
 resolution and preserve the same exact reference or purpose. See the
-[migration pattern](docs/api/API_0.6.0.md#updating-older-input-helpers).
+[migration pattern](docs/api/API_0.7.0.md#updating-older-input-helpers).
 
 Figure search matches registered paths, explicit asset IDs, names, types and descriptions, plus the name and description
 of each figure's recorded analysis revision. Results contain the latest active
 figure revisions and their inherited context. Search reads loaded metadata only.
 
-Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.6.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
+Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.7.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
 
 ## Inspect a figure and its preserved source
 
@@ -197,7 +197,7 @@ integrity or establish complete dependencies.
 recorded snapshot even after the original script changes. A missing snapshot never
 falls back to the original. Multiple recorded scripts require an exact code
 selection. Reading preserved code does not establish that it executed or generated
-the figure. See the [figure-source contract](docs/api/API_0.6.0.md#figure-rendering-sources--biodataledger-008)
+the figure. See the [figure-source contract](docs/api/API_0.7.0.md#figure-rendering-sources--biodataledger-008)
 for the declaration shape, R/Python usage, source selectors and explicit unknowns.
 
 ## Conditions and levels
@@ -244,7 +244,7 @@ p$get_design_summary()
 
 </details>
 
-Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.6.0.md#experimental-design-and-saved-object-scope) for verification rules and getters.
+Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.7.0.md#experimental-design-and-saved-object-scope) for verification rules and getters.
 
 Analysis registration uses the project design as a default and pins that exact
 revision once. Pass `design_ref` to choose another exact design, or explicit
@@ -264,7 +264,7 @@ figure, call `save_figure(source, type, analysis=...)`, then `save()`. This copi
 one file into an exclusive managed location. Pass `ref` instead of analytical
 context to append an existing figure's revision. Older copies and external files
 are never overwritten. An external file's hash alone provides no preserved copy.
-See the [full contract](docs/api/API_0.6.0.md#exact-designs-and-saved-figure-copies--050).
+See the [full contract](docs/api/API_0.7.0.md#exact-designs-and-saved-figure-copies--050).
 
 ## Share a result
 
@@ -349,7 +349,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.6.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.7.0.tar.gz
 ```
 
 ## Confirm a saved change (local development build)
@@ -366,7 +366,7 @@ publication, not scientific approval. A failed save raises an error and retains
 pending edits. A clean call returns `no_changes`, performs no disk I/O and does not
 refresh a stale session. Registration/setters still need an explicit save boundary;
 there is no background autosave or rollback transaction. See the
-[receipt contract](docs/api/API_0.6.0.md#save-and-confirm-persistence).
+[receipt contract](docs/api/API_0.7.0.md#save-and-confirm-persistence).
 
 ## Exact derived results (local 0.6.0 build)
 
@@ -381,3 +381,16 @@ alignment and available independent membership evidence. Seurat reduction and
 AnnData obsm references are supported without loading objects; their unmeasured
 alignment remains UNKNOWN. These methods are not in the pinned GitHub build above.
 See the [result contract](docs/api/RESULTS_V1.md) for examples, limits and compatibility.
+
+
+## Optional execution receipts (local 0.7.0 build)
+
+Use `run_analysis` when you explicitly want to execute a named function from a
+registered code snapshot and retain an execution receipt. It saves a started record,
+checks selected input/code identity, invokes the function, then records its outcome
+and output hashes. `get_execution` and `execution_summary` inspect an exact receipt.
+Ordinary registration remains available without a runner.
+
+Receipts distinguish observed invocation from declared inputs and unknown input
+consumption or scientific validity. Failed or interrupted runs remain visible.
+See the [native execution contract and examples](docs/api/EXECUTION_V1.md).

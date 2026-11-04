@@ -522,6 +522,7 @@ class ProjectBundle:
     def register_data(self, path, role, name=None, hash=False, **details):
         from .results import KEY as RESULT_KEY
         require(RESULT_KEY not in details, "use register_result to declare a result")
+        require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(isinstance(role, str) and role, "data role required")
         locator = self._locator(path)
         file = self._resolve(locator)
@@ -537,6 +538,7 @@ class ProjectBundle:
 
     def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True,
                           design_ref=_DEFAULT, input_mode="separate", **details):
+        require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         rec = self._new("analysis", name)
         require(inputs is None or isinstance(inputs, list), "inputs must be list or None")
         rec.update(inputs=None if inputs is None else [self._ref(self._record(x, "data")) for x in inputs],
@@ -549,6 +551,7 @@ class ProjectBundle:
     def _figure_record(self, path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None,
                         snapshot_code=True, design_ref=_DEFAULT, input_mode=_DEFAULT, figure_sources=_DEFAULT, **details):
         require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
+        require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         locator = self._locator(path)
         file = self._resolve(locator)
         require(file is not None and file.is_file(), "figure must be an existing regular file")
@@ -975,6 +978,7 @@ class ProjectBundle:
     def update_record(self, ref, changes, reason):
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
+        require("execution_receipt" not in rec["details"], "execution runs are runner-managed")
         from .results import guard_update
         guard_update(rec, changes)
         require(rec["kind"] != "design", "use set_design to revise experimental design")
@@ -982,7 +986,7 @@ class ProjectBundle:
         require(set(changes) <= allowed, "protected or unknown correction field")
         if rec.get("scope", {}).get("membership_evidence", {}).get("status") == "verification_recorded":
             require(not ({"path", "details"} & set(changes)), "clear membership evidence through set_data_scope before changing subject/bindings")
-        require(not ({"preservation", "artifact_role"} & set(changes.get("details", {}))), "reserved preservation metadata")
+        require(not ({"preservation", "artifact_role", "execution_receipt"} & set(changes.get("details", {}))), "reserved metadata")
         if rec.get("preservation"):
             require("path" not in changes, "use save_figure to revise preserved bytes")
         if {"design_ref", "input_mode"} & set(changes):
@@ -1126,7 +1130,7 @@ class ProjectBundle:
 
     def summary_text(self, purpose=None):
         counts = {kind: self._kind_counts[kind] for kind in ("data", "analysis", "figure")}
-        evidence_text = "\nExecution evidence: not captured by registry."
+        evidence_text = "\nRegistration does not capture execution; inspect explicit run receipts."
         if purpose is None:
             return summary_text(self.state["project"], self.get_design(), counts) + evidence_text
         status = self.status(purpose=purpose)
@@ -1298,6 +1302,18 @@ class ProjectBundle:
     def check_result(self, ref):
         from .results import check_result
         return check_result(self, ref)
+
+    def run_analysis(self, analysis_ref, entry_point, outputs=[], seeds=None, verify_inputs=True, verify_code=True):
+        from .execution import run_analysis
+        return run_analysis(self, analysis_ref, entry_point, outputs, seeds, verify_inputs, verify_code)
+
+    def get_execution(self, ref):
+        from .execution import get_execution
+        return get_execution(self, ref)
+
+    def execution_summary(self, ref):
+        from .execution import execution_summary
+        return execution_summary(self, ref)
 
     def dependencies(self, ref, direction, depth=1, limit=20):
         return self._lineage.query(self, ref, direction, depth, limit)

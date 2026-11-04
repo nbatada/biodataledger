@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — local, unpublished
+
+- Add optional native `run_analysis`, exact `get_execution` and compact
+  `execution_summary` for explicit execution of a registered code-snapshot function.
+- Preserve started/terminal run revisions, exact template/input/output links,
+  parameters/seed declarations and failures with explicit save confirmations.
+- Keep checked file identity, observed invocation, declared parameters and unknown
+  input consumption/scientific validity separate. Ordinary queries remain read-only.
+- Existing schema versions, snapshots and ZIP format are unchanged. Old clients can
+  preserve optional receipt metadata but do not validate or enforce its semantics.
+
 ## 0.6.0 — local, unpublished
 
 - Added equivalent native register_result, check_result and dependencies APIs. Result files are referenced by default; hashing/copying is explicit.

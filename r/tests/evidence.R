@@ -64,7 +64,7 @@ check_execution_evidence <- function() {
   stopifnot(identical(q$status()$evidence, constant), identical(q$summary()$evidence, constant),
             identical(q$status(purpose = 'input')$evidence, constant),
             nchar(jsonlite::toJSON(q$status(), auto_unbox = TRUE, null = 'null'), type = 'bytes') <= 4096L,
-            grepl('Execution evidence: not captured by registry.', q$summary_text(), fixed = TRUE),
+            grepl('Registration does not capture execution; inspect explicit run receipts.', q$summary_text(), fixed = TRUE),
             !q$status()$unsaved, identical(readBin(path, 'raw', file.info(path)$size), before))
   archive <- file.path(root, 'working.zip')
   q$export_zip(q$preview_export('working', list(d, f)), archive)

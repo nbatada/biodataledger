@@ -1,9 +1,10 @@
 Package: BioDataLedger
 Title: Inspectable Scientific Project Records
-Version: 0.6.0
+Version: 0.7.0
 Authors@R: person("Nizar", "Batada", role = c("aut", "cre"), email = "nizar@example.org")
 Description: Records exact data, analysis and figure references, and exchanges
-    reviewed local project bundles. It does not execute scientific analyses.
+    reviewed local project bundles. Explicit native execution can capture bounded
+    receipts without asserting scientific validity or actual input consumption.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports: jsonlite, digest, zip (>= 3.0.2), uuid, stringi

@@ -37,7 +37,8 @@ Use the returned `evidence` fields to report declared input/code relationships
 and missing execution evidence. Complete registration, matching file hashes,
 code snapshots and successful imports do not establish that the declared
 analysis ran. The current API always reports execution as unknown and execution
-evidence as not captured. Free-form labels in stored `details` remain caller
+evidence from ordinary registration as not captured; explicit run receipts are
+queried separately. Free-form labels in stored `details` remain caller
 declarations, including labels that say "observed" or "verified".
 
 Obtain actual scientist authority before changing current-for-purpose inputs or scientific decisions. Preserve external scientific owners. Preview all files and metadata before an authorized export. Import is inert. Distinguish inspectability, readiness for a named next task, and an actual verified rerun.
@@ -66,3 +67,14 @@ adapter measures them. Use exact rendering_inputs for figures, dependencies for
 bounded metadata lookup, and save_and_confirm once after a retained-result batch.
 Unknown provenance must remain unknown; never reconstruct historical links from
 filenames, equal counts or registration order. See docs/api/RESULTS_V1.md.
+
+
+## Explicit execution in 0.7.0
+
+Only an explicit authorized `run_analysis` invokes code. It executes one registered
+snapshot function and persists started/terminal receipts; see
+[the execution contract](../api/EXECUTION_V1.md). Registration, import and queries
+never execute code. Use the exact terminal `receipt_ref` with `get_execution` or
+`execution_summary`. A successful callback or matching input digest never proves
+actual input consumption, scientific validity or downstream use. Started means
+completion was not recorded. Do not promote declarations or recreate missing history.
