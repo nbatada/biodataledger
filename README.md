@@ -14,6 +14,10 @@ The example illustrates records you supply; the package does not choose or verif
 
 [Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
 
+For a new analysis or redraw that must keep its loaded native object paired with
+the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
+It is a project-helper pattern, not a migration instruction for existing helpers.
+
 ## Install
 
 Version **0.12.2** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.

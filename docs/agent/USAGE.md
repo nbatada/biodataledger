@@ -11,6 +11,14 @@ an existence check, auto-register a new digest or fall back to another dataset.
 The [migration guide](../api/API_0.5.0.md#updating-older-input-helpers) covers role
 selectors and missing digests.
 
+For a **new** authorized analysis or redraw, the preferred project-helper pattern
+is [Retained inputs](../RETAINED_INPUTS.md): return the native object together
+with its exact resolved source view, then use that saved source reference during
+registration. Do not retrofit a near-complete older project or change its helper
+return mapping solely for this pattern. A declared object/source binding, a file
+hash or a snapshot does not prove actual object consumption, object immutability,
+scientific approval, or a rerun.
+
 There is no mandatory operation on every chat turn. Keep one project object in
 the current R session or Python process and query it only when the task needs
 registered information. If each tool call starts a fresh process, open once in
