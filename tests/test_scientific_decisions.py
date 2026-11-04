@@ -137,4 +137,3 @@ class ScientificDecisionTests(unittest.TestCase):
         self.assertEqual(refreshed.get_decision(ref)["scientific"]["scientific_status"], "approved")
         legacy = py.record_decision("still generic", "why", [self.data])
         self.assertEqual(py.get_decision(legacy)["unknown"], ["legacy_untyped_decision"])
-

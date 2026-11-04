@@ -16,14 +16,14 @@ The example illustrates records you supply; the package does not choose or verif
 
 ## Install
 
-Version **0.9.0 local development build** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.9.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-The pinned GitHub version includes figure-source reporting, preserved-source
-retrieval and figure discovery by registered path or scientific asset ID.
+This consolidated release includes exact input checks, save confirmations, derived-
+result lineage, execution receipts, scientific decisions and related-work discovery.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install the verified 0.5.0 package at commit `5ee6d0e`:
+Run this in R to install version 0.9.0 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -32,18 +32,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "5ee6d0e393a2b7d2b9afb31c56458ebc0581a5ad",
+  ref = "v0.9.0",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Source checkout — Python, repository examples, or an R source install**
+**Python — install version 0.9.0 directly from GitHub**
+
+```sh
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.9.0#subdirectory=python"
+```
+
+Use an isolated Python environment as needed. For an immutable installation, replace
+`v0.9.0` with the release's full commit SHA in either installation command.
+
+**Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
+git checkout v0.9.0
 ```
 
 **Python 3.9 or newer**
@@ -150,7 +160,7 @@ opened project and an exact registered reference into a helper; call
 `resolve_data(..., verify="sha256")` once before loading through native R/Python.
 See the [portable helper example](docs/api/API_0.9.0.md#portable-project-helpers).
 
-## Check a loaded scientific input (local R prototype)
+## Check a loaded scientific input (R prototype)
 
 `ledger$check_object(object, purpose="comparison", assay="RNA", layer="counts")`
 compares a supplied object's sample-qualified cells, treatment/replicate mapping,
@@ -159,8 +169,7 @@ references. It prints PASS/FAIL/UNKNOWN for each field and returns BLOCKED when 
 required field is not PASS. Seurat support is optional; a generic R interface works
 without it. The checker does not prove downstream use or scientific validity.
 
-This prototype requires the local source checkout; it is not in the pinned GitHub
-version above. See the [manual example and report contract](docs/api/OBJECT_CHECK_V1.md).
+This R-only prototype is included in version 0.9.0. See the [manual example and report contract](docs/api/OBJECT_CHECK_V1.md).
 
 ## Inspect and resume
 
@@ -352,11 +361,10 @@ R CMD build r
 R CMD check --no-manual BioDataLedger_0.9.0.tar.gz
 ```
 
-## Confirm a saved change (local development build)
+## Confirm a saved change
 
-The local development build adds `ledger.save_and_confirm()` in Python and
-`ledger$save_and_confirm()` in R. This helper is not in the pinned GitHub build
-above. Call it after a related result batch and immediately after a completed
+Use `ledger.save_and_confirm()` in Python and
+`ledger$save_and_confirm()` in R; both are included in version 0.9.0. Call it after a related result batch and immediately after a completed
 current-input, design or scientific-decision change. It saves **all pending edits**,
 including figures registered earlier, and returns the previous/new registry
 revision, transaction ID and `scope="all_pending_changes"`.
@@ -368,7 +376,7 @@ refresh a stale session. Registration/setters still need an explicit save bounda
 there is no background autosave or rollback transaction. See the
 [receipt contract](docs/api/API_0.9.0.md#save-and-confirm-persistence).
 
-## Exact derived results (local 0.6.0 build)
+## Exact derived results
 
 `register_result()` registers an existing result file by reference. Explicit options
 can hash or copy it. The result remains an ordinary DATA revision linked to its
@@ -379,11 +387,11 @@ scientific payloads. Commit the related batch with `save_and_confirm()`.
 `check_result()` explicitly checks CSV coordinates, qualified cell identities,
 alignment and available independent membership evidence. Seurat reduction and
 AnnData obsm references are supported without loading objects; their unmeasured
-alignment remains UNKNOWN. These methods are not in the pinned GitHub build above.
+alignment remains UNKNOWN. These methods are included in version 0.9.0.
 See the [result contract](docs/api/RESULTS_V1.md) for examples, limits and compatibility.
 
 
-## Optional execution receipts (local 0.7.0 build)
+## Optional execution receipts
 
 Use `run_analysis` when you explicitly want to execute a named function from a
 registered code snapshot and retain an execution receipt. It saves a started record,
@@ -396,7 +404,7 @@ consumption or scientific validity. Failed or interrupted runs remain visible.
 See the [native execution contract and examples](docs/api/EXECUTION_V1.md).
 
 
-## Scientific decisions and annotations (local 0.8.0 build)
+## Scientific decisions and annotations
 
 Use `record_scientific_decision` to retain exact subjects, separate cluster IDs and
 annotation labels, supporting/contradictory evidence, and a declared scientific
@@ -407,7 +415,7 @@ An approved status is a submitted claim, not authenticated scientific approval.
 See the [native decision contract](docs/api/DECISIONS_V1.md).
 
 
-## Find related work (local 0.9.0 build)
+## Find related work
 
 Use `related_work(input_ref=data_ref)` for an exact registered input, or
 `related_work(query="TCR clonality")` when you know the topic but not the dataset.

@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.9.0 — local, unpublished
+## 0.9.0 — consolidated release, 2026-11-03
+
+First public release of the 0.6–0.9 development series. Includes the R live-object
+verification prototype, native save-and-confirm, derived-result/embedding lineage,
+explicit execution receipts, scientific decision/annotation records and bounded
+exact-input/topic related-work lookup. Earlier 0.5.0 source updates remain included.
+Registry schemas and ZIP format are unchanged; no mandatory LLM or new dependency.
+Detailed development milestones follow.
 
 - Add bounded native related_work reports for exact DATA revisions or literal
   analysis topic/purpose metadata, without a new index service or payload I/O.
@@ -9,7 +16,7 @@
 - Preserve historical producer anchors, unknown evidence and explicit limits;
   no scientific-equivalence, approval or automatic reuse claim.
 
-## 0.8.0 — local, unpublished
+## 0.8.0 — development milestone, included in 0.9.0
 
 - Add native scientific-decision recording/revision and exact decision retrieval,
   reusing DEC records and optional versioned metadata.
@@ -18,7 +25,7 @@
 - Retain generic decision corrections and legacy state/ZIP compatibility. Approval
   remains unauthenticated, and malformed/imported evidence remains qualified.
 
-## 0.7.0 — local, unpublished
+## 0.7.0 — development milestone, included in 0.9.0
 
 - Add optional native `run_analysis`, exact `get_execution` and compact
   `execution_summary` for explicit execution of a registered code-snapshot function.
@@ -29,13 +36,13 @@
 - Existing schema versions, snapshots and ZIP format are unchanged. Old clients can
   preserve optional receipt metadata but do not validate or enforce its semantics.
 
-## 0.6.0 — local, unpublished
+## 0.6.0 — development milestone, included in 0.9.0
 
 - Added equivalent native register_result, check_result and dependencies APIs. Result files are referenced by default; hashing/copying is explicit.
 - Preserve exact artifact, producer, observation and rendering references. CSV checks report measured properties; native Seurat/AnnData selectors remain declarations with unknown unmeasured alignment.
 - Added bounded in-memory dependency lookup and cross-language result tests. No new registry schema, database, workflow engine or mandatory scientific container.
 
-## Unreleased — Lightweight agent workflow
+## Lightweight agent workflow — included through 0.9.0
 
 - Added native `save_and_confirm()` receipts for all pending changes, including previous/new committed revision, transaction ID and explicit persisted/no-changes status. Reuses existing atomic/stale-write safeguards; no autosave, schema change or scientific-approval claim.
 
@@ -56,7 +63,7 @@
 - R reuses the indexes produced by full validation and uses ordinary copy-on-modify semantics for save candidates, avoiding a redundant index rebuild and deep copy without removing checks.
 - Clarified loaded-session reuse, grouped fresh-process lookups, explicit input verification and meaningful saves. No mandatory per-turn operation, new API, dependency or persisted format.
 
-## Local figure-source extension — BIODATALEDGER-008
+## Figure-source extension — included through 0.9.0
 
 - Separate explicit rendering DATA refs from exact analytical inputs; retain recorded parent/transformation evidence without inferring relationships.
 - Extend figure getters with unambiguous ID/asset/path selectors and a <=4096-byte compact report, including missing files, declared code candidates, snapshots and explicit unverified integrity/execution.
