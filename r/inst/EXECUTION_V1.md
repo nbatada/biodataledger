@@ -175,3 +175,42 @@ observations, not cryptographic authentication. Normal current-client mutation A
 protect run evidence/context; they cannot constrain an unrestricted interpreter.
 Existing registry schemas, source snapshots and ZIP formats are unchanged. Older
 clients preserve optional metadata but cannot validate or enforce this contract.
+
+## Input-control checkpoints — 0.11.1 (local development)
+
+Verified execution now reuses strict `resolve_data` eligibility and SHA-256 checks
+at preflight, immediately after top-level code before callback invocation, and
+after the callback, including callback errors. An inactive exact DATA revision is
+ineligible even with `verify_inputs=False`; unchecked bytes otherwise stay unknown.
+Missing or changed required files block before invocation. A later failed checkpoint
+yields a failed run and preserves the invocation flag; outputs may already exist.
+The latest `inputs` field reflects the latest check, not an earlier PASS.
+
+R optionally accepts `object_checks=list(list(ref=data_ref,
+get_object=function() current_object, assay="RNA", layer="counts"))`.
+Each ref must be an exact template input. The getter supplies the current live
+object at every checkpoint; the runner invokes existing `check_object` and requires
+PASS. FAIL, required UNKNOWN or a getter/checker error blocks continuation.
+No automatic object loading or Python live-object adapter is added. With no
+configuration, no live-object verification is claimed. Getters are trusted caller
+code, not an authenticated binding to the callback's objects.
+
+Optional receipt metadata `input_checkpoints` uses version
+`biodataledger-input-checkpoints/1`: ordered `checks` contain `phase`, `files` and
+compact `objects` (`ref`, `overall`, `blockers`). Legacy receipts without this field
+remain readable and do not acquire checkpoint evidence. File matches, object
+checks, callback invocation and actual consumption remain separate; consumption,
+scientific validity and downstream consumption are always unknown.
+
+Default verified execution hashes each input three times rather than once. Object
+checks additionally re-read their explicit authority references three times when
+configured. Ordinary registration and metadata lookup are unchanged. Large files
+therefore incur explicit additional verification I/O. Disabling file verification
+does not imply a verified match or disable configured object checks.
+
+These are checkpoint observations, not a sandbox. Native code can read another file,
+ignore checked objects, race a check, or mutate and restore data between checks.
+Fresh checks detect persistent changes at later governed boundaries; they cannot
+prove every byte read, enforce arbitrary intermediate operations, or guarantee
+scientific correctness. R's live checker observes its existing membership/design/
+representation contract, not all expression values.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.1 — local P0 correction, unreleased
+
+- Align runner input eligibility with strict exact DATA resolution.
+- Recheck files before callback and after callback/error; retain checkpoint evidence.
+- Add optional R live-object verification using existing check_object and fresh getters.
+- Preserve unknown consumption and legacy receipt compatibility; no sandbox claim.
+
+
 ## 0.11.0 — local development, unreleased
 
 - Add bounded execution-history retrieval by project, exact analysis or protocol,

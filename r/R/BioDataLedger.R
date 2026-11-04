@@ -870,7 +870,7 @@ ProjectBundle <- local({
       out
     }
     run_analysis <- function(analysis_ref, entry_point, outputs = list(), seeds = NULL,
-                             verify_inputs = TRUE, verify_code = TRUE) {
+                             verify_inputs = TRUE, verify_code = TRUE, object_checks = list()) {
       template_ref <- .ref(state, analysis_ref)
       template <- .record(state, template_ref)
       if (template$kind != "analysis" || !is.character(entry_point) || length(entry_point) != 1L ||
@@ -878,8 +878,13 @@ ProjectBundle <- local({
           !is.logical(verify_inputs) || length(verify_inputs) != 1L || is.na(verify_inputs) ||
           !is.logical(verify_code) || length(verify_code) != 1L || is.na(verify_code) ||
           (!is.null(seeds) && !.is_obj(seeds)) || length(template$code) != 1L ||
-          is.null(template$code[[1L]]$snapshot)) .fail("Execution requires one snapshotted code file and valid arguments")
+          is.null(template$code[[1L]]$snapshot) || !.is_arr(object_checks) || length(object_checks)>100L) .fail("Execution requires one snapshotted code file and valid arguments")
       if (length(template$inputs) > 100L) .fail("Execution supports at most 100 inputs")
+      object_checks <- lapply(object_checks, function(spec) {
+        if (!.is_obj(spec) || !all(names(spec) %in% c("ref","get_object","assay","layer")) || !all(c("ref","get_object") %in% names(spec)) || !is.function(spec$get_object)) .fail("Invalid object check")
+        ref <- .ref(state,spec$ref); if (.record_kind(state,ref)!="data" || !any(vapply(template$inputs,function(x)identical(x,ref),logical(1)))) .fail("Object check ref must be an analysis input")
+        spec$ref <- ref; spec
+      })
       specs <- .execution_output_specs(outputs, root)
       code <- template$code[[1L]]
       receipt <- .obj(version = .execution_version, status = "started", template_ref = .copy(template_ref),
@@ -890,6 +895,7 @@ ProjectBundle <- local({
         method = .copy(template$method), params = .copy(template$params), seeds = .copy(seeds),
         inputs = .arr(lapply(template$inputs, function(input_ref) .obj(ref = .copy(input_ref), path = NULL, identity = "unknown", reason = "not_checked"))), outputs = .arr(lapply(specs, .execution_output_view)),
         phases = .obj(execution_started = FALSE, code_executed = FALSE, callback_invoked = FALSE),
+        input_checkpoints = .obj(version="biodataledger-input-checkpoints/1",checks=list()),
         input_consumption = "unknown", scientific_validity = "unknown", downstream_consumption = "unknown",
         error = NULL)
       run <- .copy(template); run$id <- receipt$run_ref$id; run$revision <- 1L
@@ -913,27 +919,40 @@ ProjectBundle <- local({
         final <- terminal(status, message)
         .execution_stop(message, final)
       }
-      checked_inputs <- tryCatch(lapply(template$inputs, function(input_ref) {
-        input <- .record(state, input_ref); path <- .resolve(root, state, input$locator)
-        item <- .obj(ref = .copy(input_ref), path = path, identity = "unknown", reason = "verification_not_requested")
-        if (is.null(path) || input$locator$kind == "uri" || !file.exists(path) || dir.exists(path)) {
-          item$identity <- "unknown"; item$reason <- "local_path_unavailable"
-          return(item)
-        }
-        if (verify_inputs) {
-          if (is.null(input$sha256)) item$reason <- "digest_unknown"
-          else {
-            observed <- .hash(path)
-            if (identical(tolower(observed), tolower(input$sha256))) {item$identity <- "match"; item$reason <- "sha256_match"}
-            else {item$identity <- "mismatch"; item$reason <- "digest_mismatch"}
-          }
-        }
-        item
-      }), error = function(e) e)
-      if (inherits(checked_inputs, "error")) fail_terminal("blocked", .execution_text(checked_inputs))
-      receipt$inputs <- .arr(checked_inputs)
-      if (any(vapply(checked_inputs, function(x) is.null(x$path) || identical(x$reason, "local_path_unavailable") || !identical(x$identity, "match") && verify_inputs, logical(1))))
-        fail_terminal("blocked", "Input verification blocked")
+      checkpoint <- function(phase) {
+        files <- lapply(template$inputs, function(input_ref) {
+          input <- .record(state, input_ref)
+          item <- .obj(ref=.copy(input_ref), path=NULL, identity="unknown", reason="verification_not_requested")
+          tryCatch({
+            if (!identical(input$status,"active")) .fail("INACTIVE: exact input revision")
+            path <- .resolve(root,state,input$locator)
+            if (is.null(path) || !file.exists(path) || dir.exists(path)) .fail("local_path_unavailable")
+            if (verify_inputs) {
+              resolved <- resolve_data(ref=input_ref, verify="sha256")
+              path <- resolved$path
+              item$identity <- "match"; item$reason <- "sha256_match"
+            }
+            item$path <- path
+            item
+          }, error=function(e) {
+            item$reason <- .execution_text(e)
+            if (grepl("DIGEST_MISMATCH|SIZE_MISMATCH|FILE_CHANGED",item$reason)) item$identity <- "mismatch"
+            item
+          })
+        })
+        objects <- lapply(object_checks, function(spec) {
+          report <- tryCatch(check_object(spec$get_object(),ref=spec$ref,assay=spec$assay,layer=spec$layer),error=function(e) NULL)
+          .obj(ref=.copy(spec$ref),overall=if(is.null(report)) "UNKNOWN" else report$overall,
+               blockers=if(is.null(report)) list("object_check_error") else .copy(report$blockers))
+        })
+        receipt$inputs <<- .arr(files)
+        receipt$input_checkpoints$checks[[length(receipt$input_checkpoints$checks)+1L]] <<- .obj(phase=phase,files=.arr(files),objects=.arr(objects))
+        if(any(vapply(files,function(x)is.null(x$path) || verify_inputs && !identical(x$identity,"match"),logical(1))) ||
+           any(!vapply(objects,function(x)identical(x$overall,"PASS"),logical(1)))) .fail(paste("Input checkpoint failed:",phase))
+        files
+      }
+      checked_inputs <- tryCatch(checkpoint("preflight"),error=function(e)e)
+      if(inherits(checked_inputs,"error")) fail_terminal("blocked",.execution_text(checked_inputs))
       snapshot_path <- .resolve(root, state, .obj(kind = "project", value = code$snapshot))
       verification <- tryCatch({
         if (is.null(snapshot_path) || !file.exists(snapshot_path) || dir.exists(snapshot_path) || file.info(snapshot_path)$size > 1048576) .execution_stop("Code snapshot unavailable")
@@ -952,14 +971,20 @@ ProjectBundle <- local({
         expression <- parse(text = rawToChar(verification), keep.source = FALSE)
         receipt$phases$code_executed <- TRUE
         eval(expression, envir = execution_env)
+        checked_inputs <- checkpoint("before_callback")
         callback <- get(entry_point, envir = execution_env, inherits = FALSE)
         if (!is.function(callback)) .fail("Execution entry point is not a function")
         receipt$phases$callback_invoked <- TRUE
         do.call(callback, list(inputs = unname(vapply(checked_inputs, function(x) x$path, character(1))),
                                params = .copy(template$params), seeds = .copy(seeds),
                                outputs = unname(vapply(specs, function(x) x$path, character(1)))))
+        checkpoint("after_callback")
         NULL
       }, interrupt = function(e) .execution_error("Execution interrupted"), error = function(e) .execution_error(conditionMessage(e)))
+      if (isTRUE(receipt$phases$callback_invoked) && !identical(receipt$input_checkpoints$checks[[length(receipt$input_checkpoints$checks)]]$phase,"after_callback")) {
+        postcheck <- tryCatch({checkpoint("after_callback"); NULL}, error=function(e) .execution_error(conditionMessage(e)))
+        if (is.null(result) && !is.null(postcheck)) result <- postcheck
+      }
       capture_failure <- NULL
       captured <- lapply(seq_along(specs), function(i) {
         spec <- specs[[i]]; item <- .execution_output_view(spec)

@@ -68,6 +68,16 @@
     identical(receipt$input_consumption, "unknown") && identical(receipt$scientific_validity, "unknown") &&
     identical(receipt$downstream_consumption, "unknown") &&
     {
+      checkpoints <- receipt$input_checkpoints
+      if (!is.null(checkpoints)) {
+        if (!.is_obj(checkpoints) || !identical(checkpoints$version,"biodataledger-input-checkpoints/1") || !.is_arr(checkpoints$checks) || length(checkpoints$checks)>3L) return(FALSE)
+        expected <- c("preflight","before_callback","after_callback")
+        for (i in seq_along(checkpoints$checks)) { check <- checkpoints$checks[[i]]; if (!.is_obj(check) || !identical(check$phase,expected[[i]]) || !.is_arr(check$files) || !.is_arr(check$objects) || length(check$files)!=length(receipt$inputs)) return(FALSE)
+          if (!all(vapply(seq_along(check$files),function(j) identical(check$files[[j]]$ref,receipt$inputs[[j]]$ref),logical(1)))) return(FALSE)
+          for (object in check$objects) if (!.is_obj(object) || !all(c("ref","overall","blockers") %in% names(object)) || !(object$overall %in% c("PASS","BLOCKED","UNKNOWN")) || ! .is_arr(object$blockers) || !all(vapply(object$blockers,function(x)is.character(x)&&length(x)==1L,logical(1)))) return(FALSE)
+        }
+        if (length(checkpoints$checks) && !identical(checkpoints$checks[[length(checkpoints$checks)]]$files,receipt$inputs)) return(FALSE)
+      }
       .validate_ref_shape(state, receipt$template_ref); .validate_ref_shape(state, receipt$run_ref); .validate_ref_shape(state, receipt$receipt_ref)
       template <- .record(state, receipt$template_ref)
       started <- .record(state, receipt$run_ref)
@@ -95,6 +105,24 @@
         if (!.is_obj(item) || !all(c("ref", "path", "identity", "reason") %in% names(item)) || !identical(item$ref, rec$inputs[[i]]) ||
             !item$identity %in% c("match", "unknown", "mismatch") || !is.character(item$reason) || length(item$reason) != 1L) return(FALSE)
         if (identical(item$identity, "match") && (is.null(.record(state, item$ref)$sha256) || !item$reason %in% c("digest_match", "sha256_match") || !is.character(item$path) || length(item$path) != 1L)) return(FALSE)
+      }
+      if ("input_checkpoints" %in% names(receipt)) {
+        cp <- receipt$input_checkpoints
+        if (!.is_obj(cp) || !setequal(names(cp),c("version","checks")) || !identical(cp$version,"biodataledger-input-checkpoints/1") || !.is_arr(cp$checks) || length(cp$checks)>3L) return(FALSE)
+        order <- c("preflight","before_callback","after_callback")
+        for (i in seq_along(cp$checks)) {
+          check <- cp$checks[[i]]
+          if (!.is_obj(check) || !setequal(names(check),c("phase","files","objects")) || !identical(check$phase,order[[i]]) || !.is_arr(check$files) || length(check$files)!=length(receipt$inputs) || !.is_arr(check$objects) || length(check$objects)>100L) return(FALSE)
+          for (j in seq_along(check$files)) {
+            item <- check$files[[j]]
+            if (!.is_obj(item) || !identical(item$ref,receipt$inputs[[j]]$ref) || !item$identity %in% c("match","mismatch","unknown") || !is.character(item$reason) || length(item$reason)!=1L) return(FALSE)
+          }
+          for (item in check$objects) {
+            if (!.is_obj(item) || !setequal(names(item),c("ref","overall","blockers")) || !any(vapply(receipt$inputs,function(x)identical(x$ref,item$ref),logical(1))) || !item$overall %in% c("PASS","BLOCKED","UNKNOWN") || !.is_arr(item$blockers) || length(item$blockers)>100L || any(!vapply(item$blockers,function(x)is.character(x)&&length(x)==1L&&nzchar(x),logical(1)))) return(FALSE)
+          }
+        }
+        if (length(cp$checks) && !identical(cp$checks[[length(cp$checks)]]$files,receipt$inputs)) return(FALSE)
+        if (receipt$status=="succeeded" && (length(cp$checks)!=3L || any(!vapply(cp$checks[[3L]]$objects,function(x)identical(x$overall,"PASS"),logical(1))))) return(FALSE)
       }
       for (item in receipt$outputs) {
         if (!.is_obj(item) || !all(c("path", "kind", "status") %in% names(item)) || !is.character(item$path) || length(item$path) != 1L ||

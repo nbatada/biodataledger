@@ -94,6 +94,35 @@ def _valid_receipt(value):
                 or item.get("path") is not None and not text(item["path"])
                 or item.get("identity") == "match" and (not text(item.get("path")) or item.get("reason") not in ("sha256_match", "digest_match"))):
             return False
+    if "input_checkpoints" in value:
+        checkpoints = value["input_checkpoints"]
+        if (not isinstance(checkpoints, dict) or set(checkpoints) != {"version", "checks"}
+                or checkpoints["version"] != "biodataledger-input-checkpoints/1"
+                or not isinstance(checkpoints["checks"], list) or len(checkpoints["checks"]) > 3):
+            return False
+        checks = checkpoints["checks"]
+        phases_order = ["preflight", "before_callback", "after_callback"]
+        for index, check in enumerate(checks):
+            if (not isinstance(check, dict) or set(check) != {"phase", "files", "objects"}
+                    or check["phase"] != phases_order[index] or not isinstance(check["files"], list)
+                    or not isinstance(check["objects"], list) or len(check["objects"]) > 100):
+                return False
+            if len(check["files"]) != len(value["inputs"]): return False
+            for item, expected in zip(check["files"], value["inputs"]):
+                if (not isinstance(item, dict) or item.get("ref") != expected["ref"]
+                        or item.get("identity") not in ("match", "mismatch", "unknown")
+                        or not text(item.get("reason")) or item.get("path") is not None and not text(item["path"])):
+                    return False
+            for item in check["objects"]:
+                if (not isinstance(item, dict) or set(item) != {"ref", "overall", "blockers"}
+                        or item["ref"] not in [x["ref"] for x in value["inputs"]]
+                        or item["overall"] not in ("PASS", "BLOCKED", "UNKNOWN")
+                        or not isinstance(item["blockers"], list) or len(item["blockers"]) > 100
+                        or not all(text(x) for x in item["blockers"])):
+                    return False
+        if checks and checks[-1]["files"] != value["inputs"]: return False
+        if status == "succeeded" and (len(checks) != 3 or any(x["overall"] != "PASS" for x in checks[-1]["objects"])):
+            return False
     if any(value[field] != "unknown" for field in ("input_consumption", "scientific_validity", "downstream_consumption")):
         return False
     for item in value["outputs"]:
@@ -197,11 +226,14 @@ def _input_paths(project, source, verify):
     result, paths, failed = [], [], False
     for ref in refs:
         rec = project._record(ref, "data")
-        if verify:
+        if rec["status"] != "active":
+            entry = _unknown(ref, "INACTIVE: input is not eligible")
+            failed = True
+        elif verify:
             try:
-                path, _ = project._verify_file(rec)
+                path = project.resolve_data(ref=ref, verify="sha256").path
                 entry = {"ref": copy.deepcopy(ref), "path": str(path), "identity": "match", "reason": "sha256_match"}
-            except BundleError as exc:
+            except (BundleError, OSError) as exc:
                 message = str(exc)
                 identity = "mismatch" if message.startswith(("SIZE_MISMATCH", "FILE_CHANGED", "DIGEST_MISMATCH")) else "unknown"
                 entry = _unknown(ref, _bounded(message))
@@ -291,9 +323,17 @@ def run_analysis(project, analysis_ref, entry_point, outputs=[], seeds=None, ver
     run_ref = project._stage(run, "run_analysis_started", context_check=False)
     project.save_and_confirm()  # The durable start boundary includes all previously staged edits.
 
+    receipt["input_checkpoints"] = {"version": "biodataledger-input-checkpoints/1", "checks": []}
+    def checkpoint(phase):
+        files, paths, failed = _input_paths(project, source, verify_inputs)
+        receipt["inputs"] = files
+        receipt["input_checkpoints"]["checks"].append({"phase": phase, "files": copy.deepcopy(files), "objects": []})
+        require(not failed, "input checkpoint failed: " + phase)
+        return paths
     try:
         raw = _snapshot(project, source["code"][0], verify_code)
-        receipt["inputs"], input_paths, bad_inputs = _input_paths(project, source, verify_inputs)
+        input_paths = checkpoint("preflight")
+        bad_inputs = False
     except (BundleError, OSError) as exc:
         terminal = _terminal(project, run_ref, receipt, "blocked", exc)
         raise ExecutionError("execution blocked", terminal) from exc
@@ -308,10 +348,17 @@ def run_analysis(project, analysis_ref, entry_point, outputs=[], seeds=None, ver
         exec(compiled, namespace, namespace)
         callback = namespace.get(entry_point)
         require(callable(callback), "entry_point not defined by captured code")
+        input_paths = checkpoint("before_callback")
         receipt["phases"]["callback_invoked"] = True
         callback(inputs=input_paths, params=copy.deepcopy(source["params"]), seeds=copy.deepcopy(seeds),
                  outputs=[item["path"] for item in checked_outputs])
+        checkpoint("after_callback")
     except BaseException as exc:
+        if receipt["phases"]["callback_invoked"] and receipt["input_checkpoints"]["checks"][-1]["phase"] != "after_callback":
+            try:
+                checkpoint("after_callback")
+            except (BundleError, OSError):
+                pass  # Retain the original callback failure and latest failed check.
         receipt["outputs"], _ = _capture_outputs(project, run_ref, checked_outputs)
         terminal = _terminal(project, run_ref, receipt, "failed", exc)
         raise ExecutionError("execution failed: " + _bounded(exc), terminal) from exc
