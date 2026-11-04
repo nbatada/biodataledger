@@ -108,3 +108,13 @@ scientific decision about that protocol revision; never infer approval.
 reports differences and unknown evidence. It does not execute steps or prove
 scientific compliance, parameter use or input consumption. See
 [the protocol contract](../api/PROTOCOLS_V1.md).
+
+## Execution chronology in 0.11.0 development
+
+Use `execution_history` for bounded recorded receipts by project, exact analysis
+or protocol. Registration-slot presentation, pairwise execution timing, dependency
+order and declared protocol intent are separate. Follow `scan.next_offset` only
+while the loaded registry and selector remain unchanged. Empty or truncated pages
+do not prove no execution; failed, open, blocked and imported evidence remains
+qualified. `execution_history_summary` provides bounded text without payload I/O.
+See [the chronology contract](../api/CHRONOLOGY_V1.md).

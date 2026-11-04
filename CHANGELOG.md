@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.0 — local development, unreleased
+
+- Add bounded execution-history retrieval by project, exact analysis or protocol,
+  reusing existing receipts without persisted format or registration changes.
+- Keep run outcomes, registration timestamps and intended protocol order separate
+  from pairwise timing evidence; preserve overlaps, ties and unknown intervals.
+- Add compact native R/Python summaries, explicit paging/omissions and imported
+  evidence qualifications. Queries do not load scientific data or write records.
+
+
 ## 0.10.0 — local development, unreleased
 
 - Add versioned ordered protocols that pin existing analysis revisions, separate

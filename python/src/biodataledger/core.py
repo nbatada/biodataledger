@@ -1451,6 +1451,14 @@ class ProjectBundle:
         from .related_work import related_work
         return related_work(self, input_ref, query, limit)
 
+    def execution_history(self, analysis_ref=None, protocol_ref=None, limit=10, offset=0):
+        from .chronology import execution_history
+        return execution_history(self, analysis_ref, protocol_ref, limit, offset)
+
+    def execution_history_summary(self, analysis_ref=None, protocol_ref=None, limit=10, offset=0):
+        from .chronology import execution_history_summary
+        return execution_history_summary(self, analysis_ref=analysis_ref, protocol_ref=protocol_ref, limit=limit, offset=offset)
+
     def save_and_confirm(self):
         """Commit all pending edits; a clean call reports no_changes, not freshness."""
         previous = self._loaded_revision

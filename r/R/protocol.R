@@ -51,7 +51,8 @@
 }
 
 .protocol_timestamp <- function(value) {
-  if (!is.character(value) || length(value) != 1L) return(as.POSIXct(NA))
+  if (!is.character(value) || length(value) != 1L || nchar(value, type = "bytes") != 20L ||
+      !grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", value)) return(as.POSIXct(NA))
   parsed <- as.POSIXct(value, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
   if (is.na(parsed) || !identical(format(parsed, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"), value)) as.POSIXct(NA) else parsed
 }

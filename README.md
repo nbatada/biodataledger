@@ -358,7 +358,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.10.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.11.0.tar.gz
 ```
 
 ## Confirm a saved change
@@ -435,3 +435,12 @@ scientist-submitted decision pinned to one protocol revision.
 See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
 [development API](docs/api/API_0.10.0.md). The installation commands above still
 select the published 0.9.0 release, which does not include these methods.
+
+### Execution chronology (0.11.0 development, unreleased)
+
+`execution_history()` retrieves bounded recorded runs by project, exact analysis
+or protocol. Pairwise timing evidence preserves overlaps, ties, failures and
+unknowns; display order is not an inferred execution sequence.
+`execution_history_summary()` returns compact text in Python and R. See
+[the chronology contract](docs/api/CHRONOLOGY_V1.md). Published 0.9.0 does not
+include these methods.
