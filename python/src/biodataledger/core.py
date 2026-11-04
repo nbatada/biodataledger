@@ -1427,6 +1427,10 @@ class ProjectBundle:
     def dependencies(self, ref, direction, depth=1, limit=20):
         return self._lineage.query(self, ref, direction, depth, limit)
 
+    def related_work(self, input_ref=None, query=None, limit=5):
+        from .related_work import related_work
+        return related_work(self, input_ref, query, limit)
+
     def save_and_confirm(self):
         """Commit all pending edits; a clean call reports no_changes, not freshness."""
         previous = self._loaded_revision

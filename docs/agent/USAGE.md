@@ -87,3 +87,14 @@ exact subject/evidence refs and separate cluster identifiers and annotation labe
 Scientific status is distinct from record lifecycle; the package does not authenticate
 approval. Use `get_decision` for exact revisions and `save_and_confirm` for retention.
 Do not infer missing decisions or biological labels. See [the contract](../api/DECISIONS_V1.md).
+
+
+## Related work in 0.9.0
+
+Use `related_work(input_ref=exact_data_ref)` or `related_work(query="TCR clonality")`
+to discover registered work before proposing new computation. Supply topic keywords;
+there is no natural-language or semantic search. Inspect match basis, exact input
+refs, execution evidence and truncation. Text similarity does not establish scientific
+equivalence, approval or safe reuse. Follow exact refs for detail and use explicit
+verification where needed. The package cannot force an unrestricted agent to query
+or reuse correctly. [Full contract](../api/RELATED_WORK_V1.md).

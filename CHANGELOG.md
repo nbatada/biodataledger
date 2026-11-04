@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 — local, unpublished
+
+- Add bounded native related_work reports for exact DATA revisions or literal
+  analysis topic/purpose metadata, without a new index service or payload I/O.
+- Return exact analysis/input/result/figure references, recorded provenance and
+  qualified execution status; distinguish text candidates from exact input links.
+- Preserve historical producer anchors, unknown evidence and explicit limits;
+  no scientific-equivalence, approval or automatic reuse claim.
+
 ## 0.8.0 — local, unpublished
 
 - Add native scientific-decision recording/revision and exact decision retrieval,
