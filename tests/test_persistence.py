@@ -91,7 +91,7 @@ else:
 """
         env = dict(os.environ)
         if env.get('BDL_R_LIB'):
-            env['R_LIBS_USER'] = env['BDL_R_LIB']
+            env['R_LIBS_USER'] = os.pathsep.join(filter(None, (env['BDL_R_LIB'], env.get('R_LIBS_USER', ''))))
         for writer in ('Python', 'R'):
             for mode in ('saved', 'unsaved'):
                 root = self.root / (writer + '-' + mode)

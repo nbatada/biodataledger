@@ -97,7 +97,8 @@ class ScientificDecisionTests(unittest.TestCase):
         python_ref = self.decision()
         self.p.save_and_confirm()
         env = dict(os.environ)
-        if env.get("BDL_R_LIB"): env["R_LIBS_USER"] = env["BDL_R_LIB"]
+        if env.get("BDL_R_LIB"):
+            env["R_LIBS_USER"] = os.pathsep.join(filter(None, (env["BDL_R_LIB"], env.get("R_LIBS_USER", ""))))
         result = subprocess.run(["Rscript", "--vanilla", str(script), str(self.root), python_ref["id"] + "@" + str(python_ref["revision"])], env=env,
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
