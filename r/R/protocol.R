@@ -41,7 +41,7 @@
   if (!.is_obj(value) || !identical(value$version, .protocol_version)) return(list(protocol = NULL, issue = "unsupported_analysis_protocol"))
   tryCatch({
     if (!setequal(names(value), c("version", "reason", "targets", "steps")) ||
-        "scientific_decision" %in% names(rec$details) ||
+        "scientific_decision" %in% names(rec$details) || any(.comparison_keys %in% names(rec$details)) ||
         !.protocol_same(value$targets, rec$details$targets) ||
         !identical(value$reason, rec$details$reason)) .fail("Protocol fields")
     normalized <- .protocol_descriptor(state, value$steps, value$reason)

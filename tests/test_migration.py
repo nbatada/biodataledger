@@ -27,7 +27,7 @@ class MigrationTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
 
     def test_installed_identity_and_legacy_archives(self):
-        self.assertEqual(__version__, "0.11.1")
+        self.assertEqual(__version__, "0.12.0")
         import biodataledger
         self.assertIn("site-packages", biodataledger.__file__)
         for mode in ("context", "working"):

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.0 — bounded comparison evidence, unreleased
+
+- Add explicit comparison plan/assessment types, separate from scientific decisions
+  and approvals, reusing DEC storage without schema migration.
+- Retain exact original/candidate outputs, criteria and bound submitted evidence
+  for reproduce, reapply and rerender; report scoped PASS/FAIL/UNKNOWN.
+- Prevent mixed-type approval and record conversion, preserve prior assessments,
+  and perform no new payload hashing, scientific execution or automatic reruns.
+
+
 ## 0.11.1 — local P0 correction, unreleased
 
 - Align runner input eligibility with strict exact DATA resolution.

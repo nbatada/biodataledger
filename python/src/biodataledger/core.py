@@ -497,6 +497,8 @@ class ProjectBundle:
             return None, "malformed_scientific_decision"
 
     def _scientific_decision_for_record(self, rec):
+        if {"comparison_plan", "comparison_assessment"} & set(rec["details"]):
+            return None, "comparison_is_not_scientific_decision"
         scientific, issue = self._read_scientific_descriptor(rec["details"].get(SCIENTIFIC_DECISION_KEY))
         if scientific is None:
             return None, issue
@@ -589,6 +591,7 @@ class ProjectBundle:
         require(RESULT_KEY not in details, "use register_result to declare a result")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
+        require(not ({"comparison_plan", "comparison_assessment"} & set(details)), "comparison metadata is reserved")
         require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
         require(isinstance(role, str) and role, "data role required")
         locator = self._locator(path)
@@ -607,6 +610,7 @@ class ProjectBundle:
                           design_ref=_DEFAULT, input_mode="separate", **details):
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
+        require(not ({"comparison_plan", "comparison_assessment"} & set(details)), "comparison metadata is reserved")
         require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
         rec = self._new("analysis", name)
         require(inputs is None or isinstance(inputs, list), "inputs must be list or None")
@@ -622,6 +626,7 @@ class ProjectBundle:
         require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
+        require(not ({"comparison_plan", "comparison_assessment"} & set(details)), "comparison metadata is reserved")
         require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
         locator = self._locator(path)
         file = self._resolve(locator)
@@ -1049,6 +1054,8 @@ class ProjectBundle:
     def update_record(self, ref, changes, reason):
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
+        require(not ({"comparison_plan", "comparison_assessment"} & set(rec["details"])), "comparison revisions use dedicated writers")
+        require(not ({"comparison_plan", "comparison_assessment"} & set(changes.get("details", {}))), "comparison metadata is reserved")
         require("execution_receipt" not in rec["details"], "execution runs are runner-managed")
         require(not ("details" in changes and isinstance(changes["details"], dict) and SCIENTIFIC_DECISION_KEY in changes["details"]),
                 "scientific decision metadata is writer-managed")
@@ -1132,6 +1139,7 @@ class ProjectBundle:
             rec = self._new("decision", text)
         else:
             old = self._record(ref, "decision")
+            require(not ({"comparison_plan", "comparison_assessment"} & set(old["details"])), "cannot convert comparison to scientific decision")
             require(old["revision"] == self._latest_index[old["id"]]["revision"], "scientific decision revision must be current")
             require(ANALYSIS_PROTOCOL_KEY not in old["details"], "cannot convert analysis protocol to scientific decision")
             prior, issue = self._scientific_decision_for_record(old)
@@ -1160,7 +1168,7 @@ class ProjectBundle:
             unknown.append("untrusted_imported_claim")
         return {"ref": self._ref(rec), "text": rec["name"], "reason": copy.deepcopy(rec["details"].get("reason")),
                 "targets": copy.deepcopy(rec["details"].get("targets", [])), "record_status": rec["status"],
-                "scientific": scientific, "approval": "not_authenticated", "unknown": unknown,
+                "scientific": scientific, "approval": "not_applicable" if {"comparison_plan", "comparison_assessment"} & set(rec["details"]) else "not_authenticated", "unknown": unknown,
                 "imported_claim": "untrusted_imported_claim" if self.state["imported"] else None}
 
     def register_protocol(self, name, steps, reason, ref=None):
@@ -1450,6 +1458,18 @@ class ProjectBundle:
     def related_work(self, input_ref=None, query=None, limit=5):
         from .related_work import related_work
         return related_work(self, input_ref, query, limit)
+
+    def register_comparison_plan(self, name, mode, original, intended, criteria, reason, ref=None):
+        from .comparison import register_comparison_plan
+        return register_comparison_plan(self, name, mode, original, intended, criteria, reason, ref)
+
+    def record_comparison_assessment(self, plan_ref, candidate, observations, reason, ref=None):
+        from .comparison import record_comparison_assessment
+        return record_comparison_assessment(self, plan_ref, candidate, observations, reason, ref)
+
+    def get_comparison(self, ref, scientific_acceptance_ref=None):
+        from .comparison import get_comparison
+        return get_comparison(self, ref, scientific_acceptance_ref)
 
     def execution_history(self, analysis_ref=None, protocol_ref=None, limit=10, offset=0):
         from .chronology import execution_history

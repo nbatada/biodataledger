@@ -444,3 +444,12 @@ unknowns; display order is not an inferred execution sequence.
 `execution_history_summary()` returns compact text in Python and R. See
 [the chronology contract](docs/api/CHRONOLOGY_V1.md). Published 0.9.0 does not
 include these methods.
+
+### Comparison evidence (0.12.0 development, unreleased)
+
+Record explicit reproduce/reapply/rerender plans and exact candidate assessments
+with `register_comparison_plan`, `record_comparison_assessment` and `get_comparison`.
+Required evidence yields scoped PASS/FAIL/UNKNOWN; comparison records cannot act
+as scientific approval. No analysis or hashing is triggered. See the
+[comparison contract](docs/api/COMPARISONS_V1.md). Published 0.9.0 does not include
+these methods.

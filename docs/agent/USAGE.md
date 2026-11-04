@@ -118,3 +118,12 @@ while the loaded registry and selector remain unchanged. Empty or truncated page
 do not prove no execution; failed, open, blocked and imported evidence remains
 qualified. `execution_history_summary` provides bounded text without payload I/O.
 See [the chronology contract](../api/CHRONOLOGY_V1.md).
+
+## Comparison evidence in 0.12.0 development
+
+Comparison plans/assessments are explicit types distinct from scientific decisions.
+Use exact plan/candidate refs, scientist-selected criteria and bound external
+evidence. A comparison PASS is not approval or scientific reproducibility. Missing
+evidence remains UNKNOWN, even after successful callbacks. Do not run analyses,
+load payloads or add hash passes to retrieve a comparison. See
+[COMPARISONS_V1](../api/COMPARISONS_V1.md).

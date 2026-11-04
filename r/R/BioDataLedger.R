@@ -467,6 +467,7 @@
   result
 }
 .scientific_decision_for_record <- function(state, rec) {
+  if (any(.comparison_keys %in% names(rec$details))) return(list(scientific = NULL, issue = "comparison_not_scientific_decision"))
   parsed <- .read_scientific_descriptor(state, rec$details[[.scientific_decision_key]])
   if (is.null(parsed$scientific)) return(parsed)
   result <- tryCatch({
@@ -646,6 +647,7 @@ ProjectBundle <- local({
       if ("execution_receipt" %in% names(list(...))) .fail("Execution receipt is runner-managed")
       if (.scientific_decision_key %in% names(list(...))) .fail("Scientific decision metadata is reserved")
       if (.analysis_protocol_key %in% names(list(...))) .fail("Analysis protocol metadata is reserved")
+      if (any(.comparison_keys %in% names(list(...)))) .fail("Comparison metadata is reserved")
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (!is.null(p) && !file.access(p, 4) == 0) .fail("Unreadable file")
       size <- if (!is.null(p) && !dir.exists(p)) file.info(p)$size else NULL
@@ -662,6 +664,7 @@ ProjectBundle <- local({
       if ("execution_receipt" %in% names(details)) .fail("Execution receipt is runner-managed")
       if (.scientific_decision_key %in% names(details)) .fail("Scientific decision metadata is reserved")
       if (.analysis_protocol_key %in% names(details)) .fail("Analysis protocol metadata is reserved")
+      if (any(.comparison_keys %in% names(details))) .fail("Comparison metadata is reserved")
       details$provenance <- .obj(file = "unknown", analytical = "declared")
       rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
@@ -677,7 +680,7 @@ ProjectBundle <- local({
       }
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt", .scientific_decision_key, .analysis_protocol_key) %in% names(details))) .fail("Reserved metadata")
+      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt", .scientific_decision_key, .analysis_protocol_key, .comparison_keys) %in% names(details))) .fail("Reserved metadata")
       if (!is.null(figure_sources)) details[[.figure_sources_key]] <- .sources_normalize(state, figure_sources)
       details$format <- tolower(tools::file_ext(p))
       details$provenance <- .obj(file = "captured", analytical = if (!is.null(analysis) || length(inputs) || length(entries)) "declared" else "unknown")
@@ -1160,8 +1163,10 @@ ProjectBundle <- local({
       if ("details" %in% names(changes) && "execution_receipt" %in% names(changes$details)) .fail("Execution receipt is runner-managed")
       if ("details" %in% names(changes) && .scientific_decision_key %in% names(changes$details)) .fail("Scientific decision metadata is writer-managed")
       if ("details" %in% names(changes) && .analysis_protocol_key %in% names(changes$details)) .fail("Analysis protocol metadata is writer-managed")
+      if ("details" %in% names(changes) && any(.comparison_keys %in% names(changes$details))) .fail("Comparison metadata is writer-managed")
       if (rec$kind == "decision" && .scientific_decision_key %in% names(rec$details) && !identical(names(changes), "status")) .fail("Typed scientific decisions allow lifecycle status correction only")
       if (.analysis_protocol_key %in% names(rec$details)) .fail("Use register_protocol to revise analysis protocols")
+      if (any(.comparison_keys %in% names(rec$details))) .fail("Use comparison writers to revise comparison records")
       if (!is.null(rec$details[[.result_key]]) && ('path' %in% names(changes) ||
           'details' %in% names(changes) && (!.result_equal(changes$details[[.result_key]],rec$details[[.result_key]]) ||
           !.result_equal(changes$details$membership,rec$details$membership)))) .fail('Use register_result to revise result identity')
@@ -1209,7 +1214,7 @@ ProjectBundle <- local({
         if (old$kind != "decision") .fail("Not decision")
         latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
         if (old$revision != latest$revision) .fail("Scientific decision revision must be current")
-        if (.analysis_protocol_key %in% names(old$details)) .fail("Cannot convert analysis protocol to scientific decision")
+        if (.analysis_protocol_key %in% names(old$details) || any(.comparison_keys %in% names(old$details))) .fail("Cannot convert protocol or comparison to scientific decision")
         prior <- .scientific_decision_for_record(state, old)
         if (!is.null(prior$issue) && prior$issue != "legacy_untyped_decision") .fail("Cannot revise unsupported or malformed scientific decision")
         if (!is.null(prior$scientific)) {
@@ -1227,6 +1232,9 @@ ProjectBundle <- local({
     }
     get_decision <- function(ref) {
       rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
+      if (any(.comparison_keys %in% names(rec$details))) return(.obj(ref = .make_ref(state, rec), text = rec$name, reason = .copy(rec$details$reason),
+        targets = list(), record_status = rec$status, scientific = NULL, approval = "not_applicable",
+        unknown = .arr(list("comparison_not_scientific_decision")), imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL))
       parsed <- .scientific_decision_for_record(state, rec)
       unknown <- if (is.null(parsed$issue)) list() else list(parsed$issue)
       if (isTRUE(state$imported)) unknown <- c(unknown, list("untrusted_imported_claim"))
@@ -1241,7 +1249,7 @@ ProjectBundle <- local({
       if (is.null(ref)) rec <- .new_record(state, "decision", name) else {
         old <- .record(state, ref); latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
         if (old$kind != "decision" || old$revision != latest$revision) .fail("Protocol revision must be current")
-        if (.scientific_decision_key %in% names(old$details)) .fail("Cannot convert scientific decision to analysis protocol")
+        if (.scientific_decision_key %in% names(old$details) || any(.comparison_keys %in% names(old$details))) .fail("Cannot convert scientific decision or comparison to analysis protocol")
         prior <- .protocol_read(state, old)
         if (is.null(prior$protocol)) .fail("Cannot revise unsupported or malformed protocol")
         rec <- .copy(old); rec$revision <- old$revision + 1L; rec$created_at <- .now()
@@ -1256,6 +1264,91 @@ ProjectBundle <- local({
       if (isTRUE(state$imported)) unknown <- c(unknown, list("untrusted_imported_claim"))
       .obj(ref = .make_ref(state, rec), name = rec$name, record_status = rec$status, protocol = parsed$protocol,
            unknown = .arr(unknown), imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL)
+    }
+    register_comparison_plan <- function(name, mode, original, intended, criteria, reason, ref = NULL) {
+      descriptor <- .comparison_plan(state, mode, original, intended, criteria)
+      if (!.comparison_text(name) || !.comparison_text(reason)) .fail("Comparison name/reason required")
+      if (is.null(ref)) rec <- .new_record(state, "decision", name) else {
+        old <- .record(state, ref); latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
+        prior <- .comparison_read(state, old)
+        if (old$kind != "decision" || old$revision != latest$revision || !identical(prior$record_type, .comparison_plan_key) || is.null(prior$descriptor)) .fail("Latest matching comparison revision required")
+        rec <- .copy(old); rec$revision <- old$revision + 1L; rec$created_at <- .now()
+      }
+      rec$name <- name; rec$details <- .obj(reason = reason, approval = "not_applicable"); rec$details[[.comparison_plan_key]] <- descriptor
+      out <- append_record(rec, "register_comparison_plan"); state$history[[length(state$history)]]$reason <<- reason; out
+    }
+    record_comparison_assessment <- function(plan_ref, candidate, observations, reason, ref = NULL) {
+      descriptor <- .comparison_assessment(state, plan_ref, candidate, observations)
+      if (!.comparison_text(reason)) .fail("Comparison reason required")
+      if (is.null(ref)) rec <- .new_record(state, "decision", "Comparison assessment") else {
+        old <- .record(state, ref); latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
+        prior <- .comparison_read(state, old)
+        if (old$kind != "decision" || old$revision != latest$revision || !identical(prior$record_type, .comparison_assessment_key) || is.null(prior$descriptor)) .fail("Latest matching comparison revision required")
+        if (!.protocol_same(prior$descriptor$plan_ref, descriptor$plan_ref) || !.protocol_same(prior$descriptor$candidate, descriptor$candidate)) .fail("Assessment plan/candidate binding immutable")
+        rec <- .copy(old); rec$revision <- old$revision + 1L; rec$created_at <- .now()
+      }
+      rec$name <- "Comparison assessment"; rec$details <- .obj(reason = reason, approval = "not_applicable"); rec$details[[.comparison_assessment_key]] <- descriptor
+      out <- append_record(rec, "register_comparison_assessment"); state$history[[length(state$history)]]$reason <<- reason; out
+    }
+    get_comparison <- function(ref, scientific_acceptance_ref = NULL) {
+      rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
+      parsed <- .comparison_read(state, rec)
+      out <- .obj(ref = .make_ref(state, rec), record_type = parsed$record_type, approval = "not_applicable", scientific = NULL,
+        descriptor = parsed$descriptor, verdict = "UNKNOWN", context = list(), criteria = list(),
+        claim_scope = "submitted evidence under specified criteria; not scientific reproducibility or approval", unknown = .arr(list("input_consumption", "scientific_validity")),
+        metadata_consistency = "UNKNOWN", verdict_qualification = "submitted_evidence_only", independent_support = list(),
+        scientific_acceptance = .obj(status = "not_supplied", ref = NULL, authentication = "not_authenticated"))
+      if (!is.null(scientific_acceptance_ref)) {
+        acceptance <- get_decision(scientific_acceptance_ref); scientific <- acceptance$scientific
+        bound <- !is.null(scientific) && .protocol_same(.arr(lapply(scientific$subjects, `[[`, "ref")), .arr(list(.make_ref(state, rec))))
+        out$scientific_acceptance <- .obj(status = if (bound && !isTRUE(state$imported)) paste0("recorded_", scientific$scientific_status) else "UNKNOWN", ref = acceptance$ref, authentication = "not_authenticated")
+      }
+      if (is.null(parsed$descriptor)) { out$unknown <- c(out$unknown, list("malformed_or_unsupported_comparison")); return(out) }
+      if (identical(parsed$record_type, .comparison_plan_key)) return(out)
+      plan <- .comparison_read(state, .record(state, parsed$descriptor$plan_ref))$descriptor
+      context <- .comparison_context(state, get_execution, get_decision, get_protocol, compare_protocol, plan, parsed$descriptor$candidate); out$context <- context
+      observations <- parsed$descriptor$observations; required <- character()
+      for (criterion in plan$criteria) {
+        found <- Filter(function(x) identical(x$criterion_id, criterion$criterion_id), observations); item <- if (length(found)) found[[1L]] else NULL
+        effective <- "UNKNOWN"; gaps <- list(); expected <- list()
+        for (side in list(plan$original, parsed$descriptor$candidate)) for (slot in side$outputs) if (slot$slot_id %in% unlist(criterion$slots, use.names = FALSE)) expected[[length(expected) + 1L]] <- slot$ref
+        if (is.null(item)) gaps <- list("observation_missing") else {
+          if (!length(item$evidence)) gaps <- c(gaps, list("evidence_missing"))
+          if (!.protocol_same(item$subjects, .arr(expected))) gaps <- c(gaps, list("subject_binding"))
+          if (!.protocol_same(item$comparator_ref, criterion$comparator_ref)) gaps <- c(gaps, list("comparator_binding"))
+          if (is.null(item$observed) || is.character(item$observed) && !.comparison_text(item$observed)) gaps <- c(gaps, list("observation_unknown"))
+          comparator <- .record(state, criterion$comparator_ref); evidence_bound <- FALSE
+          for (evidence_ref in item$evidence) {
+            evidence <- .record(state, evidence_ref)
+            if (identical(comparator$kind, "analysis") && identical(evidence$kind, "data")) {
+              receipt <- get_execution(criterion$comparator_ref); anchor <- if (is.null(receipt$run_ref)) criterion$comparator_ref else receipt$run_ref
+              evidence_bound <- evidence_bound || (.protocol_same(evidence$scope$transformation_ref, anchor) && .protocol_same(comparator$inputs, .arr(expected)))
+            } else if (identical(evidence$kind, "decision")) {
+              evidence_bound <- evidence_bound || (.protocol_same(evidence$details$targets, .arr(expected)) && .protocol_same(evidence_ref, criterion$comparator_ref))
+            } else if (identical(comparator$kind, "data") && identical(evidence$kind, "data")) {
+              evidence_bound <- evidence_bound || (.protocol_same(evidence$details$comparison_subjects, .arr(expected)) && .protocol_same(evidence$details$comparison_comparator_ref, criterion$comparator_ref))
+            }
+          }
+          if (!evidence_bound) gaps <- c(gaps, list("evidence_binding"))
+          if (length(item$contradictory_evidence)) gaps <- c(gaps, list("conflicting_evidence"))
+          if (!length(gaps)) effective <- item$verdict
+        }
+        review_ref <- if (is.null(item)) NULL else item$independent_review_ref; review_status <- "not_supplied"
+        if (!is.null(review_ref)) {
+          review <- .record(state, review_ref)
+          review_status <- if (!length(intersect(.comparison_typed_keys, names(review$details))) && .protocol_same(review$details$targets, .arr(expected)) && !any(vapply(c(item$evidence, list(item$comparator_ref)), function(x) .protocol_same(review_ref, x), logical(1)))) "review_recorded" else "UNKNOWN"
+        }
+        out$independent_support[[length(out$independent_support) + 1L]] <- .obj(criterion_id = criterion$criterion_id, review_ref = review_ref, status = review_status, independence = "not_authenticated", empirical_verification = "UNKNOWN")
+        out$criteria[[length(out$criteria) + 1L]] <- .obj(criterion_id = criterion$criterion_id, required = criterion$required, submitted = .copy(item), effective = effective, gaps = .arr(gaps))
+        if (isTRUE(criterion$required)) required <- c(required, effective)
+      }
+      metadata <- vapply(context, `[[`, "verdict", FUN.VALUE = character(1))
+      out$metadata_consistency <- if ("FAIL" %in% metadata) "FAIL" else if ("UNKNOWN" %in% metadata) "UNKNOWN" else "PASS"
+      statuses <- c(required, metadata)
+      out$verdict <- if ("FAIL" %in% statuses) "FAIL" else if ("UNKNOWN" %in% statuses) "UNKNOWN" else "PASS"
+      if (any(vapply(out$criteria, function(row) "conflicting_evidence" %in% unlist(row$gaps, use.names = FALSE), logical(1)))) out$verdict_qualification <- "conflicting_evidence"
+      if (isTRUE(state$imported)) { out$unknown <- c(out$unknown, list("untrusted_imported_claim")); if (identical(out$verdict, "PASS")) out$verdict <- "UNKNOWN" }
+      .comparison_bound(out)
     }
     compare_protocol <- function(ref, executions, approval_ref = NULL) {
       rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
@@ -1544,7 +1637,7 @@ ProjectBundle <- local({
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
-    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

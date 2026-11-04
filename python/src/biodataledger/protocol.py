@@ -90,7 +90,7 @@ def _read(project, rec):
         return None, "unsupported_analysis_protocol"
     try:
         if (set(value) != {"version", "reason", "targets", "steps"}
-                or "scientific_decision" in rec["details"]
+                or bool({"scientific_decision", "comparison_plan", "comparison_assessment"} & set(rec["details"]))
                 or not _same(value.get("targets"), rec["details"].get("targets"))
                 or value.get("reason") != rec["details"].get("reason")):
             raise BundleError("protocol fields")
@@ -108,6 +108,7 @@ def register_protocol(project, name, steps, reason, ref=None):
         rec = project._new("decision", name)
     else:
         old = project._record(ref, "decision")
+        require(not ({"comparison_plan", "comparison_assessment"} & set(old["details"])), "cannot convert comparison to protocol")
         require(old["revision"] == project._latest_index[old["id"]]["revision"], "protocol revision must be current")
         require("scientific_decision" not in old["details"], "cannot convert scientific decision to analysis protocol")
         prior, issue = _read(project, old)
