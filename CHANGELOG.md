@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Reuse exact unchanged JSON fragments during repeated R saves in one loaded
+  session. Every dirty save still validates the full state and preserves existing
+  file verification, stale-write, locking and atomic publication safeguards.
+
 ## 0.12.1 — consolidated release, 2026-11-04
 
 Includes the 0.10–0.12 development series: ordered protocols, evidence-qualified

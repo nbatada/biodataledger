@@ -20,6 +20,39 @@
 .fail <- function(message) stop(message, call. = FALSE)
 .copy <- function(x) unserialize(serialize(x, NULL))
 .json <- function(x) as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = 15, force = TRUE))
+.json_cacheable <- function(x) {
+  attributes <- attributes(x)
+  if (!is.null(attributes) && !identical(names(attributes), "names")) return(FALSE)
+  if (is.list(x)) return(all(vapply(x, .json_cacheable, logical(1))))
+  is.null(x) || typeof(x) %in% c("logical", "integer", "double", "character")
+}
+.json_save <- function(state, previous = NULL, cache = NULL) {
+  if (!is.null(attributes(state$records)) || !is.null(attributes(state$history))) return(list(text = .json(state), cache = NULL))
+  encode <- function(values, old, fragments) {
+    text <- saved <- vector("list", length(values))
+    for (i in seq_along(values)) {
+      if (i <= length(fragments) && !is.null(fragments[[i]]) &&
+          identical(values[[i]], old[[i]], num.eq = FALSE, single.NA = FALSE, attrib.as.set = FALSE)) {
+        text[[i]] <- fragments[[i]]; saved[[i]] <- fragments[[i]]
+      } else {
+        text[[i]] <- .json(values[[i]])
+        # Reference objects and class-specific serializers must run afresh.
+        if (.json_cacheable(values[[i]])) saved[[i]] <- text[[i]]
+      }
+    }
+    verbatim <- lapply(text, function(x) structure(x, class = "json"))
+    list(text = as.character(jsonlite::toJSON(verbatim, auto_unbox = TRUE, json_verbatim = TRUE)), cache = saved)
+  }
+  records <- encode(state$records, previous$records, cache$records)
+  history <- encode(state$history, previous$history, cache$history)
+  parts <- lapply(names(state), function(name) {
+    text <- if (name == "records") records$text else if (name == "history") history$text else .json(state[[name]])
+    structure(text, class = "json")
+  })
+  names(parts) <- names(state)
+  list(text = as.character(jsonlite::toJSON(parts, auto_unbox = TRUE, json_verbatim = TRUE)),
+       cache = list(records = records$cache, history = history$cache))
+}
 .metadata_limit <- 20971520
 .scientific_decision_key <- "scientific_decision"
 .analysis_protocol_key <- "analysis_protocol"
@@ -516,6 +549,7 @@ ProjectBundle <- local({
     result_graph <- .result_graph(state)
     loaded_digest <- .hash(path); loaded_revision <- state$state_revision
     pending_code <- list(); dirty <- FALSE
+    serialization_state <- NULL; serialization_cache <- NULL
     event <- function(action, reason = NULL, target = NULL) {
       state$history[[length(state$history) + 1L]] <<- .obj(at = .now(), action = action, actor = "local", reason = reason, target = target, transaction = NULL)
       dirty <<- TRUE
@@ -1105,7 +1139,8 @@ ProjectBundle <- local({
       proposed <- state; proposed$state_revision <- state$state_revision + 1L; proposed$last_transaction <- .uuid()
       for (i in seq_along(proposed$history)) if (is.null(proposed$history[[i]]$transaction)) proposed$history[[i]]$transaction <- proposed$last_transaction
       proposed <- .validate(proposed)
-      serialized <- charToRaw(.json(proposed))
+      encoded <- .json_save(proposed, serialization_state, serialization_cache)
+      serialized <- charToRaw(encoded$text)
       if (length(serialized) > .metadata_limit) .fail("Metadata size limit exceeded")
       for (dest in names(pending_code)) {
         bytes <- pending_code[[dest]]; target <- file.path(root, dest); dir.create(dirname(target), recursive = TRUE, showWarnings = FALSE)
@@ -1118,6 +1153,7 @@ ProjectBundle <- local({
       if (isTRUE(getOption("BioDataLedger.inject_save_before_rename"))) .fail("Injected save failure before publication")
       if (!file.rename(temp, path)) .fail("Atomic replacement failed")
       state <<- proposed; loaded_digest <<- .hash(path); loaded_revision <<- state$state_revision; pending_code <<- list(); dirty <<- FALSE
+      serialization_state <<- list(records = proposed$records, history = proposed$history); serialization_cache <<- encoded$cache
       .obj(state_revision = state$state_revision, transaction = state$last_transaction)
     }
     save_and_confirm <- function() {
