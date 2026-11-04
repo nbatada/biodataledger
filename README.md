@@ -86,9 +86,12 @@ Offline installation requires the build tools and dependencies to be available l
 From the repository root, run the R example (or the Python equivalent):
 
 ```sh
-R_LIBS_USER="$PWD/.r-library" Rscript examples/trial_R.R "$PWD/trial-r" "$PWD/examples/input-files"
+Rscript examples/trial_R.R "$PWD/trial-r" "$PWD/examples/input-files"
 .venv/bin/python examples/trial_python.py "$PWD/trial-python"
 ```
+
+The R command uses your selected library. For a custom library, keep the earlier
+`R_LIBS_USER` export; in an interactive R session, add its path with `.libPaths()`.
 
 Each creates and reopens a new project with one dataset, one analysis and two
 retained figures. It prints exact project/record/revision references and missing
