@@ -29,6 +29,9 @@ PREFIXES = {"data": "DATA", "analysis": "ANA", "figure": "FIG", "decision": "DEC
 RECORD_KEYS = set("kind id revision name created_at locator role type sha256 size inputs analysis code method params details status foreign_refs".split())
 STATE_KEYS = set("schema_version project state_revision last_transaction records current bindings history imported".split())
 PROJECT_KEYS = set("id name purpose raw_dir metadata next_task questions authorities".split())
+SCIENTIFIC_DECISION_KEY = "scientific_decision"
+SCIENTIFIC_DECISION_VERSION = "biodataledger-scientific-decision/1"
+SCIENTIFIC_STATUSES = {"proposed", "provisional", "approved", "superseded"}
 
 
 class BundleError(ValueError):
@@ -447,6 +450,67 @@ class ProjectBundle:
         require(kind is None or rec["kind"] == kind, "wrong record kind")
         return rec
 
+    def _decision_refs(self, values, field):
+        require(isinstance(values, list) and len(values) <= 100, field + " must be an array of at most 100 references")
+        return [self._ref(self._record(value)) for value in values]
+
+    def _scientific_descriptor(self, subjects, scientific_status, supporting, contradictory):
+        require(isinstance(subjects, list) and 0 < len(subjects) <= 100, "subjects must be a nonempty array of at most 100 items")
+        require(isinstance(scientific_status, str) and scientific_status in SCIENTIFIC_STATUSES, "invalid scientific_status")
+        normalized, identities = [], set()
+        for subject in subjects:
+            require(isinstance(subject, dict) and set(subject) <= {"ref", "cluster_id", "annotation"} and "ref" in subject,
+                    "invalid scientific decision subject")
+            rec = self._record(subject["ref"])
+            item = {"ref": self._ref(rec)}
+            for field in ("cluster_id", "annotation"):
+                if field in subject:
+                    value = subject[field]
+                    require(isinstance(value, str) and value, "invalid " + field)
+                    item[field] = value
+            if "cluster_id" in item:
+                require(rec["kind"] in ("data", "analysis"), "cluster_id requires DATA or ANA subject")
+            identity = (item["ref"]["id"], item["ref"]["revision"], item.get("cluster_id"))
+            require(identity not in identities, "duplicate scientific decision subject")
+            identities.add(identity)
+            normalized.append(item)
+        return {"version": SCIENTIFIC_DECISION_VERSION, "subjects": normalized,
+                "scientific_status": scientific_status,
+                "supporting": self._decision_refs([] if supporting is None else supporting, "supporting"),
+                "contradictory": self._decision_refs([] if contradictory is None else contradictory, "contradictory")}
+
+    def _read_scientific_descriptor(self, value):
+        """Return a validated descriptor or an explicit unknown reason; never repair stored claims."""
+        if value is None:
+            return None, "legacy_untyped_decision"
+        if not isinstance(value, dict) or value.get("version") != SCIENTIFIC_DECISION_VERSION:
+            return None, "unsupported_scientific_decision"
+        try:
+            if set(value) != {"version", "subjects", "scientific_status", "supporting", "contradictory"}:
+                raise BundleError("descriptor fields")
+            normalized = self._scientific_descriptor(value["subjects"], value["scientific_status"],
+                                                     value["supporting"], value["contradictory"])
+            require(normalized == value, "descriptor is not canonical")
+            return copy.deepcopy(normalized), None
+        except BundleError:
+            return None, "malformed_scientific_decision"
+
+    def _scientific_decision_for_record(self, rec):
+        scientific, issue = self._read_scientific_descriptor(rec["details"].get(SCIENTIFIC_DECISION_KEY))
+        if scientific is None:
+            return None, issue
+        try:
+            require(isinstance(rec["details"].get("reason"), str) and rec["details"]["reason"].strip(), "decision rationale missing")
+            targets = self._decision_refs(rec["details"].get("targets"), "targets")
+            require(targets == rec["details"]["targets"], "decision targets are not canonical")
+            require(targets == [subject["ref"] for subject in scientific["subjects"]], "decision targets do not bind subjects")
+            if "text" in rec["details"]:
+                require(isinstance(rec["details"]["text"], str) and rec["details"]["text"] == rec["name"],
+                        "decision text alias does not bind name")
+            return scientific, None
+        except BundleError:
+            return None, "malformed_scientific_decision"
+
     def _event(self, action, target=None, reason=None, transaction=None):
         self._dirty = True
         self.state["history"].append({"at": now(), "action": action, "actor": "caller", "reason": reason,
@@ -523,6 +587,7 @@ class ProjectBundle:
         from .results import KEY as RESULT_KEY
         require(RESULT_KEY not in details, "use register_result to declare a result")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
+        require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
         require(isinstance(role, str) and role, "data role required")
         locator = self._locator(path)
         file = self._resolve(locator)
@@ -539,6 +604,7 @@ class ProjectBundle:
     def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True,
                           design_ref=_DEFAULT, input_mode="separate", **details):
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
+        require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
         rec = self._new("analysis", name)
         require(inputs is None or isinstance(inputs, list), "inputs must be list or None")
         rec.update(inputs=None if inputs is None else [self._ref(self._record(x, "data")) for x in inputs],
@@ -552,6 +618,7 @@ class ProjectBundle:
                         snapshot_code=True, design_ref=_DEFAULT, input_mode=_DEFAULT, figure_sources=_DEFAULT, **details):
         require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
+        require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
         locator = self._locator(path)
         file = self._resolve(locator)
         require(file is not None and file.is_file(), "figure must be an existing regular file")
@@ -979,6 +1046,10 @@ class ProjectBundle:
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
         require("execution_receipt" not in rec["details"], "execution runs are runner-managed")
+        require(not ("details" in changes and isinstance(changes["details"], dict) and SCIENTIFIC_DECISION_KEY in changes["details"]),
+                "scientific decision metadata is writer-managed")
+        if rec["kind"] == "decision" and SCIENTIFIC_DECISION_KEY in rec["details"]:
+            require(set(changes) == {"status"}, "typed scientific decisions allow lifecycle status correction only")
         from .results import guard_update
         guard_update(rec, changes)
         require(rec["kind"] != "design", "use set_design to revise experimental design")
@@ -1045,6 +1116,44 @@ class ProjectBundle:
         rec = self._new("decision", text)
         rec["details"] = {"reason": reason, "targets": [self._ref(self._record(x)) for x in targets], "approval": "not_authenticated"}
         return self._stage(rec, "record_decision", reason)
+
+    def record_scientific_decision(self, text, reason, subjects, scientific_status, supporting=None, contradictory=None, ref=None):
+        require(isinstance(text, str) and text.strip() and isinstance(reason, str) and reason.strip(),
+                "decision text and reason required")
+        descriptor = self._scientific_descriptor(subjects, scientific_status, supporting, contradictory)
+        if ref is None:
+            rec = self._new("decision", text)
+        else:
+            old = self._record(ref, "decision")
+            require(old["revision"] == self._latest_index[old["id"]]["revision"], "scientific decision revision must be current")
+            prior, issue = self._scientific_decision_for_record(old)
+            require(issue in (None, "legacy_untyped_decision"), "cannot revise unsupported or malformed scientific decision")
+            if prior is not None:
+                old_identities = [(x["ref"], x.get("cluster_id")) for x in prior["subjects"]]
+                new_identities = [(x["ref"], x.get("cluster_id")) for x in descriptor["subjects"]]
+                require(old_identities == new_identities, "scientific decision subjects are immutable")
+            rec = copy.deepcopy(old)
+            rec["revision"] = old["revision"] + 1
+            rec["created_at"] = now()
+        rec["name"] = text
+        rec["details"] = copy.deepcopy(rec["details"])
+        rec["details"].update({"reason": reason,
+                               "text": text,
+                               "targets": [copy.deepcopy(x["ref"]) for x in descriptor["subjects"]],
+                               "approval": "not_authenticated",
+                               SCIENTIFIC_DECISION_KEY: descriptor})
+        return self._stage(rec, "record_scientific_decision", reason)
+
+    def get_decision(self, ref):
+        rec = self._record(ref, "decision")
+        scientific, issue = self._scientific_decision_for_record(rec)
+        unknown = [] if issue is None else [issue]
+        if self.state["imported"]:
+            unknown.append("untrusted_imported_claim")
+        return {"ref": self._ref(rec), "text": rec["name"], "reason": copy.deepcopy(rec["details"].get("reason")),
+                "targets": copy.deepcopy(rec["details"].get("targets", [])), "record_status": rec["status"],
+                "scientific": scientific, "approval": "not_authenticated", "unknown": unknown,
+                "imported_claim": "untrusted_imported_claim" if self.state["imported"] else None}
 
     def rebind_external(self, ref, path, reason):
         require(isinstance(reason, str) and reason.strip(), "rebind reason required")

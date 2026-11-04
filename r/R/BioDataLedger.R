@@ -21,6 +21,9 @@
 .copy <- function(x) unserialize(serialize(x, NULL))
 .json <- function(x) as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = 15, force = TRUE))
 .metadata_limit <- 20971520
+.scientific_decision_key <- "scientific_decision"
+.scientific_decision_version <- "biodataledger-scientific-decision/1"
+.scientific_statuses <- c("proposed", "provisional", "approved", "superseded")
 # Parse only the bounded bytes that were actually read.
 .parse_json_bytes <- function(bytes) {
   if (length(bytes) > .metadata_limit) .fail("Metadata size limit exceeded")
@@ -428,6 +431,54 @@
   invisible(state)
 }
 .record_kind <- function(state, ref) .record(state, ref)$kind
+.scientific_refs <- function(state, values, field) {
+  if (!.is_arr(values) || length(values) > 100L) .fail(paste0(field, " must be an array of at most 100 references"))
+  .arr(lapply(values, function(value) .make_ref(state, .record(state, value))))
+}
+.scientific_descriptor <- function(state, subjects, scientific_status, supporting = list(), contradictory = list()) {
+  if (!is.list(subjects) || !is.null(names(subjects)) || !length(subjects) || length(subjects) > 100L) .fail("Subjects must be a nonempty array of at most 100 items")
+  if (!is.character(scientific_status) || length(scientific_status) != 1L || !scientific_status %in% .scientific_statuses) .fail("Invalid scientific_status")
+  seen <- character(); normalized <- lapply(subjects, function(subject) {
+    if (!.is_obj(subject) || !identical(sort(names(subject)), sort(c("ref", intersect(c("cluster_id", "annotation"), names(subject))))) || is.null(subject$ref)) .fail("Invalid scientific decision subject")
+    rec <- .record(state, subject$ref); item <- .obj(ref = .make_ref(state, rec))
+    for (field in c("cluster_id", "annotation")) if (field %in% names(subject)) {
+      value <- subject[[field]]
+      if (!is.character(value) || length(value) != 1L || !nzchar(value)) .fail(paste0("Invalid ", field))
+      item[[field]] <- value
+    }
+    if (!is.null(item$cluster_id) && !rec$kind %in% c("data", "analysis")) .fail("cluster_id requires DATA or ANA subject")
+    identity <- paste(item$ref$id, item$ref$revision, if (is.null(item$cluster_id)) "" else item$cluster_id, sep = "\r")
+    if (identity %in% seen) .fail("Duplicate scientific decision subject")
+    seen <<- c(seen, identity); item
+  })
+  .obj(version = .scientific_decision_version, subjects = .arr(normalized), scientific_status = scientific_status,
+       supporting = .scientific_refs(state, supporting, "supporting"), contradictory = .scientific_refs(state, contradictory, "contradictory"))
+}
+.read_scientific_descriptor <- function(state, value) {
+  if (is.null(value)) return(list(scientific = NULL, issue = "legacy_untyped_decision"))
+  if (!.is_obj(value) || !identical(value$version, .scientific_decision_version)) return(list(scientific = NULL, issue = "unsupported_scientific_decision"))
+  result <- tryCatch({
+    if (!setequal(names(value), c("version", "subjects", "scientific_status", "supporting", "contradictory"))) .fail("descriptor fields")
+    normalized <- .scientific_descriptor(state, value$subjects, value$scientific_status, value$supporting, value$contradictory)
+    if (!.result_equal(normalized, value)) .fail("descriptor is not canonical")
+    list(scientific = .copy(normalized), issue = NULL)
+  }, error = function(e) list(scientific = NULL, issue = "malformed_scientific_decision"))
+  result
+}
+.scientific_decision_for_record <- function(state, rec) {
+  parsed <- .read_scientific_descriptor(state, rec$details[[.scientific_decision_key]])
+  if (is.null(parsed$scientific)) return(parsed)
+  result <- tryCatch({
+    if (!.design_text(rec$details$reason)) .fail("Decision rationale missing")
+    targets <- .scientific_refs(state, rec$details$targets, "targets")
+    if (!.result_equal(targets, rec$details$targets)) .fail("Decision targets are not canonical")
+    expected <- .arr(lapply(parsed$scientific$subjects, function(x) x$ref))
+    if (!.result_equal(targets, expected)) .fail("Decision targets do not bind subjects")
+    if ("text" %in% names(rec$details) && (!is.character(rec$details$text) || length(rec$details$text) != 1L || !identical(rec$details$text, rec$name))) .fail("Decision text alias does not bind name")
+    parsed
+  }, error = function(e) list(scientific = NULL, issue = "malformed_scientific_decision"))
+  result
+}
 .code_entries <- function(root, paths, snapshot_code) {
   if (is.null(paths)) return(list())
   if (is.character(paths)) paths <- as.list(paths)
@@ -592,6 +643,7 @@ ProjectBundle <- local({
     register_data <- function(path, role, name = NULL, hash = FALSE, ...) {
       if (.result_key %in% names(list(...))) .fail('Use register_result for result declarations')
       if ("execution_receipt" %in% names(list(...))) .fail("Execution receipt is runner-managed")
+      if (.scientific_decision_key %in% names(list(...))) .fail("Scientific decision metadata is reserved")
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (!is.null(p) && !file.access(p, 4) == 0) .fail("Unreadable file")
       size <- if (!is.null(p) && !dir.exists(p)) file.info(p)$size else NULL
@@ -606,6 +658,7 @@ ProjectBundle <- local({
       entries <- .code_entries(root, code, snapshot_code)
       details <- .obj(...)
       if ("execution_receipt" %in% names(details)) .fail("Execution receipt is runner-managed")
+      if (.scientific_decision_key %in% names(details)) .fail("Scientific decision metadata is reserved")
       details$provenance <- .obj(file = "unknown", analytical = "declared")
       rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
@@ -621,7 +674,7 @@ ProjectBundle <- local({
       }
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Figure inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
-      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt") %in% names(details))) .fail("Reserved preservation metadata")
+      details <- .obj(...); if (any(c("preservation", "artifact_role", "execution_receipt", .scientific_decision_key) %in% names(details))) .fail("Reserved metadata")
       if (!is.null(figure_sources)) details[[.figure_sources_key]] <- .sources_normalize(state, figure_sources)
       details$format <- tolower(tools::file_ext(p))
       details$provenance <- .obj(file = "captured", analytical = if (!is.null(analysis) || length(inputs) || length(entries)) "declared" else "unknown")
@@ -1077,6 +1130,8 @@ ProjectBundle <- local({
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
       if ("execution_receipt" %in% names(rec$details)) .fail("Execution runs are runner-managed")
       if ("details" %in% names(changes) && "execution_receipt" %in% names(changes$details)) .fail("Execution receipt is runner-managed")
+      if ("details" %in% names(changes) && .scientific_decision_key %in% names(changes$details)) .fail("Scientific decision metadata is writer-managed")
+      if (rec$kind == "decision" && .scientific_decision_key %in% names(rec$details) && !identical(names(changes), "status")) .fail("Typed scientific decisions allow lifecycle status correction only")
       if (!is.null(rec$details[[.result_key]]) && ('path' %in% names(changes) ||
           'details' %in% names(changes) && (!.result_equal(changes$details[[.result_key]],rec$details[[.result_key]]) ||
           !.result_equal(changes$details$membership,rec$details$membership)))) .fail('Use register_result to revise result identity')
@@ -1115,6 +1170,39 @@ ProjectBundle <- local({
       targets <- .arr(lapply(targets, function(x) .ref(state, x)))
       rec <- .new_record(state, "decision", text, details = .obj(text = text, reason = reason, targets = targets, provenance = .obj(file = "unknown", analytical = "declared")))
       out <- append_record(rec, "record_decision"); state$history[[length(state$history)]]$reason <<- reason; out
+    }
+    record_scientific_decision <- function(text, reason, subjects, scientific_status, supporting = NULL, contradictory = NULL, ref = NULL) {
+      if (!.design_text(text) || !.design_text(reason)) .fail("Decision text and reason required")
+      descriptor <- .scientific_descriptor(state, subjects, scientific_status, if (is.null(supporting)) list() else supporting, if (is.null(contradictory)) list() else contradictory)
+      if (is.null(ref)) rec <- .new_record(state, "decision", text) else {
+        old <- .record(state, ref)
+        if (old$kind != "decision") .fail("Not decision")
+        latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
+        if (old$revision != latest$revision) .fail("Scientific decision revision must be current")
+        prior <- .scientific_decision_for_record(state, old)
+        if (!is.null(prior$issue) && prior$issue != "legacy_untyped_decision") .fail("Cannot revise unsupported or malformed scientific decision")
+        if (!is.null(prior$scientific)) {
+          old_ids <- vapply(prior$scientific$subjects, function(x) paste(x$ref$id, x$ref$revision, if (is.null(x$cluster_id)) "" else x$cluster_id, sep = "\r"), character(1))
+          new_ids <- vapply(descriptor$subjects, function(x) paste(x$ref$id, x$ref$revision, if (is.null(x$cluster_id)) "" else x$cluster_id, sep = "\r"), character(1))
+          if (!identical(old_ids, new_ids)) .fail("Scientific decision subjects are immutable")
+        }
+        rec <- .copy(old); rec$revision <- old$revision + 1L; rec$created_at <- .now()
+      }
+      rec$name <- text
+      rec$details <- .copy(rec$details); rec$details$reason <- reason; rec$details$text <- text
+      rec$details$targets <- .arr(lapply(descriptor$subjects, function(x) .copy(x$ref)))
+      rec$details$approval <- "not_authenticated"; rec$details[[.scientific_decision_key]] <- descriptor
+      out <- append_record(rec, "record_scientific_decision"); state$history[[length(state$history)]]$reason <<- reason; out
+    }
+    get_decision <- function(ref) {
+      rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
+      parsed <- .scientific_decision_for_record(state, rec)
+      unknown <- if (is.null(parsed$issue)) list() else list(parsed$issue)
+      if (isTRUE(state$imported)) unknown <- c(unknown, list("untrusted_imported_claim"))
+      .obj(ref = .make_ref(state, rec), text = rec$name, reason = .copy(rec$details$reason),
+           targets = .copy(if (is.null(rec$details$targets)) list() else rec$details$targets), record_status = rec$status,
+           scientific = parsed$scientific, approval = "not_authenticated", unknown = .arr(unknown),
+           imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL)
     }
     rebind_external <- function(ref, path, reason) {
       rec <- .record(state, ref)
@@ -1340,7 +1428,7 @@ ProjectBundle <- local({
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
-    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

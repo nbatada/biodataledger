@@ -78,3 +78,12 @@ never execute code. Use the exact terminal `receipt_ref` with `get_execution` or
 `execution_summary`. A successful callback or matching input digest never proves
 actual input consumption, scientific validity or downstream use. Started means
 completion was not recorded. Do not promote declarations or recreate missing history.
+
+
+## Scientific decisions in 0.8.0
+
+Record only scientist-submitted decisions using `record_scientific_decision`, with
+exact subject/evidence refs and separate cluster identifiers and annotation labels.
+Scientific status is distinct from record lifecycle; the package does not authenticate
+approval. Use `get_decision` for exact revisions and `save_and_confirm` for retention.
+Do not infer missing decisions or biological labels. See [the contract](../api/DECISIONS_V1.md).

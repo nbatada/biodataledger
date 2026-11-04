@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — local, unpublished
+
+- Add native scientific-decision recording/revision and exact decision retrieval,
+  reusing DEC records and optional versioned metadata.
+- Preserve exact cluster subjects, submitted labels and supporting/contradictory
+  evidence; keep declared scientific status separate from record lifecycle.
+- Retain generic decision corrections and legacy state/ZIP compatibility. Approval
+  remains unauthenticated, and malformed/imported evidence remains qualified.
+
 ## 0.7.0 — local, unpublished
 
 - Add optional native `run_analysis`, exact `get_execution` and compact
