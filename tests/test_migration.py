@@ -28,7 +28,7 @@ class MigrationTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
 
     def test_installed_identity_and_legacy_archives(self):
-        self.assertEqual(__version__, "0.13.0")
+        self.assertEqual(__version__, "0.14.0")
         import biodataledger
         self.assertIn("site-packages", biodataledger.__file__)
         for mode in ("context", "working"):
@@ -248,7 +248,7 @@ if (action == "create") {
 
     def test_readme_python_examples_installed(self):
         blocks = re.findall(r"```python\n(.*?)```", (BASE / "README.md").read_text(), re.S)
-        self.assertEqual(len(blocks), 3)
+        self.assertEqual(len(blocks), 4)
         folder = self.root / "python-readme"
         shutil.copytree(BASE / "examples/input-files", folder)
         scope = {"project_root": folder, "archive_path": self.root / "python-readme.zip", "import_root": self.root / "python-import"}
@@ -262,7 +262,7 @@ if (action == "create") {
         # Installation is verified separately from the usage examples.
         examples = (BASE / "README.md").read_text().split("## Record data, analyses and figures", 1)[1]
         blocks = re.findall(r"```r\n(.*?)```", examples, re.S)
-        self.assertEqual(len(blocks), 3)
+        self.assertEqual(len(blocks), 4)
         folder = self.root / "r-readme"
         shutil.copytree(BASE / "examples/input-files", folder)
         script = self.root / "readme.R"

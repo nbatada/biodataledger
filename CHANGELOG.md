@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 — 2026-11-05
 
 - Add on-demand UTC timelines for record registrations and recorded runs in R
   and Python. Both views support oldest-first and newest-first pages. The run

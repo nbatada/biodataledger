@@ -20,18 +20,17 @@ It is a project-helper pattern, not a migration instruction for existing helpers
 
 ## Install
 
-Version **0.13.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.14.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-Version 0.13.0 adds [project graph export](#export-a-project-graph) and clarifies
-the record counts on inspection cards. Existing registry formats and exact
-references are unchanged. See the [changelog](CHANGELOG.md).
+Version 0.14.0 adds [project timelines](#execution-chronology) for registrations
+and recorded runs. See the [changelog](CHANGELOG.md).
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.13.0 from its release tag:
+Run this in R to install version 0.14.0 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -40,28 +39,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.13.0",
+  ref = "v0.14.0",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.13.0 directly from GitHub**
+**Python — install version 0.14.0 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.13.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.14.0#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.13.0` with the release's full commit SHA in either installation command.
+`v0.14.0` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.13.0
+git checkout v0.14.0
 ```
 
 **Python 3.9 or newer**
@@ -406,7 +405,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.13.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.14.0.tar.gz
 ```
 
 ## Confirm a saved change
@@ -501,11 +500,39 @@ See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
 
 ### Execution chronology
 
-Use `timeline_summary()` to read a project timeline in Python or R (unreleased).
-The default view shows each registered record revision in UTC. Choose `view="runs"` to see
-recorded runs, with their inputs, registered outputs and qualified wrapper times.
-Use `order="newest"` for the newest times first. `timeline()` returns the same page
-as structured data, including its continuation cursor.
+With an open project `p`, call `timeline_summary()` to see when each record
+revision was registered. Use the runs view to see recorded runs, their inputs
+and registered outputs. `print(p)` still shows the compact project card.
+
+**Python**
+
+```python
+print(p.timeline_summary(view="registration", order="oldest"))
+print(p.timeline_summary(view="runs", order="newest"))
+page = p.timeline(view="registration", order="oldest", limit=2)
+if page["next_cursor"] is not None:
+    next_page = p.timeline(view="registration", order="oldest", limit=2,
+                           cursor=page["next_cursor"])
+```
+
+**R**
+
+```r
+cat(p$timeline_summary(view = "registration", order = "oldest"), "\n")
+cat(p$timeline_summary(view = "runs", order = "newest"), "\n")
+page <- p$timeline(view = "registration", order = "oldest", limit = 2L)
+if (!is.null(page$next_cursor)) {
+  next_page <- p$timeline(view = "registration", order = "oldest", limit = 2L,
+                          cursor = page$next_cursor)
+}
+```
+
+Known times appear in UTC. Run times describe the recorded execution wrapper.
+Both sort orders put unknown times last, including runs with imported or open
+receipts. `timeline()` returns structured pages of up to 10 rows by default.
+Set `limit` from 1 to 20. Each report is capped at 64 KiB. Continue with
+`next_cursor` on the same loaded project using the same view and order. Start
+from the first page after editing or reopening the project.
 
 `execution_history()` retrieves bounded recorded runs by project, exact analysis
 or protocol. Pairwise timing evidence preserves overlaps, ties, failures and
