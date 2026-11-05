@@ -6,14 +6,18 @@
   .obj(analysis_ref = ref, receipt_ref = .copy(ref), evidence = "unknown", reason = reason)
 }
 
+.receipt_timing <- function(receipt) {
+  start <- .protocol_timestamp(receipt$started_at_utc)
+  end <- .protocol_timestamp(receipt$ended_at_utc)
+  if (identical(receipt$status, "started")) return(if (!is.na(start)) "open" else "invalid")
+  if (identical(receipt$status, "blocked") || !isTRUE(receipt$phases$execution_started)) return("not_executed")
+  if (!is.na(start) && !is.na(end) && start <= end) "valid_interval" else "invalid"
+}
+
 .chronology_entry <- function(state, record, get_execution) {
   receipt <- get_execution(.make_ref(state, record))
   if (identical(receipt$status, "unknown")) return(.chronology_unknown(state, record, receipt$reason))
-  start <- .protocol_timestamp(receipt$started_at_utc)
-  end <- .protocol_timestamp(receipt$ended_at_utc)
-  if (identical(receipt$status, "started")) timing <- if (!is.na(start)) "open" else "invalid"
-  else if (identical(receipt$status, "blocked") || !isTRUE(receipt$phases$execution_started)) timing <- "not_executed"
-  else timing <- if (!is.na(start) && !is.na(end) && start <= end) "valid_interval" else "invalid"
+  timing <- .receipt_timing(receipt)
   .obj(analysis_ref = .make_ref(state, record), receipt_ref = .copy(receipt$receipt_ref),
        run_ref = .copy(receipt$run_ref), template_ref = .copy(receipt$template_ref),
        registration_at_utc = record$created_at, started_at_utc = receipt$started_at_utc,

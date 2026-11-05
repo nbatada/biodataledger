@@ -432,6 +432,13 @@ producing ANA; a figure names that exact DATA revision as its rendering input.
 `dependencies()` retrieves bounded upstream/downstream metadata without reading
 scientific payloads. Commit the related batch with `save_and_confirm()`.
 
+Use `project.export_graph()` in Python or `project$export_graph()` in R for a
+bounded project overview as Graphviz DOT text. Pass an exact reference such as
+`"FIG-001@1"` for lineage, or `format="structured"` for interactive clients.
+See the [graph contract](docs/api/GRAPH_V1.md) and the synthetic PRMT5 examples
+in [Python](examples/dependency_graph.py) and [R](examples/dependency_graph.R).
+The query reads loaded metadata only; links are distinct from execution evidence.
+
 `check_result()` explicitly checks CSV coordinates, qualified cell identities,
 alignment and available independent membership evidence. Seurat reduction and
 AnnData obsm references are supported without loading objects; their unmeasured

@@ -371,14 +371,19 @@ def run_analysis(project, analysis_ref, entry_point, outputs=[], seeds=None, ver
     return _terminal(project, run_ref, receipt, "succeeded")
 
 
-def get_execution(project, ref):
-    rec = project._record(ref, "analysis")
+def _validated_receipt(project, rec):
     receipt = rec["details"].get(KEY)
     try:
         valid = _valid_receipt(receipt) and _bound_receipt(project, rec, receipt)
     except (BundleError, KeyError, TypeError, ValueError):
         valid = False
-    if not valid:
+    return receipt if valid else None
+
+
+def get_execution(project, ref):
+    rec = project._record(ref, "analysis")
+    receipt = _validated_receipt(project, rec)
+    if receipt is None:
         return {"status": "unknown", "receipt_ref": project._ref(rec), "reason": "absent_or_malformed_execution_receipt"}
     result = copy.deepcopy(receipt)
     if project.state["imported"]:

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Export bounded exact-revision project graphs and focused lineage in native R
+  and Python as DOT or structured data, with filters, pagination, evidence and
+  explicit cutoffs. Graph queries require no payload I/O or Graphviz.
+
 - Label inspection-card totals as data/artifact records and analysis records.
   Counts include registered outputs and template/run records; they do not count
   distinct biological datasets or independent analyses.

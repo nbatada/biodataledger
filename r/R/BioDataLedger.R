@@ -488,21 +488,21 @@
   .obj(version = .scientific_decision_version, subjects = .arr(normalized), scientific_status = scientific_status,
        supporting = .scientific_refs(state, supporting, "supporting"), contradictory = .scientific_refs(state, contradictory, "contradictory"))
 }
-.read_scientific_descriptor <- function(state, value) {
+.read_scientific_descriptor <- function(state, value, copy_out = TRUE) {
   if (is.null(value)) return(list(scientific = NULL, issue = "legacy_untyped_decision"))
   if (!.is_obj(value) || !identical(value$version, .scientific_decision_version)) return(list(scientific = NULL, issue = "unsupported_scientific_decision"))
   result <- tryCatch({
     if (!setequal(names(value), c("version", "subjects", "scientific_status", "supporting", "contradictory"))) .fail("descriptor fields")
     normalized <- .scientific_descriptor(state, value$subjects, value$scientific_status, value$supporting, value$contradictory)
     if (!.result_equal(normalized, value)) .fail("descriptor is not canonical")
-    list(scientific = .copy(normalized), issue = NULL)
+    list(scientific = if (copy_out) .copy(normalized) else normalized, issue = NULL)
   }, error = function(e) list(scientific = NULL, issue = "malformed_scientific_decision"))
   result
 }
-.scientific_decision_for_record <- function(state, rec) {
+.scientific_decision_for_record <- function(state, rec, copy_out = TRUE) {
   if (any(.comparison_keys %in% names(rec$details))) return(list(scientific = NULL, issue = "comparison_not_scientific_decision"))
   if (.analysis_protocol_key %in% names(rec$details)) return(list(scientific = NULL, issue = "protocol_is_not_scientific_decision"))
-  parsed <- .read_scientific_descriptor(state, rec$details[[.scientific_decision_key]])
+  parsed <- .read_scientific_descriptor(state, rec$details[[.scientific_decision_key]], copy_out)
   if (is.null(parsed$scientific)) return(parsed)
   result <- tryCatch({
     if (!.design_text(rec$details$reason)) .fail("Decision rationale missing")
@@ -1668,13 +1668,15 @@ ProjectBundle <- local({
     }
     check_result <- function(ref) .result_check(root,state,.result_ref(state,ref))
     dependencies <- function(ref,direction,depth=1,limit=20) .result_dependencies(state,result_graph,.ref(state,ref),direction,depth,limit)
+    export_graph <- function(ref=NULL,direction="upstream",depth=3L,limit=100L,format="dot",filters=NULL,offset=0L)
+      .export_graph(state,result_graph,dirty,ref,direction,depth,limit,format,filters,offset)
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
-    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

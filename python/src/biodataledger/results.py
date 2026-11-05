@@ -1,6 +1,7 @@
 """Exact derived-artifact declarations and explicit bounded CSV checks."""
-from bisect import insort
+from bisect import bisect_left, insort
 from collections import defaultdict, deque
+from heapq import merge
 from copy import deepcopy
 import csv
 import io
@@ -321,6 +322,10 @@ class LineageIndex:
         self.outgoing = defaultdict(list)
         self.incoming = defaultdict(list)
         self.edges = {}
+        self.extra_outgoing = defaultdict(list)
+        self.extra_incoming = defaultdict(list)
+        self.graph_issues = {}
+        self.graph_target_limit = False
         self.nodes = set()
         self.unknown = {}
         for rec in project.state['records']:
@@ -333,9 +338,16 @@ class LineageIndex:
             return
         self.nodes.add(node)
         unknown = []
-        edges = []
-        def add(source, target, kind, basis, field):
-            edges.append({'from': deepcopy(source), 'to': deepcopy(target), 'type': kind, 'basis': basis, 'source_field': field})
+        result_valid = False
+        def add(source, target, kind, basis, field, graph_only=False):
+            edge = {'from': deepcopy(source), 'to': deepcopy(target), 'type': kind, 'basis': basis, 'source_field': field}
+            key = _edge_key(edge)
+            if key not in self.edges:
+                self.edges[key] = edge
+                out = self.extra_outgoing if graph_only else self.outgoing
+                inc = self.extra_incoming if graph_only else self.incoming
+                insort(out[_node(source)], key)
+                insort(inc[_node(target)], key)
         if rec['kind'] == 'analysis':
             for source in rec['inputs'] or []:
                 add(source, ref, 'input_to_analysis', 'declared', 'inputs')
@@ -346,6 +358,7 @@ class LineageIndex:
             if info is not None:
                 unknown += info['missing']
                 if info['status'] == 'declared':
+                    result_valid = True
                     producer = rec['scope']['transformation_ref']
                     if producer is not None:
                         add(producer, ref, 'produced_result', 'declared', 'scope.transformation_ref')
@@ -375,45 +388,74 @@ class LineageIndex:
             else:
                 unknown.append('rendering_inputs_unknown')
         self.unknown[node] = list(dict.fromkeys(unknown))
-        for edge in edges:
-            key = _edge_key(edge)
-            if key not in self.edges:
-                self.edges[key] = edge
-                insort(self.outgoing[_node(edge['from'])], key)
-                insort(self.incoming[_node(edge['to'])], key)
+        from .graph import index_graph_record
+        issue = index_graph_record(project, rec, ref, result_valid, add)
+        if issue is not None:
+            self.graph_issues[node] = issue
+            self.graph_target_limit |= bool(issue['uninspected'])
+
+    def adjacent(self, ref, direction, extended=False):
+        outgoing = direction == 'downstream'
+        key = _node(ref)
+        primary = (self.outgoing if outgoing else self.incoming).get(key, ())
+        if extended:
+            extra = (self.extra_outgoing if outgoing else self.extra_incoming).get(key, ())
+            primary = merge(primary, extra)
+        return (self.edges[key] for key in primary)
+
+    def connected(self, left, right):
+        for source, target in ((_node(left), _node(right)), (_node(right), _node(left))):
+            prefix = (*source, *target)
+            for index in (self.outgoing, self.extra_outgoing):
+                edges = index.get(source, ())
+                i = bisect_left(edges, (*prefix, ''))
+                if i < len(edges) and edges[i][:4] == prefix:
+                    return True
+        return False
+
+    def walk(self, ref, direction, depth, limit, node_limit=None, extended=False):
+        queue = deque([(ref, 0)])
+        queued, seen_edges = {_node(ref)}, set()
+        edges, visited, stops = [], [], set()
+        while queue:
+            current, distance = queue.popleft()
+            visited.append(current)
+            for edge in self.adjacent(current, direction, extended):
+                key = _edge_key(edge)
+                if key in seen_edges:
+                    continue
+                if distance >= depth:
+                    stops.add('depth')
+                    break
+                if len(edges) >= limit:
+                    stops.add('edge_limit')
+                    # Graph reports all returned endpoints even if the edge limit stops traversal.
+                    if extended:
+                        visited.extend(item[0] for item in queue)
+                    return visited, edges, stops
+                neighbor = edge['from'] if direction == 'upstream' else edge['to']
+                node = _node(neighbor)
+                if node_limit is not None and node not in queued and len(queued) >= node_limit:
+                    stops.add('node_limit')
+                    visited.extend(item[0] for item in queue)
+                    return visited, edges, stops
+                edges.append(edge)
+                seen_edges.add(key)
+                if node not in queued:
+                    queued.add(node)
+                    queue.append((neighbor, distance + 1))
+        return visited, edges, stops
 
     def query(self, project, ref, direction, depth, limit):
         require(direction in ('upstream', 'downstream'), 'direction must be upstream or downstream')
         require(type(depth) is int and 1 <= depth <= 3 and type(limit) is int and 1 <= limit <= 100,
                 'depth 1..3 and limit 1..100 required')
         ref = project._ref(project._record(ref))
-        report = {'ref': ref, 'direction': direction, 'depth': depth, 'edges': [], 'unknown': [],
-                  'execution': 'unknown', 'coverage': 'recorded_only', 'truncated': False}
-        queue = deque([(ref, 0)])
-        visited, seen_edges = set(), set()
-        adjacency = self.incoming if direction == 'upstream' else self.outgoing
-        stopped = False
-        while queue and not stopped:
-            current, distance = queue.popleft()
-            node = _node(current)
-            if node in visited: continue
-            visited.add(node)
-            report['unknown'] += [{'ref': deepcopy(current), 'reason': reason} for reason in self.unknown.get(node, [])]
-            if distance >= depth:
-                if any(key not in seen_edges for key in adjacency.get(node, [])):
-                    report["truncated"] = True
-                continue
-            for key in adjacency.get(node, []):
-                if key in seen_edges: continue
-                if len(report['edges']) >= limit:
-                    report['truncated'] = True
-                    stopped = True
-                    break
-                edge = self.edges[key]
-                report['edges'].append(deepcopy(edge))
-                seen_edges.add(key)
-                neighbor = edge['from'] if direction == 'upstream' else edge['to']
-                queue.append((neighbor, distance + 1))
+        nodes, edges, stops = self.walk(ref, direction, depth, limit)
+        report = {'ref': ref, 'direction': direction, 'depth': depth, 'edges': deepcopy(edges),
+                  'unknown': [{'ref': deepcopy(node), 'reason': reason} for node in nodes
+                              for reason in self.unknown.get(_node(node), [])],
+                  'execution': 'unknown', 'coverage': 'recorded_only', 'truncated': bool(stops)}
         # Response limits omit complete identities, never shortened strings.
         while len(canonical(report)) > 16384:
             report['truncated'] = True

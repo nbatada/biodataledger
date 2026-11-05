@@ -83,12 +83,12 @@
   TRUE
 }
 .result_valid <- function(state, rec) tryCatch(isTRUE(.result_valid_impl(state,rec)),error=function(e) FALSE)
-.result_summary <- function(state, rec) {
+.result_summary <- function(state, rec, valid=.result_valid(state,rec)) {
   x <- rec$details[[.result_key]]
   if (is.null(x)) return(NULL)
   if (!.is_obj(x) || !identical(x$version,.result_version))
     return(.obj(status='unknown',missing=list('unrecognized_result'),execution='unknown'))
-  if (!.result_valid(state,rec)) return(.obj(status='unknown',missing=list('invalid_result'),execution='unknown'))
+  if (!valid) return(.obj(status='unknown',missing=list('invalid_result'),execution='unknown'))
   .obj(status='declared', missing=.arr(c('artifact_integrity_not_checked',
        if (is.null(rec$scope$transformation_ref)) 'producer_unknown',
        if (is.null(x$embedding)) 'embedding_unknown' else 'alignment_not_checked',
@@ -229,27 +229,50 @@
   graph$backward <- new.env(hash=TRUE,parent=emptyenv())
   graph$indexed <- new.env(hash=TRUE,parent=emptyenv())
   graph$edges <- new.env(hash=TRUE,parent=emptyenv())
+  graph$extra_forward <- new.env(hash=TRUE,parent=emptyenv())
+  graph$extra_backward <- new.env(hash=TRUE,parent=emptyenv())
+  graph$graph_issues <- new.env(hash=TRUE,parent=emptyenv())
+  graph$target_limit <- FALSE
+  graph$result_records <- new.env(hash=TRUE,parent=emptyenv())
+  graph$figure_unknown <- new.env(hash=TRUE,parent=emptyenv())
+  graph$pending <- new.env(hash=TRUE,parent=emptyenv())
   for (rec in state$records) .result_index_record(graph,state,rec)
+  # Batch the supplemental edges so opening high-fanout registries sorts once.
+  extra <- .result_sort_edges(unname(as.list(graph$pending)))
+  if (length(extra)) {
+    for (side in c('forward','backward')) {
+      endpoint <- if (side=='forward') 'from' else 'to'
+      keys <- vapply(extra,function(edge).result_id(edge[[endpoint]]),character(1))
+      list2env(split(extra,keys),envir=graph[[paste0('extra_',side)]])
+    }
+  }
+  graph$pending <- NULL
   graph
 }
 .result_index_record <- function(graph,state,rec) {
   target <- .make_ref(state,rec); id <- .result_id(target)
   if (exists(id,graph$indexed,inherits=FALSE)) return(invisible(NULL))
-  add <- function(from,to,type,basis='declared',source_field) {
+  add <- function(from,to,type,basis='declared',source_field,graph_only=FALSE) {
     edge_key <- paste(.result_id(from),.result_id(to),type,sep='|')
     if (exists(edge_key,graph$edges,inherits=FALSE)) return(invisible(NULL))
     edge <- .obj(from=from,to=to,type=type,basis=basis,source_field=source_field)
+    assign(edge_key,TRUE,graph$edges)
+    if (graph_only && !is.null(graph$pending)) {
+      assign(edge_key,edge,graph$pending)
+      return(invisible(NULL))
+    }
     for (side in c('forward','backward')) {
       key <- .result_id(if (side=='forward') from else to)
-      env <- graph[[side]]
+      env <- graph[[if (graph_only) paste0('extra_',side) else side]]
       bucket <- if (exists(key,env,inherits=FALSE)) get(key,env) else list()
       assign(key,.result_sort_edges(c(bucket,list(edge))),env)
     }
-    assign(edge_key,TRUE,graph$edges)
   }
   if (rec$kind=='analysis' && length(rec$inputs)) for (source in rec$inputs)
     add(source,target,'input_to_analysis',source_field='inputs')
-  if (rec$kind=='data' && .result_valid(state,rec)) {
+  result_valid <- rec$kind=='data' && .result_valid(state,rec)
+  if (result_valid) {
+    assign(id,TRUE,graph$result_records)
     producer <- rec$scope$transformation_ref
     if (!is.null(producer)) add(producer,target,'produced_result',source_field='scope.transformation_ref')
     source <- rec$details[[.result_key]]$artifact_source_ref
@@ -260,65 +283,85 @@
   if (rec$kind=='figure') {
     if (!is.null(rec$analysis)) add(rec$analysis,target,'analytical_association',source_field='analysis')
     sources <- rec$details[[.figure_sources_key]]
-    if (.sources_known(sources)) {
-      valid <- tryCatch(.sources_normalize(state,sources),error=function(e) NULL)
-      if (!is.null(valid)) for (source in valid$rendering_inputs)
-        add(source,target,'rendered_in_figure',valid$relationship,'figure_sources.rendering_inputs')
-    }
+    known <- .sources_known(sources)
+    valid <- if (known) tryCatch(.sources_normalize(state,sources),error=function(e) NULL) else NULL
+    if (!is.null(valid)) for (source in valid$rendering_inputs)
+      add(source,target,'rendered_in_figure',valid$relationship,'figure_sources.rendering_inputs')
+    assign(id,.result_figure_unknown(known,valid),graph$figure_unknown)
+  }
+  issue <- .index_graph_record(state,rec,target,result_valid,add)
+  if (!is.null(issue)) {
+    assign(id,issue,graph$graph_issues)
+    if (issue$uninspected>0L) graph$target_limit <- TRUE
   }
   assign(id,TRUE,graph$indexed)
   invisible(NULL)
 }
+.result_figure_unknown <- function(known,valid) {
+  if (!known) return(list('rendering_inputs_unknown'))
+  if (is.null(valid)) return(list('rendering_relationship_invalid'))
+  .arr(c(if (is.null(valid$rendering_inputs)) 'rendering_inputs_unknown',
+         if (identical(valid$relationship,'unknown')) 'rendering_relationship_unknown'))
+}
+.result_unknown <- function(state,graph,ref,rec) {
+  if (rec$kind=='data') {
+    summary <- .result_summary(state,rec,exists(.result_id(ref),graph$result_records,inherits=FALSE))
+    return(if (is.null(summary)) list('result_relationships_unknown') else summary$missing)
+  }
+  if (rec$kind=='analysis' && is.null(rec$inputs)) return(list('inputs_unknown'))
+  get0(.result_id(ref),graph$figure_unknown,inherits=FALSE,ifnotfound=list())
+}
+.result_adjacent <- function(graph,ref,direction,extended=FALSE) {
+  side <- if (direction=='downstream') 'forward' else 'backward'
+  id <- .result_id(ref)
+  primary <- get0(id,graph[[side]],inherits=FALSE,ifnotfound=list())
+  if (!extended) return(primary)
+  extra <- get0(id,graph[[paste0('extra_',side)]],inherits=FALSE,ifnotfound=list())
+  if (!length(extra)) return(utils::head(primary,1001L))
+  if (!length(primary)) return(utils::head(extra,1001L))
+  utils::head(.result_sort_edges(c(utils::head(primary,1001L),utils::head(extra,1001L))),1001L)
+}
+.result_walk <- function(graph,ref,direction,depth,limit,node_limit=NULL,extended=FALSE) {
+  queue <- list(list(ref=ref,level=0L))
+  queued <- new.env(hash=TRUE,parent=emptyenv()); seen_edges <- new.env(hash=TRUE,parent=emptyenv())
+  assign(.result_id(ref),TRUE,queued)
+  edges <- list(); visited <- list(); stops <- character(); count <- 1L
+  finish <- function(remaining=FALSE) list(refs=if (remaining) c(visited,lapply(queue,function(x)x$ref)) else visited,
+                                          edges=edges,stops=unique(stops))
+  while (length(queue)) {
+    item <- queue[[1L]]; queue <- queue[-1L]
+    visited[[length(visited)+1L]] <- item$ref
+    for (edge in .result_adjacent(graph,item$ref,direction,extended)) {
+      key <- .result_edge_id(edge)
+      if (exists(key,seen_edges,inherits=FALSE)) next
+      if (item$level>=depth) {stops <- c(stops,'depth');break}
+      if (length(edges)>=limit) {stops <- c(stops,'edge_limit');return(finish(extended))}
+      neighbor <- if (direction=='upstream') edge$from else edge$to
+      id <- .result_id(neighbor)
+      new <- !exists(id,queued,inherits=FALSE)
+      if (new && !is.null(node_limit) && count>=node_limit) {
+        stops <- c(stops,'node_limit')
+        return(finish(TRUE))
+      }
+      edges[[length(edges)+1L]] <- edge
+      assign(key,TRUE,seen_edges)
+      if (new) {
+        count <- count+1L; assign(id,TRUE,queued)
+        queue[[length(queue)+1L]] <- list(ref=neighbor,level=item$level+1L)
+      }
+    }
+  }
+  finish()
+}
 .result_dependencies <- function(state,graph,ref,direction,depth=1,limit=20) {
   if (!identical(direction,'upstream') && !identical(direction,'downstream')) .fail('Invalid direction')
   if (!.is_int(depth,TRUE) || depth>3 || !.is_int(limit,TRUE) || limit>100) .fail('Invalid depth or limit')
-  env <- if (direction=='downstream') graph$forward else graph$backward
-  queue <- list(list(ref=ref,level=0L)); seen <- new.env(hash=TRUE,parent=emptyenv());
-  seen_edges <- new.env(hash=TRUE,parent=emptyenv())
-  assign(.result_id(ref),TRUE,seen); edges <- list(); unknown <- list(); truncated <- FALSE; stopped <- FALSE
-  while (length(queue)) {
-    item <- queue[[1L]];queue <- queue[-1L]
-    id <- .result_id(item$ref); rec <- .record(state,item$ref)
-    if (rec$kind=='data') {
-      summary <- .result_summary(state,rec)
-      reasons <- if (is.null(summary)) 'result_relationships_unknown' else unlist(summary$missing,use.names=FALSE)
-      for (reason in reasons) unknown[[length(unknown)+1L]] <- .obj(ref=item$ref,reason=reason)
-    } else if (rec$kind=='analysis' && is.null(rec$inputs)) {
-      unknown[[length(unknown)+1L]] <- .obj(ref=item$ref,reason='inputs_unknown')
-    } else if (rec$kind=='figure') {
-      source <- rec$details[[.figure_sources_key]]
-      if (!.sources_known(source)) unknown[[length(unknown)+1L]] <- .obj(ref=item$ref,reason='rendering_inputs_unknown')
-      else {
-        valid <- tryCatch(.sources_normalize(state,source),error=function(e) NULL)
-        if (is.null(valid)) unknown[[length(unknown)+1L]] <- .obj(ref=item$ref,reason='rendering_relationship_invalid')
-        else {
-          if (is.null(valid$rendering_inputs)) unknown[[length(unknown)+1L]] <- .obj(ref=item$ref,reason='rendering_inputs_unknown')
-          if (identical(valid$relationship,'unknown')) unknown[[length(unknown)+1L]] <- .obj(ref=item$ref,reason='rendering_relationship_unknown')
-        }
-      }
-    }
-    adj <- if (exists(id,env,inherits=FALSE)) get(id,env) else list()
-    if (item$level>=depth) {
-      for (edge in adj) if (!exists(.result_edge_id(edge),seen_edges,inherits=FALSE)) {
-        truncated <- TRUE
-        break
-      }
-      next
-    }
-    for (edge in adj) {
-      edge_id <- .result_edge_id(edge)
-      if (exists(edge_id,seen_edges,inherits=FALSE)) next
-      if (length(edges)>=limit) {truncated <- TRUE;stopped <- TRUE;break}
-      edges[[length(edges)+1L]] <- edge
-      assign(edge_id,TRUE,seen_edges)
-      next_ref <- if (direction=='downstream') edge$to else edge$from
-      key <- .result_id(next_ref)
-      if (!exists(key,seen,inherits=FALSE)) {assign(key,TRUE,seen);queue[[length(queue)+1L]] <- list(ref=next_ref,level=item$level+1L)}
-    }
-    if (stopped) break
-  }
-  response <- .obj(ref=ref,direction=direction,depth=depth,edges=.arr(edges),unknown=.arr(unknown),
-                   execution='unknown',coverage='recorded_only',truncated=truncated)
+  walk <- .result_walk(graph,ref,direction,depth,limit)
+  unknown <- list()
+  for (item in walk$refs) for (reason in .result_unknown(state,graph,item,.record(state,item)))
+    unknown[[length(unknown)+1L]] <- .obj(ref=item,reason=reason)
+  response <- .obj(ref=ref,direction=direction,depth=depth,edges=.arr(walk$edges),unknown=.arr(unknown),
+                   execution='unknown',coverage='recorded_only',truncated=length(walk$stops)>0L)
   while (nchar(.json(response),type='bytes')>16384L) {
     response$truncated <- TRUE
     if (length(response$unknown)) response$unknown[[length(response$unknown)]] <- NULL

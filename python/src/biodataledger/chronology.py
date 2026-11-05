@@ -16,17 +16,20 @@ def _unknown(project, record, reason):
     return {"analysis_ref": ref, "receipt_ref": copy.deepcopy(ref), "evidence": "unknown", "reason": reason}
 
 
+def _receipt_timing(receipt):
+    start, end = _timestamp(receipt["started_at_utc"]), _timestamp(receipt["ended_at_utc"])
+    if receipt["status"] == "started":
+        return "open" if start is not None else "invalid"
+    if receipt["status"] == "blocked" or not receipt["phases"]["execution_started"]:
+        return "not_executed"
+    return "valid_interval" if start is not None and end is not None and start <= end else "invalid"
+
+
 def _entry(project, record):
     receipt = project.get_execution(project._ref(record))
     if receipt["status"] == "unknown":
         return _unknown(project, record, receipt["reason"])
-    start, end = _timestamp(receipt["started_at_utc"]), _timestamp(receipt["ended_at_utc"])
-    if receipt["status"] == "started":
-        timing = "open" if start is not None else "invalid"
-    elif receipt["status"] == "blocked" or not receipt["phases"]["execution_started"]:
-        timing = "not_executed"
-    else:
-        timing = "valid_interval" if start is not None and end is not None and start <= end else "invalid"
+    timing = _receipt_timing(receipt)
     return {"analysis_ref": project._ref(record), "receipt_ref": copy.deepcopy(receipt["receipt_ref"]),
             "run_ref": copy.deepcopy(receipt["run_ref"]), "template_ref": copy.deepcopy(receipt["template_ref"]),
             "registration_at_utc": record["created_at"], "started_at_utc": receipt["started_at_utc"],

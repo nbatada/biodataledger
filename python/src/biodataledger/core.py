@@ -1465,6 +1465,11 @@ class ProjectBundle:
     def dependencies(self, ref, direction, depth=1, limit=20):
         return self._lineage.query(self, ref, direction, depth, limit)
 
+    def export_graph(self, ref=None, direction="upstream", depth=3, limit=100, format="dot", filters=None, offset=0):
+        """Return bounded recorded graph metadata as DOT or a structured report."""
+        from .graph import export_graph
+        return export_graph(self, ref, direction, depth, limit, format, filters, offset)
+
     def related_work(self, input_ref=None, query=None, limit=5):
         from .related_work import related_work
         return related_work(self, input_ref, query, limit)
