@@ -1,10 +1,10 @@
-# Update an existing project to 0.12.2
+# Update an existing project to 0.13.0
 
-This is a package upgrade, not a registry conversion. Version 0.12.2 preserves the
-existing registry schemas, `.nb_project_bundle` paths, code snapshots, exact
-references and ZIP format. Do not recreate or import a project merely to update
-the package. Earlier clients can preserve optional newer metadata without
-enforcing all its semantics; keep the previous installation for rollback.
+Version 0.13.0 adds a read-only graph query and preserves existing registry
+schemas, `.nb_project_bundle` paths, code snapshots, exact references and ZIP
+format. Reuse your existing registry when you reopen the saved project. Keep the
+previous installation for rollback, since earlier clients can preserve optional
+newer metadata without enforcing all its semantics.
 
 Installing a package does not update a loaded R namespace, Python module or
 existing `ProjectBundle` handle. Use a fresh process and reopen the saved project
@@ -19,7 +19,7 @@ package installation and synthetic checks, while keeping scientific save decisio
 with the owner.
 
 ```text
-Safely upgrade this existing BioDataLedger project to GitHub tag v0.12.2 from
+Safely upgrade this existing BioDataLedger project to GitHub tag v0.13.0 from
 https://github.com/nbatada/biodataledger. Preserve the project and live analysis.
 Use existing dependencies. Do not change the registry format or scientific choices.
 
@@ -53,7 +53,7 @@ Use existing dependencies. Do not change the registry format or scientific choic
    files by default; record their locations and existing captured digests instead.
    Retain the old package environment/library and record how to launch it again.
 
-4. Resolve v0.12.2 to its full Git commit and record it. Install that pinned version
+4. Resolve v0.13.0 to its full Git commit and record it. Install that pinned version
    into a NEW R library or Python environment, preserving the old installation and
    dependency versions. Use the existing compatible interpreter and dependencies;
    do not upgrade dependencies or create a project workflow/migration utility.
@@ -62,7 +62,7 @@ Use existing dependencies. Do not change the registry format or scientific choic
    the environment. An environment that can reuse existing compatible dependencies
    is sufficient; no new scientific software stack is needed.
 
-5. In fresh R/Python processes, verify loaded version 0.12.2 and package path against
+5. In fresh R/Python processes, verify loaded version 0.13.0 and package path against
    the new installation and pinned source commit. Test create/register/save/reopen
    with disposable synthetic files only. Verify the inspection card/status reports
    package version, registry revision and unsaved state, and save_and_confirm gives
@@ -95,21 +95,21 @@ Replace the tag with its verified full commit SHA for an immutable source pin.
 R, in a fresh process with existing dependencies available:
 
 ```r
-new_library <- "/absolute/path/to/new-biodataledger-0.12.2-library"
+new_library <- "/absolute/path/to/new-biodataledger-0.13.0-library"
 stopifnot(!dir.exists(new_library))
 dir.create(new_library, recursive = TRUE)
-remotes::install_github("nbatada/biodataledger", subdir = "r", ref = "v0.12.2",
+remotes::install_github("nbatada/biodataledger", subdir = "r", ref = "v0.13.0",
                         lib = new_library, upgrade = "never", dependencies = FALSE)
 library(BioDataLedger, lib.loc = new_library)
-stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == "0.12.2")
+stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == "0.13.0")
 ```
 
 Python, using the chosen compatible interpreter with setuptools/wheel available:
 
 ```sh
-python3 -m venv --system-site-packages /absolute/path/to/new-biodataledger-0.12.2-env
-/absolute/path/to/new-biodataledger-0.12.2-env/bin/python -m pip install --no-deps --no-build-isolation "git+https://github.com/nbatada/biodataledger.git@v0.12.2#subdirectory=python"
-/absolute/path/to/new-biodataledger-0.12.2-env/bin/python -c 'import biodataledger; print(biodataledger.__version__, biodataledger.__file__)'
+python3 -m venv --system-site-packages /absolute/path/to/new-biodataledger-0.13.0-env
+/absolute/path/to/new-biodataledger-0.13.0-env/bin/python -m pip install --no-deps --no-build-isolation "git+https://github.com/nbatada/biodataledger.git@v0.13.0#subdirectory=python"
+/absolute/path/to/new-biodataledger-0.13.0-env/bin/python -c 'import biodataledger; print(biodataledger.__version__, biodataledger.__file__)'
 ```
 
 Choose a destination that does not already exist. `--system-site-packages` reuses

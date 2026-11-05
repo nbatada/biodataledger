@@ -1,5 +1,10 @@
 name: Native R and Python checks
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    # Release tags point to commits already checked on a branch.
+    branches: ['**']
+  pull_request: {}
+  workflow_dispatch: {}
 permissions:
   contents: read
 jobs:
@@ -35,5 +40,5 @@ jobs:
       - name: R package check
         run: |
           R CMD build r
-          R CMD check --no-manual BioDataLedger_0.12.2.tar.gz
+          R CMD check --no-manual BioDataLedger_0.13.0.tar.gz
           grep -q "^Status: OK" BioDataLedger.Rcheck/00check.log

@@ -20,18 +20,18 @@ It is a project-helper pattern, not a migration instruction for existing helpers
 
 ## Install
 
-Version **0.12.2** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.13.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-This maintenance release adds version and unsaved-state inspection cards and speeds
-repeated R saves using one loaded handle. The first dirty save can take longer; see
-the [changelog](CHANGELOG.md). Existing registry formats and exact references are unchanged.
+Version 0.13.0 adds [project graph export](#export-a-project-graph) and clarifies
+the record counts on inspection cards. Existing registry formats and exact
+references are unchanged. See the [changelog](CHANGELOG.md).
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.12.2 from its release tag:
+Run this in R to install version 0.13.0 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -40,28 +40,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.12.2",
+  ref = "v0.13.0",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.12.2 directly from GitHub**
+**Python — install version 0.13.0 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.2#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.13.0#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.12.2` with the release's full commit SHA in either installation command.
+`v0.13.0` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.12.2
+git checkout v0.13.0
 ```
 
 **Python 3.9 or newer**
@@ -406,7 +406,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.12.2.tar.gz
+R CMD check --no-manual BioDataLedger_0.13.0.tar.gz
 ```
 
 ## Confirm a saved change
@@ -432,19 +432,28 @@ producing ANA; a figure names that exact DATA revision as its rendering input.
 `dependencies()` retrieves bounded upstream/downstream metadata without reading
 scientific payloads. Commit the related batch with `save_and_confirm()`.
 
-Use `project.export_graph()` in Python or `project$export_graph()` in R for a
-bounded project overview as Graphviz DOT text. Pass an exact reference such as
-`"FIG-001@1"` for lineage, or `format="structured"` for interactive clients.
-See the [graph contract](docs/api/GRAPH_V1.md) and the synthetic PRMT5 examples
-in [Python](examples/dependency_graph.py) and [R](examples/dependency_graph.R).
-The query reads loaded metadata only; links are distinct from execution evidence.
-
 `check_result()` explicitly checks CSV coordinates, qualified cell identities,
 alignment and available independent membership evidence. Seurat reduction and
 AnnData obsm references are supported without loading objects; their unmeasured
 alignment remains UNKNOWN.
 See the [result contract](docs/api/RESULTS_V1.md) for examples, limits and compatibility.
 
+## Export a project graph
+
+Use `project.export_graph()` in Python or `project$export_graph()` in R to get a
+project overview page as DOT text. Pass an exact reference such as `"FIG-001@1"`
+to trace recorded upstream or downstream lineage. Clients such as CCF can consume
+`format="structured"` for the same view as a `biodataledger-graph/1` report.
+Export reads loaded registry metadata and needs neither Graphviz nor a GUI.
+
+Each response is capped at 100 nodes, 100 edges and 128 KiB. Focused traversal
+supports depths from 1 to 10. An overview page examines up to 1,000 registry
+slots and 1,000 indexed outgoing edges. It shows only edges with both endpoints
+on that page, so combining pages can still miss relationships. Use focused
+queries to inspect links across pages and check the reported cutoffs.
+
+See the [graph contract](docs/api/GRAPH_V1.md) and the synthetic PRMT5 examples
+in [Python](examples/dependency_graph.py) and [R](examples/dependency_graph.R).
 
 ## Optional execution receipts
 

@@ -4,27 +4,28 @@ A lightweight local scientific project registry for finding retained figures and
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Install 0.12.2
+## Install 0.13.0
 
 Requires Python 3.9 or newer. The package has no Python runtime dependencies.
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.12.2#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.13.0#subdirectory=python"
 python3 -c 'import biodataledger; print(biodataledger.__version__)'
 ```
 
 Use an isolated Python environment as needed. For an immutable installation,
-replace `v0.12.2` with the release's full commit SHA. For an existing project or live
-session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.12.2/docs/UPDATING.md).
+replace `v0.13.0` with the release's full commit SHA. For an existing project or live
+session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.13.0/docs/UPDATING.md).
 
-Version 0.12.2 includes exact input/design references, retained-result lineage,
-optional execution receipts, scientific decisions, related-work retrieval,
+Version 0.13.0 adds read-only project graph export as DOT or structured data.
+It includes exact input/design references, retained-result lineage, optional
+execution receipts, scientific decisions, related-work retrieval,
 ordered protocols, execution history and scoped reproduce/reapply/rerender
 comparison evidence. Comparison outcomes never supply scientific approval.
 
-The distribution includes API references through 0.11.0 and the versioned result,
-execution, decision, protocol, chronology and comparison contracts. The shared
-schema accepts legacy 0.1.0 projects and the 0.2.0 experimental-design, 0.3.0
+The distribution includes API references through 0.11.0 and the versioned graph,
+result, execution, decision, protocol, chronology and comparison contracts. The
+shared schema accepts legacy 0.1.0 projects and the 0.2.0 experimental-design, 0.3.0
 dataset-scope and 0.4.0 explicit-input-mode/figure-copy extensions.
 
 The [source repository and scientist quick-start](https://github.com/nbatada/biodataledger)

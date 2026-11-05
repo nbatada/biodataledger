@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 — 2026-11-05
 
 - Export bounded exact-revision project graphs and focused lineage in native R
   and Python as DOT or structured data, with filters, pagination, evidence and
