@@ -550,6 +550,7 @@ ProjectBundle <- local({
     loaded_digest <- .hash(path); loaded_revision <- state$state_revision
     pending_code <- list(); dirty <- FALSE
     serialization_state <- NULL; serialization_cache <- NULL
+    timeline_cache <- NULL
     event <- function(action, reason = NULL, target = NULL) {
       state$history[[length(state$history) + 1L]] <<- .obj(at = .now(), action = action, actor = "local", reason = reason, target = target, transaction = NULL)
       dirty <<- TRUE
@@ -1677,6 +1678,16 @@ ProjectBundle <- local({
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
     self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self$timeline <- function(view = "registration", order = "oldest", limit = 10L, cursor = NULL) {
+      generation <- list(state$state_revision, state$last_transaction, length(state$records), length(state$history))
+      if (is.null(timeline_cache) || !identical(timeline_cache$generation, generation)) {
+        timeline_cache <<- new.env(parent = emptyenv())
+        timeline_cache$generation <- generation
+        timeline_cache$snapshot <- .uuid()
+      }
+      .timeline_page(state, dirty, timeline_cache, view, order, limit, cursor)
+    }
+    self$timeline_summary <- function(view = "registration", order = "oldest", limit = 10L, cursor = NULL) .timeline_summary(self$timeline(view, order, limit, cursor))
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

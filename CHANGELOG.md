@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add on-demand UTC timelines for record registrations and recorded runs in R
+  and Python. Both views support oldest-first and newest-first pages. The run
+  view preserves ties, overlaps and unknown order.
+
 ## 0.13.0 — 2026-11-05
 
 - Export bounded exact-revision project graphs and focused lineage in native R

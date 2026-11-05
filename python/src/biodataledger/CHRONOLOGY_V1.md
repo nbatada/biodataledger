@@ -141,3 +141,58 @@ reports how many were omitted and preserves the structured page's continuation
 offset. Omitted summary rows are still in `execution_history()` for that page;
 advancing its cursor is not a way to retrieve those omitted rows. Identifiers and
 timestamps are never shortened into different values.
+
+## Read the project timeline
+
+```python
+print(project.timeline_summary())
+page = project.timeline(view="runs", order="newest")
+if page["next_cursor"] is not None:
+    following = project.timeline(view="runs", order="newest", cursor=page["next_cursor"])
+```
+
+```r
+cat(project$timeline_summary(), "\n")
+page <- project$timeline(view = "runs", order = "newest")
+if (!is.null(page$next_cursor)) {
+  following <- project$timeline(view = "runs", order = "newest", cursor = page$next_cursor)
+}
+```
+
+- `view="registration"` shows every exact record revision in the loaded registry
+  by its `created_at` field, including separate started and terminal run revisions.
+  Other project events, such as changes to the current input pointer, are outside
+  this view. Execution evidence on a receipt-free analysis revision is `unknown`.
+- `view="runs"` shows one row per latest analysis revision with a receipt field.
+  The dated section sorts by wrapper start for local terminal receipts that report
+  code execution and have valid intervals. Open, blocked, imported, malformed and
+  invalid intervals appear in the unknown-order section. Recognized receipts
+  retain their outcome and original wrapper timestamps where space permits.
+  A wrapper start can precede code execution. Ordinary analysis templates appear
+  in the registration view. Missing receipts leave actual execution unknown.
+
+`order` is `oldest` (default) or `newest`. Both directions put unknown times last.
+The timeline recognizes second-resolution UTC strings ending in `Z`. Unsupported
+timestamps remain unknown, with no rounding or time zone conversion. Equal times
+use the exact ID and numeric revision to make paging stable. A tie breaker carries
+no timing evidence. Run `relations` retain the interval comparisons above for
+rows on the same page. The original `execution_history()` order and selectors
+remain available. The project inspection card is unchanged.
+
+`timeline()` returns a `biodataledger-timeline/1` report. `rows` carry an exact `ref`,
+name, record kind, qualified ordering time (`time_utc`), original registration
+timestamp and available input links. Run rows also carry run/template refs,
+outcome, evidence, original wrapper timestamps, timing status and registered
+output refs. Each link list shows up to ten exact refs, with a count of omitted
+links. Text fields above 256 UTF-8 bytes and unusually large link refs are
+omitted with markers. Exact getters can retrieve the original metadata. The
+text summary shows the rows and continuation of the same page.
+
+`limit` defaults to 10 and accepts 1–20. Reports are bounded to 64 KiB. Pass
+`next_cursor` back to the same loaded object, with the same view and order, to
+continue. A staged edit, a new committed revision or a reopened object requires
+restarting from the first page. A cursor is a local continuation marker.
+
+The first request for a view qualifies and sorts the loaded metadata across the
+whole view. Later pages reuse that in-memory order until the loaded state changes.
+The timeline reads no payload files and saves no state.

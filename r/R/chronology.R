@@ -146,3 +146,193 @@
     count <- count - 1L
   }
 }
+
+.timeline_timestamp <- function(value) {
+  # R can parse year zero, outside the range accepted by the Python reader.
+  !startsWith(value, "0000-") && !is.na(.protocol_timestamp(value))
+}
+
+.timeline_receipt <- function(state, record) {
+  receipt <- record$details$execution_receipt
+  if (!isTRUE(.execution_receipt_valid(state, record, receipt)) ||
+      !is.character(receipt$status) || length(receipt$status) != 1L) return(NULL)
+  valid_outputs <- vapply(receipt$outputs, function(item) {
+    is.character(item$status) && length(item$status) == 1L &&
+      (!identical(item$status, "registered") || .is_obj(item$record_ref))
+  }, logical(1))
+  if (all(valid_outputs)) receipt else NULL
+}
+
+.timeline_receipt_timing <- function(receipt) {
+  if (is.null(receipt)) return("unknown")
+  timing <- .receipt_timing(receipt)
+  if (timing %in% c("open", "valid_interval") &&
+      (startsWith(receipt$started_at_utc, "0000-") ||
+       (!is.null(receipt$ended_at_utc) && startsWith(receipt$ended_at_utc, "0000-")))) return("invalid")
+  if (timing == "valid_interval" && !isTRUE(receipt$phases$code_executed)) return("code_not_executed")
+  timing
+}
+
+.timeline_index <- function(state, view) {
+  records <- state$records
+  positions <- seq_along(records)
+  if (view == "registration") {
+    stamps <- vapply(records, `[[`, character(1), "created_at")
+    unique_stamps <- unique(stamps)
+    valid <- vapply(unique_stamps, .timeline_timestamp, logical(1))
+    stamps[!valid[match(stamps, unique_stamps)]] <- ""
+    timing <- rep(NA_character_, length(stamps))
+  } else {
+    latest <- attr(state, "record_index")$latest
+    positions <- positions[vapply(positions, function(i) {
+      rec <- records[[i]]
+      rec$kind == "analysis" && get(rec$id, latest) == i && "execution_receipt" %in% names(rec$details)
+    }, logical(1))]
+    stamps <- character(length(positions))
+    timing <- character(length(positions))
+    for (i in seq_along(positions)) {
+      rec <- records[[positions[[i]]]]
+      receipt <- .timeline_receipt(state, rec)
+      timing[[i]] <- .timeline_receipt_timing(receipt)
+      if (timing[[i]] == "valid_interval" && !isTRUE(state$imported)) stamps[[i]] <- receipt$started_at_utc
+    }
+  }
+  ids <- vapply(positions, function(i) records[[i]]$id, character(1))
+  revisions <- vapply(positions, function(i) records[[i]]$revision, numeric(1))
+  oldest <- order(!nzchar(stamps), stamps, ids, revisions, method = "radix")
+  newest <- order(!nzchar(stamps), stamps, ids, revisions, method = "radix", decreasing = c(FALSE, TRUE, FALSE, FALSE))
+  list(positions = positions, stamps = stamps, timing = timing, oldest = oldest, newest = newest)
+}
+
+.timeline_row <- function(state, view, index, slot) {
+  record <- state$records[[index$positions[[slot]]]]
+  stamp <- index$stamps[[slot]]
+  timing <- index$timing[[slot]]
+  receipt <- NULL; evidence <- NULL
+  if (record$kind == "analysis") {
+    if (view == "registration") receipt <- .timeline_receipt(state, record)
+    else if (timing != "unknown") receipt <- record$details$execution_receipt
+    evidence <- if (is.null(receipt)) "unknown" else if (isTRUE(state$imported)) "untrusted_imported" else "recorded"
+  }
+  analysis <- if (is.character(record$analysis)) .ref(state, record$analysis) else record$analysis
+  row <- .obj(ref = .make_ref(state, record), kind = record$kind, time_utc = if (nzchar(stamp)) stamp else NULL,
+              evidence = evidence, outcome = receipt$status, analysis_ref = analysis, omitted_text_fields = list())
+  texts <- .obj(name = record$name, registration_at_utc = record$created_at)
+  links <- .obj(input_refs = record$inputs)
+  if (view == "runs") {
+    row[c("run_ref", "template_ref", "timing_status")] <- list(receipt$run_ref, receipt$template_ref, timing)
+    texts[c("started_at_utc", "ended_at_utc")] <- list(receipt$started_at_utc, receipt$ended_at_utc)
+    links["output_refs"] <- list(if (!is.null(receipt)) {
+      .arr(lapply(Filter(function(item) identical(item$status, "registered"), receipt$outputs), `[[`, "record_ref"))
+    } else NULL)
+  }
+  for (field in names(texts)) {
+    value <- texts[[field]]
+    if (!is.null(value) && nchar(value, type = "bytes") > 256L) {
+      row$omitted_text_fields <- c(row$omitted_text_fields, list(field))
+      value <- NULL
+    }
+    row[field] <- list(value)
+  }
+  for (field in names(links)) {
+    refs <- links[[field]]
+    shown <- NULL
+    if (!is.null(refs)) {
+      slice <- lapply(refs[seq_len(min(length(refs), 10L))], function(ref) if (is.character(ref)) .ref(state, ref) else ref)
+      shown <- .arr(Filter(function(ref) nchar(.json(ref), type = "bytes") <= 512L, slice))
+    }
+    row[field] <- list(shown)
+    row[[paste0(field, "_omitted")]] <- length(refs) - length(shown)
+  }
+  row
+}
+
+.timeline_page <- function(state, dirty, cache, view, order, limit, cursor) {
+  if (!is.character(view) || length(view) != 1L || !view %in% c("registration", "runs")) .fail("view must be registration or runs")
+  if (!is.character(order) || length(order) != 1L || !order %in% c("oldest", "newest")) .fail("order must be oldest or newest")
+  if (!.is_int(limit, TRUE) || limit > 20L) .fail("limit must be an integer from 1 to 20")
+  prefix <- paste0(cache$snapshot, ":", view, ":", order, ":")
+  offset <- 0L
+  if (!is.null(cursor)) {
+    if (!is.character(cursor) || length(cursor) != 1L || is.na(cursor) || !startsWith(cursor, prefix)) {
+      .fail("stale or invalid timeline cursor; restart paging")
+    }
+    value <- substring(cursor, nchar(prefix) + 1L)
+    if (nchar(value, type = "bytes") > 10L || !grepl("^[0-9]+\\z", value, perl = TRUE)) .fail("invalid timeline cursor offset")
+    offset <- as.numeric(value)
+  }
+  if (is.null(cache[[view]])) cache[[view]] <- .timeline_index(state, view)
+  index <- cache[[view]]
+  slots <- index[[order]]
+  total <- length(slots)
+  if (!is.null(cursor) && (offset <= 0L || offset >= total)) .fail("invalid timeline cursor offset")
+  rows <- list(); used <- 0L
+  for (slot in slots[offset + seq_len(min(limit, total - offset))]) {
+    row <- .timeline_row(state, view, index, slot)
+    size <- nchar(.json(row), type = "bytes") + 1L
+    # Leave room for report metadata and up to 190 pairwise relations.
+    if (used + size > .chronology_max_bytes - 12288L) {
+      if (!length(rows)) .fail("timeline row exceeds report limit; retrieve the exact record")
+      break
+    }
+    rows[[length(rows) + 1L]] <- row
+    used <- used + size
+  }
+  end <- offset + length(rows)
+  report <- .obj(report_version = "biodataledger-timeline/1", view = view, order = order, timezone = "UTC",
+                 registry_revision = state$state_revision, unsaved = dirty,
+                 imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL,
+                 total_rows = total, rows = .arr(rows), relations = if (view == "runs") .chronology_relations(rows) else list(),
+                 next_cursor = if (end < total) paste0(prefix, sprintf("%.0f", end)) else NULL)
+  if (nchar(.json(report), type = "bytes") > .chronology_max_bytes) .fail("timeline report exceeds 64 KiB")
+  report
+}
+
+.timeline_ref <- function(ref) paste0(ref$id, "@", sprintf("%.0f", ref$revision))
+
+.timeline_summary <- function(report) {
+  runs <- report$view == "runs"
+  heading <- if (runs) "Recorded runs by wrapper start" else "Record revisions by registration time"
+  lines <- paste0(heading, " (UTC, ", report$order, " first)")
+  if (!is.null(report$imported_claim)) lines <- c(lines, "Imported metadata. Receipt claims are untrusted.")
+  unknown_heading <- FALSE
+  for (number in seq_along(report$rows)) {
+    row <- report$rows[[number]]
+    stamp <- if (is.null(row$time_utc)) "UNKNOWN" else row$time_utc
+    if (is.null(row$time_utc) && !unknown_heading) {
+      lines <- c(lines, "Time unknown or unqualified")
+      unknown_heading <- TRUE
+    }
+    name <- if (is.null(row$name)) "[name omitted]" else .json(row$name)
+    status <- if (!is.null(row$outcome)) row$outcome else if (identical(row$evidence, "unknown")) "execution UNKNOWN" else row$kind
+    line <- paste0("[", number, "] ", stamp, "  ", .timeline_ref(row$ref), "  ", name, "  ", status)
+    if (!is.null(row$outcome)) line <- paste0(line, " (", gsub("_", " ", row$evidence), ")")
+    lines <- c(lines, line)
+    if (runs) {
+      if (!is.null(row$run_ref)) lines <- c(lines, paste0("    Run ", .timeline_ref(row$run_ref),
+                                                        " | Template ", .timeline_ref(row$template_ref)))
+      start <- if (is.null(row$started_at_utc)) "UNKNOWN" else .json(row$started_at_utc)
+      end <- if (is.null(row$ended_at_utc)) "UNKNOWN" else .json(row$ended_at_utc)
+      lines <- c(lines, paste0("    Wrapper start ", start, " | End ", end, " | ", gsub("_", " ", row$timing_status)))
+    } else if (!is.null(row$analysis_ref)) {
+      lines <- c(lines, paste0("    Analysis ", .timeline_ref(row$analysis_ref)))
+    }
+    for (field in c("input_refs", "output_refs")) {
+      refs <- row[[field]]
+      if (is.null(refs)) next
+      label <- if (field == "input_refs") "Declared inputs" else "Registered outputs"
+      linked <- if (length(refs)) paste(vapply(refs, .timeline_ref, character(1)), collapse = ", ") else "none shown"
+      omitted <- row[[paste0(field, "_omitted")]]
+      lines <- c(lines, paste0("    ", label, " ", linked, if (omitted > 0L) paste0(" (", omitted, " omitted)") else ""))
+    }
+  }
+  if (runs) {
+    qualified <- Filter(function(pair) pair$relation %in% c("overlap", "tied", "tied_boundary"), report$relations)
+    relations <- vapply(qualified, function(pair) paste0(pair$left, "-", pair$right, " ", gsub("_", " ", pair$relation)), character(1))
+    if (length(relations)) lines <- c(lines, paste0("Overlaps or ties on this page: ", paste(relations, collapse = ", ")))
+    lines <- c(lines, "Wrapper intervals are partial evidence. Unrecorded execution remains unknown.")
+  } else {
+    lines <- c(lines, "Registration times describe record revisions. Equal times share the same displayed time.")
+  }
+  paste(c(lines, paste0("Next cursor: ", if (is.null(report$next_cursor)) "none" else report$next_cursor)), collapse = "\n")
+}

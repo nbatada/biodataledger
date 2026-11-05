@@ -46,6 +46,29 @@ local({
   text <- p$execution_history_summary()
   stopifnot(nchar(text, type = "bytes") <= 4096L, grepl("start=", text, fixed = TRUE), grepl("not a total execution", text, fixed = TRUE),
             identical(before, readBin(path, "raw", file.info(path)$size)))
+  card <- capture.output(print(p))
+  page <- p$timeline(limit = 1L)
+  runs <- p$timeline(view = "runs")
+  stopifnot(!is.null(page$next_cursor), grepl("Registered outputs", p$timeline_summary(view = "runs"), fixed = TRUE),
+            all(vapply(Filter(function(row) row$outcome %in% "blocked", runs$rows), function(row) is.null(row$time_utc), logical(1))),
+            identical(card, capture.output(print(p))), identical(before, readBin(path, "raw", file.info(path)$size)))
+  following <- local({
+    previous <- options(scipen = -9)
+    on.exit(options(previous))
+    second <- p$timeline(limit = 1L, cursor = page$next_cursor)
+    third <- p$timeline(limit = 1L, cursor = second$next_cursor)
+    list(second, third)
+  })
+  fourth <- p$timeline(limit = 1L, cursor = following[[2L]]$next_cursor)
+  stopifnot(identical(c(page$rows, following[[1L]]$rows, following[[2L]]$rows, fourth$rows),
+                      p$timeline(limit = 4L)$rows))
+  design <- p$set_design("condition", c("control", "treated"))
+  stopifnot(inherits(try(p$timeline(cursor = page$next_cursor), silent = TRUE), "try-error"))
+  staged <- p$timeline(limit = 1L)
+  stopifnot(staged$unsaved, staged$total_rows == page$total_rows + 1L,
+            any(vapply(p$timeline(order = "newest", limit = 20L)$rows, function(row) identical(row$ref, design), logical(1))))
+  invisible(p$save_and_confirm())
+  stopifnot(inherits(try(p$timeline(cursor = staged$next_cursor), silent = TRUE), "try-error"))
   archive <- file.path(root, "context.zip")
   invisible(p$export_zip(p$preview_export("context"), archive))
   imported <- ProjectBundle$import_zip(archive, file.path(root, "imported"))

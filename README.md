@@ -501,6 +501,12 @@ See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
 
 ### Execution chronology
 
+Use `timeline_summary()` to read a project timeline in Python or R (unreleased).
+The default view shows each registered record revision in UTC. Choose `view="runs"` to see
+recorded runs, with their inputs, registered outputs and qualified wrapper times.
+Use `order="newest"` for the newest times first. `timeline()` returns the same page
+as structured data, including its continuation cursor.
+
 `execution_history()` retrieves bounded recorded runs by project, exact analysis
 or protocol. Pairwise timing evidence preserves overlaps, ties, failures and
 unknowns; display order is not an inferred execution sequence.

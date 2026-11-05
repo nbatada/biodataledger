@@ -5,7 +5,20 @@ p <- ProjectBundle$open(args[[1]])
 options <- if (is.null(request$options)) list() else request$options
 path <- file.path(args[[1]], ".nb_project_bundle", "project.json")
 before <- readBin(path, "raw", file.info(path)$size)
-answer <- list(report = do.call(p$execution_history, options), summary = do.call(p$execution_history_summary, options))
+if (identical(request$mode, "timeline")) {
+  answer <- list(pages = list())
+  repeat {
+    page <- do.call(p$timeline, options)
+    next_cursor <- page$next_cursor
+    page$next_cursor <- !is.null(next_cursor)
+    answer$pages[[length(answer$pages) + 1L]] <- page
+    if (is.null(next_cursor)) break
+    options$cursor <- next_cursor
+  }
+  answer$summary <- sub("Next cursor: .*\\z", "Next cursor: checked", do.call(p$timeline_summary, request$options), perl = TRUE)
+} else {
+  answer <- list(report = do.call(p$execution_history, options), summary = do.call(p$execution_history_summary, options))
+}
 stopifnot(identical(before, readBin(path, "raw", file.info(path)$size)))
 if (identical(request$mode, "native_run")) {
   writeLines("run <- function(inputs, params, seeds, outputs) writeLines('synthetic', outputs[[1]])", file.path(args[[1]], "native.R"))

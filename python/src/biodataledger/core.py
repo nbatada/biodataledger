@@ -372,6 +372,7 @@ class ProjectBundle:
         return self._dirty
 
     def _reindex(self):
+        self._timeline_cache = None
         self._lineage = None
         self._index = {}
         self._latest_index = {}
@@ -1493,6 +1494,14 @@ class ProjectBundle:
     def execution_history_summary(self, analysis_ref=None, protocol_ref=None, limit=10, offset=0):
         from .chronology import execution_history_summary
         return execution_history_summary(self, analysis_ref=analysis_ref, protocol_ref=protocol_ref, limit=limit, offset=offset)
+
+    def timeline(self, view="registration", order="oldest", limit=10, cursor=None):
+        from .chronology import timeline
+        return timeline(self, view, order, limit, cursor)
+
+    def timeline_summary(self, view="registration", order="oldest", limit=10, cursor=None):
+        from .chronology import timeline_summary
+        return timeline_summary(self.timeline(view, order, limit, cursor))
 
     def save_and_confirm(self):
         """Commit all pending edits; a clean call reports no_changes, not freshness."""

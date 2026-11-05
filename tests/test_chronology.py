@@ -65,6 +65,122 @@ class ChronologyTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         return json.loads(completed.stdout)
 
+    def timeline_pages(self, **options):
+        cursor, pages = None, []
+        while True:
+            page = self.p.timeline(cursor=cursor, **options)
+            cursor = page['next_cursor']
+            page['next_cursor'] = cursor is not None
+            pages.append(page)
+            if cursor is None:
+                return pages
+
+    def assert_native_timeline(self, **options):
+        pages = self.timeline_pages(**options)
+        native = self.native(mode='timeline', options=options)
+        self.assertEqual(native['pages'], pages)
+        summary = self.p.timeline_summary(**options).rsplit('Next cursor: ', 1)[0]
+        self.assertEqual(native['summary'], summary + 'Next cursor: checked')
+        return [row for page in pages for row in page['rows']]
+
+    def test_timeline_registration_global_paging_and_timestamp_evidence(self):
+        updated = self.p.update_record(self.a, {'name': 'Δ quality control'}, 'new name')
+        unknown = self.template()
+        last = self.template()
+        stamp = '2020-01-01T00:00:02Z'
+        for ref, at in ((self.data, '2020-01-01T00:00:03Z'), (self.a, stamp), (updated, stamp),
+                        (unknown, '2020-01-01T00:00:00.1Z'), (last, '2020-01-01T00:00:01Z')):
+            self.p._record(ref)['created_at'] = at
+        self.persist_fixture()
+        oldest = self.assert_native_timeline(limit=1)
+        newest = self.assert_native_timeline(order='newest', limit=2)
+        self.assertEqual([row['ref'] for row in oldest], [last, self.a, updated, self.data, unknown])
+        self.assertEqual([row['ref'] for row in newest], [self.data, self.a, updated, last, unknown])
+        self.assertEqual(oldest[2]['name'], 'Δ quality control')
+        self.assertEqual(oldest[-1]['evidence'], 'unknown')
+        self.assertIsNone(oldest[-1]['time_utc'])
+        self.assertEqual(oldest[-1]['registration_at_utc'], '2020-01-01T00:00:00.1Z')
+
+    def test_timeline_runs_order_outputs_and_qualified_relations(self):
+        first, second, third, invalid = [self.run_record() for _ in range(4)]
+        for receipt, start, end in ((first, '04', '09'), (second, '02', '06'),
+                                    (third, '02', '06'), (invalid, '01', '00')):
+            self.interval(receipt, '2020-01-01T00:00:' + start + 'Z', '2020-01-01T00:00:' + end + 'Z')
+        (self.root / 'input.txt').write_text('changed bytes')
+        blocked = self.run_record()
+        self.persist_fixture()
+        oldest = self.assert_native_timeline(view='runs', limit=2)
+        newest = self.assert_native_timeline(view='runs', order='newest', limit=2)
+        self.assertEqual([row['ref'] for row in oldest], [r['receipt_ref'] for r in (second, third, first, invalid, blocked)])
+        self.assertEqual([row['ref'] for row in newest], [r['receipt_ref'] for r in (first, second, third, invalid, blocked)])
+        self.assertEqual(oldest[0]['input_refs'], [self.data])
+        self.assertEqual(oldest[0]['output_refs'], [second['outputs'][0]['record_ref']])
+        self.assertEqual(oldest[0]['template_ref'], self.a)
+        self.assertEqual(oldest[0]['run_ref'], second['run_ref'])
+        self.assertEqual([row['timing_status'] for row in oldest[-2:]], ['invalid', 'not_executed'])
+        self.assertTrue(all(row['time_utc'] is None for row in oldest[-2:]))
+        self.assertEqual([pair['relation'] for pair in self.p.timeline(view='runs')['relations'][:3]],
+                         ['tied', 'overlap', 'unknown'])
+        self.assertIn('Overlaps or ties on this page: 1-2 tied, 1-3 overlap, 2-3 overlap',
+                      self.p.timeline_summary(view='runs'))
+        self.assertEqual(self.p.execution_history()['entries'][0]['receipt_ref'], blocked['receipt_ref'])
+
+    def test_timeline_untrusted_and_malformed_runs_stay_unknown(self):
+        first, second = self.run_record(self.template(fail=True)), self.run_record()
+        self.interval(first, '2020-01-01T00:00:03Z', '2020-01-01T00:00:05Z')
+        self.interval(second, '2020-01-01T00:00:01Z', '2020-01-01T00:00:02Z')
+        self.persist_fixture()
+        archive = self.root / 'context.zip'
+        self.p.export_zip(self.p.preview_export('context'), archive)
+        imported = ProjectBundle.import_zip(archive, self.root / 'imported')
+        report = imported.timeline(view='runs')
+        self.assertTrue(all(row['evidence'] == 'untrusted_imported' and row['time_utc'] is None for row in report['rows']))
+        self.assertTrue(all(row['started_at_utc'] is not None for row in report['rows']))
+        self.assertEqual(report['relations'][0]['relation'], 'unknown')
+        output_one = self.p._record(first['receipt_ref'])['details']['execution_receipt']['outputs'][0]
+        output_two = self.p._record(second['receipt_ref'])['details']['execution_receipt']['outputs'][0]
+        output_one['status'] = ['registered']
+        output_one['record_ref'] = self.data
+        output_two['record_ref'] = '{id}@{revision}'.format(**output_two['record_ref'])
+        self.persist_fixture()
+        rows = self.assert_native_timeline(view='runs', limit=1)
+        self.assertTrue(all(row['evidence'] == 'unknown' and row['output_refs'] is None for row in rows))
+
+    def test_timeline_cursors_refresh_and_summary_uses_no_payloads(self):
+        receipt = self.run_record()
+        long_name = self.p.register_analysis('λ' * 400, [self.data], method='synthetic', params={})
+        path = self.root / '.nb_project_bundle/project.json'
+        before, card = path.read_bytes(), str(self.p)
+        with patch.object(Path, 'open', side_effect=AssertionError('payload I/O')), \
+             patch('os.scandir', side_effect=AssertionError('directory scan')), \
+             patch('biodataledger.core.fingerprint', side_effect=AssertionError('hash')), \
+             patch.object(self.p, 'save', side_effect=AssertionError('save')):
+            page = self.p.timeline(limit=1)
+            report = self.p.timeline()
+            text = self.p.timeline_summary(view='runs')
+        self.assertEqual(str(self.p), card)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertIn('Registered outputs', text)
+        self.assertIn('{id}@{revision}'.format(**receipt['receipt_ref']), text)
+        self.assertEqual(next(row for row in report['rows'] if row['ref'] == long_name)['omitted_text_fields'], ['name'])
+        for options in ({'order': 'newest'}, {'view': 'runs'}):
+            with self.assertRaisesRegex(BundleError, 'cursor'):
+                self.p.timeline(cursor=page['next_cursor'], **options)
+        self.p.set_context({'next_task': 'new staged context'})
+        with self.assertRaisesRegex(BundleError, 'cursor'):
+            self.p.timeline(cursor=page['next_cursor'])
+        staged = self.p.timeline(limit=1)
+        self.assertTrue(staged['unsaved'])
+        self.p.save_and_confirm()
+        with self.assertRaisesRegex(BundleError, 'cursor'):
+            self.p.timeline(cursor=staged['next_cursor'])
+        saved = self.p.timeline(limit=1)
+        self.p.save_and_confirm()
+        self.assertEqual(self.p.timeline(limit=1, cursor=saved['next_cursor'])['registry_revision'], saved['registry_revision'])
+        reopened = ProjectBundle.open(self.root)
+        with self.assertRaisesRegex(BundleError, 'cursor'):
+            reopened.timeline(cursor=saved['next_cursor'])
+
     def test_registration_protocol_and_execution_orders_are_separate(self):
         b = self.template(n=2)
         protocol = self.p.register_protocol('intent', [
@@ -137,6 +253,9 @@ class ChronologyTests(unittest.TestCase):
         row = self.p.execution_history()['entries'][0]
         self.assertEqual((row['outcome'], row['timing_status']), ('started', 'open'))
         self.assertIsNone(row['ended_at_utc'])
+        open_row = next(item for item in self.p.timeline(view='runs')['rows'] if item['ref'] == row['receipt_ref'])
+        self.assertEqual((open_row['outcome'], open_row['timing_status']), ('started', 'open'))
+        self.assertIsNone(open_row['time_utc'])
         self.assertEqual(self.native()['report'], self.p.execution_history())
 
     def test_exact_filters_no_match_and_single_run_latest_revision(self):
