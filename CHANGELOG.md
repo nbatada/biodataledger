@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Explain exact reference syntax when R receives an ID without a revision.
+- Document how to find and verify inputs, stage an analysis before writing
+  outputs, and retain the result with exact references in R and Python.
+
 ## 0.14.0 — 2026-11-05
 
 - Add on-demand UTC timelines for record registrations and recorded runs in R

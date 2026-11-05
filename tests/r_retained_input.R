@@ -12,7 +12,26 @@ writeLines("first", file.path(root, "first.csv")); writeLines("second", file.pat
 writeLines("<svg/>", file.path(root, "plot.svg")); writeLines("# declared", file.path(root, "redraw.R"))
 p <- ProjectBundle$create("synthetic retained input", root)
 first <- p$register_data("first.csv", "input", hash = TRUE); second <- p$register_data("second.csv", "input", hash = TRUE)
-p$set_current(first, "redraw", "synthetic selected input"); p$save()
+selected <- p$set_current(first, "redraw", "synthetic selected input")
+decision <- p$record_scientific_decision("Toy convention", "Synthetic context",
+  subjects = list(list(ref = first)), scientific_status = "provisional")
+saved <- p$save_and_confirm()
+
+bare_id_error <- tryCatch(p$get_data(ref = first$id), error = conditionMessage)
+stopifnot(grepl("Exact revision required: use ID@revision", bare_id_error, fixed = TRUE),
+          identical(p$get_data(ref = paste0(first$id, "@", first$revision))$ref, first))
+
+registry <- file.path(root, ".nb_project_bundle", "project.json")
+before <- list(summary = p$summary(), bytes = readBin(registry, "raw", file.info(registry)$size))
+output <- file.path(root, "retained.txt")
+invalid_input_error <- tryCatch({
+  selected_data <- p$resolve_data(ref = first, verify = "sha256")
+  analysis <- p$register_analysis("Invalid inputs", list(selected_data$ref, decision), code = "redraw.R")
+  writeLines(readLines(selected_data$path), output)
+}, error = conditionMessage)
+stopifnot(grepl("Analysis inputs must be data", invalid_input_error, fixed = TRUE),
+          !file.exists(output), identical(before$summary, p$summary()),
+          identical(before$bytes, readBin(registry, "raw", file.info(registry)$size)))
 
 loaded <- helpers$load_retained_input(p, function(path) readLines(path), purpose = "redraw")
 p$set_current(second, "redraw", "synthetic later choice")

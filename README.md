@@ -142,9 +142,10 @@ p.save()
 
 p = ProjectBundle.open(project_dir=project_root)
 d = p.resolve_data(purpose="qc", verify="sha256")
-# Normal native analysis uses d.path and saves figures. The registry runs nothing.
 a = p.register_analysis("QC", inputs=[d.ref], code="qc.py",
                         method="synthetic display", params={"min_genes": 200})
+# After the analysis declaration is staged, native analysis can use d.path
+# and write its outputs. The figures here are already saved synthetic fixtures.
 f1 = p.register_figure("library.svg", type="qc", analysis=a)
 f2 = p.register_figure("genes.svg", type="qc", analysis=a)
 p.save()
@@ -171,9 +172,10 @@ p$save()
 
 p <- ProjectBundle$open(project_dir = project_root)
 d <- p$resolve_data(purpose = "qc", verify = "sha256")
-# Normal native analysis uses d$path and saves figures; no package execution.
 a <- p$register_analysis("QC", inputs = list(d$ref), code = "qc.R",
                         method = "synthetic display", params = list(min_genes = 200))
+# After the analysis declaration is staged, native analysis can use d$path
+# and write its outputs. The figures here are already saved synthetic fixtures.
 f1 <- p$register_figure("library.svg", type = "qc", analysis = a)
 f2 <- p$register_figure("genes.svg", type = "qc", analysis = a)
 p$save()
@@ -192,6 +194,10 @@ Project helpers can keep domain-specific loading outside BioDataLedger. Pass the
 opened project and an exact registered reference into a helper; call
 `resolve_data(..., verify="sha256")` once before loading through native R/Python.
 See the [portable helper example](docs/api/API_0.9.0.md#portable-project-helpers).
+
+For a planned retained result, see the [R/Python registration workflow](docs/RETAINED_INPUTS.md):
+find candidates, verify the chosen revision, stage the analysis before writing
+outputs, then register and save the related records together.
 
 ## Check a loaded scientific input (R prototype)
 
@@ -219,6 +225,11 @@ the registry, read scientific payloads or hash files by default. Unsaved changes
 remain in memory until an explicit save or an execution-receipt save.
 
 Open the project once and use exact getters for frequent metadata lookups. Availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
+
+Use `get_data(role=...)` for a unique role or `get_data(purpose=...)` for an
+explicit current choice. To find candidate DATA or DEC revisions by name, use
+the [bounded structured graph search](docs/api/GRAPH_V1.md). Keep the chosen
+exact ref; a partial or ambiguous search cannot choose it for you.
 
 **Updating an older input helper:** `availability_checked=False` means unchecked,
 not unavailable. Use `resolve_data(..., verify="sha256")` for verified input

@@ -188,7 +188,9 @@
 }
 .ref <- function(state, x) {
   if (is.character(x) && length(x) == 1L) {
-    if (!grepl("^(DATA|ANA|FIG|DEC|DES)-[0-9]{3,}@[1-9][0-9]*$", x)) .fail("Exact revision required")
+    if (!grepl("^(DATA|ANA|FIG|DEC|DES)-[0-9]{3,}@[1-9][0-9]*$", x)) {
+      .fail("Exact revision required: use ID@revision (e.g. DATA-001@2) with the chosen revision, or pass its returned ref")
+    }
     bits <- strsplit(x, "@", fixed = TRUE)[[1]]; x <- .obj(project_id = state$project$id, id = bits[1], revision = as.integer(bits[2]))
   }
   .validate_ref_shape(state, x)

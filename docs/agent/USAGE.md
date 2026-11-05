@@ -19,6 +19,13 @@ return mapping solely for this pattern. A declared object/source binding, a file
 hash or a snapshot does not prove actual object consumption, object immutability,
 scientific approval, or a rerun.
 
+To find DATA or DEC candidates by name, use the
+[structured graph query](../api/GRAPH_V1.md) with `asset_type` and `query`
+filters. Inspect cutoffs and continuation; never infer a selection from a partial or
+ambiguous search. Use `get_data(role=...)` for a unique role or
+`get_data(purpose=...)` for a recorded choice. Keep the chosen exact ref, and
+inspect selected decisions separately with `get_decision(ref)`.
+
 There is no mandatory operation on every chat turn. Keep one project object in
 the current R session or Python process and query it only when the task needs
 registered information. If each tool call starts a fresh process, open once in
@@ -30,7 +37,7 @@ an object alive across processes.
 | Start or resume a task | Open the supplied root and read compact `status()` once. |
 | Inspect a known result | Use its exact getter; return only the fields needed for the question. |
 | Use a selected scientific input | Call strict `resolve_data` before reading that input; do not hash it for unrelated conversation. |
-| Retain an analysis and related figures | Register one analysis, link the saved figures, then save once. |
+| Retain a planned analysis and related outputs | Verify the selected DATA, stage one analysis before writing outputs, then register the files and save once. |
 | Another writer saved | Reopen when its new records are needed. If local edits exist, preserve and reconcile them first. |
 
 A loaded object describes its loaded revision. It does not promise the newest
@@ -39,7 +46,15 @@ registry-byte digest detect another writer's update, including edits that keep
 the same revision number. A clean `save()` performs no I/O; it is not a freshness
 check. These checks read registry metadata, not scientific payloads.
 
-Let native analysis remain native. Register actual saved retained outputs with known input/code/method/parameters, sharing one analysis reference across related figures. Unknown provenance stays unknown; file capture is not execution proof. Save meaningful staged changes, not every message. On stale state, preserve edits and reconcile; never silently merge or steal locks.
+Let native analysis remain native. For work already intended to be retained,
+stage `register_analysis` with exact DATA inputs and design context before
+writing outputs. Inspect any required DEC separately; do not put a DEC in
+`inputs`. Snapshot scripts via `code=`; no redundant DATA registration is
+needed. Register actual saved files against that analysis and call
+`save_and_confirm()`. If output registration fails, report the files left
+behind and the records still unregistered or staged; do not report a rollback.
+On stale state, preserve edits and reconcile; never silently merge or steal locks.
+See the [worked example and revision rules](../RETAINED_INPUTS.md).
 
 Use the returned `evidence` fields to report declared input/code relationships
 and missing execution evidence. Complete registration, matching file hashes,
