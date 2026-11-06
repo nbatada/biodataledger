@@ -14,7 +14,7 @@ Both formats describe the same bounded view. They require no Graphviz, file writ
 payload reads, availability checks, hashing, or execution. Export is on demand.
 Use the ordinary `dependencies()` method for its original, narrower edge contract.
 
-## Presentation DOT (unreleased; source checkout)
+## Presentation DOT
 
 `style="presentation"` produces a top to bottom diagram from the same bounded
 query. Exact revision IDs appear under distinct record types. The

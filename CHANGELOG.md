@@ -1,9 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.16.0 — 2026-11-06
 
 - Add a presentation style for lineage DOT in R and Python, with optional
   colors for exact DATA roots and notes for recorded questions and plotting code.
+- Add a synthetic lineage demo in R and Python that generates sample counts and
+  a plot, then recovers the exact count table and plotting script in a fresh
+  process. The retained figure traces to its recorded cohort revision, even
+  after a newer revision becomes current for review.
 
 ## 0.15.0 — 2026-11-05
 

@@ -11,7 +11,7 @@ or hand it to a colleague.
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
+[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
 
 For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
@@ -19,18 +19,18 @@ It is a project-helper pattern, not a migration instruction for existing helpers
 
 ## Install
 
-Version **0.15.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.16.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-Version 0.15.0 lets you [find retained outputs](#find-retained-figures-and-data)
-by recorded topic, question and document link, and suggest filenames for exact
-revisions. See the [changelog](CHANGELOG.md).
+Version 0.16.0 adds a presentation view for tracing a retained figure to its
+recorded sources, with optional colors for selected input branches. See the
+[changelog](CHANGELOG.md).
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.15.0 from its release tag:
+Run this in R to install version 0.16.0 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -39,28 +39,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.15.0",
+  ref = "v0.16.0",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.15.0 directly from GitHub**
+**Python — install version 0.16.0 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.15.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.16.0#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.15.0` with the release's full commit SHA in either installation command.
+`v0.16.0` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.15.0
+git checkout v0.16.0
 ```
 
 **Python 3.9 or newer**
@@ -416,7 +416,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.15.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.16.0.tar.gz
 ```
 
 ## Confirm a saved change
@@ -465,10 +465,51 @@ queries to inspect links across pages and check the reported cutoffs.
 See the [graph contract](docs/api/GRAPH_V1.md) and the synthetic PRMT5 examples
 in [Python](examples/dependency_graph.py) and [R](examples/dependency_graph.R).
 
-In the source checkout, `style="presentation"` draws a top to bottom diagram
-with exact revisions, optional colors for chosen DATA roots, and notes for
-recorded questions and plotting code. The [synthetic lineage demo](docs/LINEAGE_DEMO.md)
-shows the R and Python calls and optional Graphviz rendering to SVG.
+### Trace a retained figure
+
+Use `style="presentation"` for top-to-bottom DOT with exact revision labels
+and notes for recorded questions and plotting code. The
+[synthetic lineage demo](docs/LINEAGE_DEMO.md) generates sample counts and a
+plot in either R or Python. In a fresh process it finds the figure by recorded
+topic and question, then recovers the exact count table and plotting script.
+The lineage points to the earlier cohort revision recorded for that figure.
+
+<details>
+<summary>View the synthetic lineage diagram</summary>
+
+![Recorded lineage of a synthetic sample-count figure, with blue and orange cohort branches meeting at the count table.](docs/assets/lineage-demo.svg)
+
+</details>
+
+With the demo project open as `project`, export its figure and color the two
+recorded cohort branches.
+
+```py
+from pathlib import Path
+
+dot = project.export_graph(
+    "FIG-001@2", depth=8, style="presentation",
+    lineage_roots=["DATA-002@1", "DATA-003@1"],
+)
+Path("lineage.dot").write_text(dot, encoding="utf-8")
+```
+
+```R
+dot <- project$export_graph(
+  "FIG-001@2", depth = 8L, style = "presentation",
+  lineage_roots = c("DATA-002@1", "DATA-003@1")
+)
+writeLines(enc2utf8(dot), "lineage.dot", useBytes = TRUE)
+```
+
+Focused presentation graphs omit revision links and records reachable only
+through them. The header counts omissions and reports query cutoffs. Use the
+default detailed view to inspect revision links. Colors trace declared
+relationships, including the figure's exact rendering inputs. Execution and
+scientific approval require separate evidence.
+
+If you have Graphviz installed, run `dot -Tsvg lineage.dot -o lineage.svg` to
+render the DOT file.
 
 ## Optional execution receipts
 

@@ -7,9 +7,8 @@ script, and traces the two cohorts that supplied the counts.
 
 ## Run the example
 
-Use local macOS and an installed BioDataLedger build that supports
-`export_graph(style="presentation")`. Run one of these pairs from the source
-checkout. Use a new project directory with an existing parent.
+Install BioDataLedger 0.16.0 on local macOS. Run one of these pairs from the
+repository checkout with a new project directory whose parent exists.
 
 **Python**
 

@@ -40,5 +40,5 @@ jobs:
       - name: R package check
         run: |
           R CMD build r
-          R CMD check --no-manual BioDataLedger_0.15.0.tar.gz
+          R CMD check --no-manual BioDataLedger_0.16.0.tar.gz
           grep -q "^Status: OK" BioDataLedger.Rcheck/00check.log

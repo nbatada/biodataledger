@@ -4,22 +4,23 @@ A lightweight local scientific project registry for finding retained figures and
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Install 0.15.0
+## Install 0.16.0
 
 Requires Python 3.9 or newer. The package has no Python runtime dependencies.
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.15.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.16.0#subdirectory=python"
 python3 -c 'import biodataledger; print(biodataledger.__version__)'
 ```
 
 Use an isolated Python environment as needed. For an immutable installation,
-replace `v0.15.0` with the release's full commit SHA. For an existing project or live
-session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.15.0/docs/UPDATING.md).
+replace `v0.16.0` with the release's full commit SHA. For an existing project or live
+session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.16.0/docs/UPDATING.md).
 
-Version 0.15.0 adds search by recorded topic, question and document link,
-exact source inspection, and suggested filenames for retained data and figures.
-See the [output discovery examples](https://github.com/nbatada/biodataledger/blob/v0.15.0/docs/api/OUTPUT_DISCOVERY_V1.md).
+Version 0.16.0 adds presentation DOT with exact revision labels, optional
+source colors and notes for recorded questions and plotting code. The
+[synthetic lineage demo](https://github.com/nbatada/biodataledger/blob/v0.16.0/docs/LINEAGE_DEMO.md)
+generates a sample-count plot and recovers its exact recorded sources.
 BioDataLedger also supports graph export as DOT or structured data, exact
 input and design references, retained-result lineage, optional
 execution receipts, scientific decisions, related-work retrieval,
