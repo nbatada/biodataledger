@@ -529,7 +529,7 @@ class ProjectBundle:
                 "type": None, "sha256": None, "size": None, "inputs": None, "analysis": None,
                 "code": [], "method": None, "params": None, "details": {}, "status": "active", "foreign_refs": []}
 
-    def _stage(self, rec, action="register", reason=None, version=None, context_check=True):
+    def _stage(self, rec, action="register", reason=None, version=None, context_check=True, capture_code=True):
         version = version or self.state["schema_version"]
         validate_record(rec, version)
         require(ref_key(rec) not in self._index, "duplicate record revision")
@@ -551,7 +551,7 @@ class ProjectBundle:
         if RESULT_KEY in rec["details"]:
             validate_result(self, rec)
         snapshots = {}
-        for code in rec["code"]:
+        for code in rec["code"] if capture_code else ():
             dest = code["snapshot"]
             if dest and dest not in self._snapshots and not self._internal(dest).exists():
                 source = self._resolve(code["locator"])
@@ -749,6 +749,8 @@ class ProjectBundle:
                 rec["preservation"] = preservation
                 return self._stage(rec, "save_figure", version=CONTEXT_VERSION)
             rec = original
+            from .presentation import KEY as PRESENTATION_KEY
+            rec["details"].pop(PRESENTATION_KEY, None)
             rec["details"]["format"] = dest.suffix.lstrip(".").lower()
             rec.update(revision=self._latest_index[rec["id"]]["revision"] + 1, created_at=now(),
                        locator=self._locator(dest), sha256=digest, size=dest.stat().st_size,
@@ -1055,6 +1057,7 @@ class ProjectBundle:
         return self._ref(rec)
 
     def update_record(self, ref, changes, reason):
+        from .presentation import KEY as PRESENTATION_KEY, presentation_only_change
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
         require(not ({"comparison_plan", "comparison_assessment"} & set(rec["details"])), "comparison revisions use dedicated writers")
@@ -1072,8 +1075,10 @@ class ProjectBundle:
         require(rec["kind"] != "design", "use set_design to revise experimental design")
         allowed = {"name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources"}
         require(set(changes) <= allowed, "protected or unknown correction field")
+        presentation_only = presentation_only_change(rec, changes)
         if rec.get("scope", {}).get("membership_evidence", {}).get("status") == "verification_recorded":
-            require(not ({"path", "details"} & set(changes)), "clear membership evidence through set_data_scope before changing subject/bindings")
+            require(not ({"path", "details"} & set(changes)) or presentation_only,
+                    "clear membership evidence through set_data_scope before changing subject/bindings")
         require(not ({"preservation", "artifact_role", "execution_receipt"} & set(changes.get("details", {}))), "reserved metadata")
         if rec.get("preservation"):
             require("path" not in changes, "use save_figure to revise preserved bytes")
@@ -1098,6 +1103,8 @@ class ProjectBundle:
             require(file is not None and file.is_file(), "new revision file missing")
             rec.update(locator=loc, sha256=fingerprint(file), size=file.stat().st_size)
         rec.update(copy.deepcopy({k: v for k, v in changes.items() if k not in ("path", "design_ref", "analysis", "figure_sources")}))
+        if "path" in changes:
+            rec["details"].pop(PRESENTATION_KEY, None)
         if "figure_sources" in changes:
             require(rec["kind"] == "figure", "figure_sources requires a figure")
             from .figure_sources import KEY, normalize
@@ -1108,7 +1115,8 @@ class ProjectBundle:
         rec["revision"] = self._latest_index[rec["id"]]["revision"] + 1
         rec["created_at"] = now()
         return self._stage(rec, "update_record", reason, version=CONTEXT_VERSION if {"design_ref", "input_mode", "analysis"} & set(changes) else None,
-                           context_check=bool({"inputs", "design_ref", "input_mode", "analysis"} & set(changes)))
+                           context_check=bool({"inputs", "design_ref", "input_mode", "analysis"} & set(changes)),
+                           capture_code=not presentation_only)
 
     def set_context(self, changes):
         allowed = {"purpose", "next_task", "questions", "authorities", "raw_dir", "metadata"}
@@ -1474,6 +1482,35 @@ class ProjectBundle:
     def related_work(self, input_ref=None, query=None, limit=5):
         from .related_work import related_work
         return related_work(self, input_ref, query, limit)
+
+    def set_presentation(self, ref, *, primary_topic, description, generated_on, topics=_DEFAULT,
+                         questions=_DEFAULT, uses=_DEFAULT, title=_DEFAULT, subtitle=_DEFAULT, reason):
+        """Stage a presentation revision without changing the registered artifact."""
+        from .presentation import set_presentation
+        return set_presentation(self, ref, primary_topic=primary_topic, description=description,
+                                generated_on=generated_on, topics=topics, questions=questions, uses=uses,
+                                title=title, subtitle=subtitle, reason=reason)
+
+    def output_name(self, ref):
+        """Derive a filename from the recorded presentation and exact reference."""
+        from .presentation import output_name
+        return output_name(self, ref)
+
+    def find_outputs(self, topic=None, question=None, query=None, kind=None, document_id=None,
+                     limit=20, offset=0, historical=False):
+        """Find retained outputs by recorded presentation metadata."""
+        from .presentation import find_outputs
+        return find_outputs(self, topic, question, query, kind, document_id, limit, offset, historical)
+
+    def get_info(self, ref, limit=20, offset=0):
+        """Inspect exact recorded sources and immediate outputs without file checks."""
+        from .presentation import get_info
+        return get_info(self, ref, limit, offset)
+
+    def export_named_output(self, ref, destination_dir):
+        """Copy one exact output after verifying its bytes against the registered digest."""
+        from .presentation import export_named_output
+        return export_named_output(self, ref, destination_dir)
 
     def register_comparison_plan(self, name, mode, original, intended, criteria, reason, ref=None):
         from .comparison import register_comparison_plan

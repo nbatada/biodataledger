@@ -673,6 +673,7 @@ ProjectBundle <- local({
       } else {
         rec <- original; rec$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
         rec$created_at <- .now(); rec$locator <- .locator(root, dest); rec$sha256 <- digest; rec$size <- as.numeric(file.info(dest)$size)
+        rec$details[[.presentation_key]] <- NULL
         rec$details$format <- tolower(tools::file_ext(dest))
         if (!is.null(type)) rec$type <- type
       }
@@ -1213,7 +1214,9 @@ ProjectBundle <- local({
       if (is.null(rec$details[[.result_key]]) && 'details' %in% names(changes) &&
           !is.null(changes$details[[.result_key]])) .fail('Use register_result to declare a result')
       new <- .copy(rec); new$revision <- state$records[[get(rec$id, attr(state, "record_index")$latest)]]$revision + 1L
-      if (rec$kind == "data" && !is.null(rec$scope) && identical(rec$scope$membership_evidence$status, "verification_recorded") && ("path" %in% names(changes) || "details" %in% names(changes))) .fail("MEMBERSHIP_EVIDENCE: revise scope before changing bound file or membership")
+      if (rec$kind == "data" && !is.null(rec$scope) && identical(rec$scope$membership_evidence$status, "verification_recorded") &&
+          any(c("path", "details") %in% names(changes)) && !.presentation_only_change(rec, changes))
+        .fail("MEMBERSHIP_EVIDENCE: revise scope before changing bound file or membership")
       if (any(c("preservation", "artifact_role") %in% names(changes$details))) .fail("Reserved preservation metadata")
       if (!is.null(rec$preservation) && "path" %in% names(changes)) .fail("Use save_figure for preserved bytes")
       if (any(c("design_ref", "input_mode") %in% names(changes)) && !rec$kind %in% c("analysis", "figure")) .fail("Use set_data_scope for DATA design")
@@ -1233,6 +1236,7 @@ ProjectBundle <- local({
       }
       new$created_at <- .now()
       for (key in setdiff(names(changes), c("path", "design_ref", "analysis", "figure_sources"))) new[key] <- list(.copy(changes[[key]]))
+      if (!is.null(changes[["path"]])) new$details[[.presentation_key]] <- NULL
       if (!is.null(rec$details[[.result_key]]) && !.result_valid(state,new)) .fail('Invalid result declaration')
       if ("figure_sources" %in% names(changes)) {
         if (rec$kind!="figure") .fail("figure_sources requires a figure")
@@ -1651,6 +1655,7 @@ ProjectBundle <- local({
         target <- .locator(root,dest)
       }
       details <- if (is.null(old)) .obj() else .copy(old$details)
+      details[[.presentation_key]] <- NULL
       details[[.result_key]] <- .obj(version=.result_version,artifact_source_ref=source_ref,
                                      storage=.obj(mode=if (copy) 'copy' else 'reference',source_locator=loc),embedding=info$embedding)
       details['membership'] <- list(info$membership)
@@ -1690,6 +1695,18 @@ ProjectBundle <- local({
       .timeline_page(state, dirty, timeline_cache, view, order, limit, cursor)
     }
     self$timeline_summary <- function(view = "registration", order = "oldest", limit = 10L, cursor = NULL) .timeline_summary(self$timeline(view, order, limit, cursor))
+    self$set_presentation <- function(ref, primary_topic, description, generated_on, topics = NULL, questions = NULL,
+                                      uses = NULL, title = NULL, subtitle = NULL, reason) {
+      supplied <- c(!missing(topics), !missing(questions), !missing(uses), !missing(title), !missing(subtitle))
+      optional <- list(topics = topics, questions = questions, uses = uses, title = title, subtitle = subtitle)
+      .set_presentation(state, ref, primary_topic, description, generated_on, optional[supplied], reason, update_record)
+    }
+    self$output_name <- function(ref) .output_name(state, ref)
+    self$find_outputs <- function(topic = NULL, question = NULL, query = NULL, kind = NULL, document_id = NULL,
+                                  limit = 20L, offset = 0L, historical = FALSE)
+      .find_outputs(state, topic, question, query, kind, document_id, limit, offset, historical)
+    self$get_info <- function(ref, limit = 20L, offset = 0L) .get_info(state, result_graph, ref, limit, offset)
+    self$export_named_output <- function(ref, destination_dir) .export_named_output(root, state, ref, destination_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     class(self) <- "ProjectBundle"; self

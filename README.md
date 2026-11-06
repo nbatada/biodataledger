@@ -500,6 +500,21 @@ or approved reuse; missing and ambiguous matches stay explicit.
 Queries read metadata without loading scientific objects or changing the registry.
 See [matching rules, native examples and limits](docs/api/RELATED_WORK_V1.md).
 
+### Find retained figures and data
+
+This feature is available in the source checkout and is unreleased.
+
+After registering a saved file, use `set_presentation` to record its generation
+date, topic tags, questions and any stable slide or manuscript links. The
+returned exact revision gives a suggested filename such as
+`20261105_QC-samples_F001r2_donor-view.svg`. Use `find_outputs(topic="QC")`
+to find tagged work and `get_info(ref)` to see its exact recorded sources.
+For a figure this includes its declared plotting script and rendering inputs
+when recorded; for an analysis it lists named inputs and immediate outputs.
+Browsing and naming do not move, read or copy files. Use the optional verified
+`export_named_output` only when you want a copy with the suggested name.
+See [paired Python and R examples](docs/api/OUTPUT_DISCOVERY_V1.md).
+
 ### Ordered protocols
 
 Retain ordered protocols and compare selected

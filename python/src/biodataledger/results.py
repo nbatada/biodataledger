@@ -169,6 +169,8 @@ def register_result(project, source, analysis_ref, ref=None, embedding=None, cop
                     'source changed during copy')
         rec = deepcopy(original) if original else project._new('data', file.name)
         if original:
+            from .presentation import KEY as PRESENTATION_KEY
+            rec['details'].pop(PRESENTATION_KEY, None)
             rec['revision'] = project._latest_index[rec['id']]['revision'] + 1
             rec['created_at'] = now()
         rec.update(locator=project._locator(dest) if copy else locator, role='derived_result',

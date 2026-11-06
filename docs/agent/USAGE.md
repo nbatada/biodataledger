@@ -26,6 +26,19 @@ ambiguous search. Use `get_data(role=...)` for a unique role or
 `get_data(purpose=...)` for a recorded choice. Keep the chosen exact ref, and
 inspect selected decisions separately with `get_decision(ref)`.
 
+For retained figures and data, `find_outputs(topic="QC")` searches declared
+topic tags. Add a question or exact document ID when available; use
+`historical=True` / `TRUE` for earlier uses, and check the reported pagination.
+Inspect the selected exact ref with `get_info` for named analysis inputs and
+outputs, or a figure's producer, rendering inputs, plotting-code declaration
+and recorded uses. An analysis code candidate is not proof it made the figure.
+After registering a new saved
+output, `set_presentation` records only labels, questions, generation date and
+uses supplied by the caller. Use its returned ref in `output_name`. A
+suggested name does not require a copy. Use `export_named_output` only for an
+explicit named copy and keep its project UUID and exact source ref with it.
+See the [output discovery contract](../api/OUTPUT_DISCOVERY_V1.md).
+
 There is no mandatory operation on every chat turn. Keep one project object in
 the current R session or Python process and query it only when the task needs
 registered information. If each tool call starts a fresh process, open once in

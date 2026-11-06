@@ -14,3 +14,17 @@ returns readable text. Times are in UTC. Rows with unknown or unqualified times
 come last. Continue with the returned \code{next_cursor} on the same unchanged
 loaded object. See installed CHRONOLOGY_V1.md.
 }
+\section{Name and find retained outputs}{
+After registering a saved DATA or FIG, use
+\code{set_presentation(ref, primary_topic, description, generated_on, topics = NULL, questions = NULL, uses = NULL, title = NULL, subtitle = NULL, reason)}
+to stage its supplied labels, questions and use links. Pass the returned exact
+reference to \code{output_name(ref)}. The generation date is supplied by the
+caller; a presentation revision does not regenerate the file.
+\code{find_outputs(topic = NULL, question = NULL, query = NULL, kind = NULL, document_id = NULL, limit = 20, offset = 0, historical = FALSE)}
+searches recorded presentation metadata.
+\code{get_info(ref, limit = 20, offset = 0)} inspects exact recorded sources
+and immediate outputs. These queries do not check file availability.
+\code{export_named_output(ref, destination_dir)} optionally verifies and copies
+one retained file into an existing directory without replacing an existing path.
+See installed OUTPUT_DISCOVERY_V1.md for paired examples and exact scope.
+}

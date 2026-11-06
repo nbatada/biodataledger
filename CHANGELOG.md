@@ -5,6 +5,9 @@
 - Explain exact reference syntax when R receives an ID without a revision.
 - Document how to find and verify inputs, stage an analysis before writing
   outputs, and retain the result with exact references in R and Python.
+- Find retained data and figures by recorded topics, questions and slide or
+  manuscript links. Derive filenames from exact revisions and optionally
+  export a digest-verified copy in R or Python.
 
 ## 0.14.0 — 2026-11-05
 
