@@ -1,165 +1,23 @@
 # Using BioDataLedger with an agent
 
-The package works without agents. Use the installed native R/Python API and the same project object as a scientist. At task start, open the explicit project root once and query compact status. Use exact registered paths/revisions; if lookup is missing or ambiguous, report it and ask for the needed selection rather than guessing or crawling unrelated files.
+Use the [current BioDataLedger API reference](../API.md) for Python and R signatures, return fields and call effects. Agents use the same native project object as scientists.
 
-Ordinary getters and status are metadata-only. Unknown availability is not a missing file. Before using a selected input, explicitly call `resolve_data(purpose=..., verify="sha256")`; this streams that file and refuses a missing baseline, changed bytes or contradictory required scope. Use `check_files=True`/`TRUE` only when existence checks are wanted. Do not repeatedly reopen or send the whole registry into context. A loaded object must be reopened deliberately to see another writer's changes.
+## Open and choose the input
 
-For an older input helper, replace its metadata lookup and unchecked-availability
-rejection with native `resolve_data(..., verify="sha256")`. Keep the original
-exact reference/purpose, function signature and return mapping. Do not substitute
-an existence check, auto-register a new digest or fall back to another dataset.
-The [migration guide](../api/API_0.5.0.md#updating-older-input-helpers) covers role
-selectors and missing digests.
+- Open the explicit project root once per process. Print the handle to see the loaded package version, registry revision and unsaved state. Read compact status once, then group the lookups the task needs. If the registry is absent, obtain authorization before creating it.
+- Use the exact DATA ref or scientist-selected purpose. Discovery results may be partial, and a role may be ambiguous. Keep the chosen exact ref and ask for the missing selection when needed. An unchecked availability field means unknown.
+- Before loading the selected input, use [strict resolution](../API.md#resolve_data) with `verify="sha256"`. Report missing baselines, mismatches, or unmet scope requirements. Keep the original input selector and return mapping when updating an older helper. See [updating a project](../UPDATING.md).
+- Use the project's native loader. For new authorized work, the [retained input workflow](../RETAINED_INPUTS.md) pairs the loaded object with its exact source view. Apply that pattern when useful without retrofitting a nearly complete project solely for bookkeeping.
 
-For a **new** authorized analysis or redraw, the preferred project-helper pattern
-is [Retained inputs](../RETAINED_INPUTS.md): return the native object together
-with its exact resolved source view, then use that saved source reference during
-registration. Do not retrofit a near-complete older project or change its helper
-return mapping solely for this pattern. A declared object/source binding, a file
-hash or a snapshot does not prove actual object consumption, object immutability,
-scientific approval, or a rerun.
+## Retain work and confirm the save
 
-To find DATA or DEC candidates by name, use the
-[structured graph query](../api/GRAPH_V1.md) with `asset_type` and `query`
-filters. Inspect cutoffs and continuation; never infer a selection from a partial or
-ambiguous search. Use `get_data(role=...)` for a unique role or
-`get_data(purpose=...)` for a recorded choice. Keep the chosen exact ref, and
-inspect selected decisions separately with `get_decision(ref)`.
+- For an analysis already intended to be retained, stage its declaration with exact DATA inputs and known method, parameters, design and code before writing outputs. Inspect decisions separately. Use `code=` for script snapshots. Register saved files against the exact analysis and record figure rendering inputs separately when known.
+- Obtain scientist authority for current input selections and scientific decisions. Preserve any external authority. Keep unknown provenance visible. Ordinary registration captures declared links. Explicit run receipts qualify wrapper activity, and file hashes identify checked bytes. Actual input consumption and scientific approval require separate evidence.
+- Save once after a related registration batch or a completed critical input, design or decision change. [Save and confirm](../API.md#save_and_confirm) commits all pending edits. Use a returned `persisted` receipt with `registry_written` true to report a new durable write. Report any files left behind by failed registration, including which records remain unregistered or staged.
+- On a stale write, preserve pending edits and saved files. Open a separate fresh handle and reconcile deliberately. A clean save does not check freshness. Reopen a clean handle when another writer's updates are needed.
 
-For retained figures and data, `find_outputs(topic="QC")` searches declared
-topic tags. Add a question or exact document ID when available; use
-`historical=True` / `TRUE` for earlier uses, and check the reported pagination.
-Inspect the selected exact ref with `get_info` for named analysis inputs and
-outputs, or a figure's producer, rendering inputs, plotting-code declaration
-and recorded uses. An analysis code candidate is not proof it made the figure.
-After registering a new saved
-output, `set_presentation` records only labels, questions, generation date and
-uses supplied by the caller. Use its returned ref in `output_name`. A
-suggested name does not require a copy. Use `export_named_output` only for an
-explicit named copy and keep its project UUID and exact source ref with it.
-See the [output discovery contract](../api/OUTPUT_DISCOVERY_V1.md).
+## Share or resume
 
-There is no mandatory operation on every chat turn. Keep one project object in
-the current R session or Python process and query it only when the task needs
-registered information. If each tool call starts a fresh process, open once in
-that process and group related lookups in that call. The package does not keep
-an object alive across processes.
+Preview the complete registry metadata and history alongside the selected payloads before an authorized export. Use exact getters and explicit verification to determine readiness for a named next task after import. Import leaves scripts inert. See [sharing and recovery](../API.md#save-share-and-recover).
 
-| When | Smallest useful action |
-| --- | --- |
-| Start or resume a task | Open the supplied root and read compact `status()` once. |
-| Inspect a known result | Use its exact getter; return only the fields needed for the question. |
-| Use a selected scientific input | Call strict `resolve_data` before reading that input; do not hash it for unrelated conversation. |
-| Retain a planned analysis and related outputs | Verify the selected DATA, stage one analysis before writing outputs, then register the files and save once. |
-| Another writer saved | Reopen when its new records are needed. If local edits exist, preserve and reconcile them first. |
-
-A loaded object describes its loaded revision. It does not promise the newest
-registry state. Before committing changes, the existing writer lock and full
-registry-byte digest detect another writer's update, including edits that keep
-the same revision number. A clean `save()` performs no I/O; it is not a freshness
-check. These checks read registry metadata, not scientific payloads.
-
-Let native analysis remain native. For work already intended to be retained,
-stage `register_analysis` with exact DATA inputs and design context before
-writing outputs. Inspect any required DEC separately; do not put a DEC in
-`inputs`. Snapshot scripts via `code=`; no redundant DATA registration is
-needed. Register actual saved files against that analysis and call
-`save_and_confirm()`. If output registration fails, report the files left
-behind and the records still unregistered or staged; do not report a rollback.
-On stale state, preserve edits and reconcile; never silently merge or steal locks.
-See the [worked example and revision rules](../RETAINED_INPUTS.md).
-
-Use the returned `evidence` fields to report declared input/code relationships
-and missing execution evidence. Complete registration, matching file hashes,
-code snapshots and successful imports do not establish that the declared
-analysis ran. The current API always reports execution as unknown and execution
-evidence from ordinary registration as not captured; explicit run receipts are
-queried separately. Free-form labels in stored `details` remain caller
-declarations, including labels that say "observed" or "verified".
-
-Obtain actual scientist authority before changing current-for-purpose inputs or scientific decisions. Preserve external scientific owners. Preview all files and metadata before an authorized export. Import is inert. Distinguish inspectability, readiness for a named next task, and an actual verified rerun.
-
-This is short guidance, not a security boundary against an unrestricted shell/interpreter, not an LLM-session recorder and not a required agent integration.
-
-## Persistence boundary
-
-In a build providing save_and_confirm, use `p.save_and_confirm()` (Python) or
-`p$save_and_confirm()` (R) immediately after a completed critical input/design/
-decision change, or once after a related registration batch. It commits every
-pending edit, not just the last record. Only a returned `persisted` receipt with
-registry_written true confirms this write; include its revision/transaction when
-reporting durable retention. A clean `no_changes` result does not check freshness.
-Propagate save errors and preserve pending edits for reconciliation. Do not claim
-scientific verification or approval from the receipt. Older builds still require
-explicit `save()`; do not claim a helper is installed without checking that build.
-
-## Derived results in 0.6.0
-
-Use register_result for an existing derived file or exact DATA source; it references
-the file by default. Declare the exact producer and embedding selector/observation
-reference. Do not claim validation from registration. check_result explicitly
-measures CSV evidence; native Seurat/AnnData selectors remain UNKNOWN until an
-adapter measures them. Use exact rendering_inputs for figures, dependencies for
-bounded metadata lookup, and save_and_confirm once after a retained-result batch.
-Unknown provenance must remain unknown; never reconstruct historical links from
-filenames, equal counts or registration order. See docs/api/RESULTS_V1.md.
-
-
-## Explicit execution in 0.7.0
-
-Only an explicit authorized `run_analysis` invokes code. It executes one registered
-snapshot function and persists started/terminal receipts; see
-[the execution contract](../api/EXECUTION_V1.md). Registration, import and queries
-never execute code. Use the exact terminal `receipt_ref` with `get_execution` or
-`execution_summary`. A successful callback or matching input digest never proves
-actual input consumption, scientific validity or downstream use. Started means
-completion was not recorded. Do not promote declarations or recreate missing history.
-
-
-## Scientific decisions in 0.8.0
-
-Record only scientist-submitted decisions using `record_scientific_decision`, with
-exact subject/evidence refs and separate cluster identifiers and annotation labels.
-Scientific status is distinct from record lifecycle; the package does not authenticate
-approval. Use `get_decision` for exact revisions and `save_and_confirm` for retention.
-Do not infer missing decisions or biological labels. See [the contract](../api/DECISIONS_V1.md).
-
-
-## Related work in 0.9.0
-
-Use `related_work(input_ref=exact_data_ref)` or `related_work(query="TCR clonality")`
-to discover registered work before proposing new computation. Supply topic keywords;
-there is no natural-language or semantic search. Inspect match basis, exact input
-refs, execution evidence and truncation. Text similarity does not establish scientific
-equivalence, approval or safe reuse. Follow exact refs for detail and use explicit
-verification where needed. The package cannot force an unrestricted agent to query
-or reuse correctly. [Full contract](../api/RELATED_WORK_V1.md).
-
-## Protocols in 0.10.0 development
-
-Use `register_protocol` only for scientist-selected intended work, pinning exact
-analysis revisions. Preserve prior revisions. Record approval through an exact
-scientific decision about that protocol revision; never infer approval.
-`compare_protocol` compares explicitly selected analysis/receipt references and
-reports differences and unknown evidence. It does not execute steps or prove
-scientific compliance, parameter use or input consumption. See
-[the protocol contract](../api/PROTOCOLS_V1.md).
-
-## Execution chronology in 0.11.0 development
-
-Use `execution_history` for bounded recorded receipts by project, exact analysis
-or protocol. Registration-slot presentation, pairwise execution timing, dependency
-order and declared protocol intent are separate. Follow `scan.next_offset` only
-while the loaded registry and selector remain unchanged. Empty or truncated pages
-do not prove no execution; failed, open, blocked and imported evidence remains
-qualified. `execution_history_summary` provides bounded text without payload I/O.
-See [the chronology contract](../api/CHRONOLOGY_V1.md).
-
-## Comparison evidence in 0.12.0 development
-
-Comparison plans/assessments are explicit types distinct from scientific decisions.
-Use exact plan/candidate refs, scientist-selected criteria and bound external
-evidence. A comparison PASS is not approval or scientific reproducibility. Missing
-evidence remains UNKNOWN, even after successful callbacks. Do not run analyses,
-load payloads or add hash passes to retrieve a comparison. See
-[COMPARISONS_V1](../api/COMPARISONS_V1.md).
+These instructions guide use of the registry. They do not restrict an unrestricted interpreter or require calls on every chat turn.

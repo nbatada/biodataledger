@@ -11,7 +11,7 @@ or hand it to a colleague.
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
+[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
 For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
@@ -193,7 +193,7 @@ cat(rawToChar(preserved_source$content))
 Project helpers can keep domain-specific loading outside BioDataLedger. Pass the
 opened project and an exact registered reference into a helper; call
 `resolve_data(..., verify="sha256")` once before loading through native R/Python.
-See the [portable helper example](docs/api/API_0.9.0.md#portable-project-helpers).
+See the [portable helper example](docs/RETAINED_INPUTS.md#keep-the-resolved-source-with-the-loaded-object).
 
 For a planned retained result, see the [R/Python registration workflow](docs/RETAINED_INPUTS.md):
 find candidates, verify the chosen revision, stage the analysis before writing
@@ -234,13 +234,13 @@ exact ref; a partial or ambiguous search cannot choose it for you.
 **Updating an older input helper:** `availability_checked=False` means unchecked,
 not unavailable. Use `resolve_data(..., verify="sha256")` for verified input
 resolution and preserve the same exact reference or purpose. See the
-[migration pattern](docs/api/API_0.9.0.md#updating-older-input-helpers).
+[older input helper example](docs/api/API_0.11.0.md#updating-older-input-helpers).
 
 Figure search matches registered paths, explicit asset IDs, names, types and descriptions, plus the name and description
 of each figure's recorded analysis revision. Results contain the latest active
 figure revisions and their inherited context. Search reads loaded metadata only.
 
-Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API](docs/api/API_0.9.0.md), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
+Dataset scope can record the saved population, assay/layer and an exact design revision. These declarations do not prove biological membership. See the [API reference](docs/API.md#set_data_scope), [existing-project intake](docs/ADOPTION.md) and [declared-file recovery](docs/RECOVERY.md) guides. Recovery preserves code/file layout; it does not install a runtime or run an analysis.
 
 ## Inspect a figure and its preserved source
 
@@ -262,8 +262,8 @@ integrity or establish complete dependencies.
 recorded snapshot even after the original script changes. A missing snapshot never
 falls back to the original. Multiple recorded scripts require an exact code
 selection. Reading preserved code does not establish that it executed or generated
-the figure. See the [figure-source contract](docs/api/API_0.9.0.md#figure-rendering-sources--biodataledger-008)
-for the declaration shape, R/Python usage, source selectors and explicit unknowns.
+the figure. See the [figure-source API](docs/API.md#read_figure_source)
+for R/Python source selectors and evidence fields.
 
 ## Conditions and levels
 
@@ -309,7 +309,7 @@ p$get_design_summary()
 
 </details>
 
-Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional `check_design_metadata()` checks supplied columns; see the [API](docs/api/API_0.9.0.md#experimental-design-and-saved-object-scope) for verification rules and getters.
+Use `get_design()` for the full record or `get_design_summary()` for a compact view. Each change creates a revision. Earlier analyses and their figures retain their recorded design. Optional [`check_design_metadata()`](docs/API.md#check_design_metadata) checks supplied columns. See the [design API](docs/API.md#experimental-design) for the design getters.
 
 Analysis registration uses the project design as a default and pins that exact
 revision once. Pass `design_ref` to choose another exact design, or explicit
@@ -329,7 +329,7 @@ figure, call `save_figure(source, type, analysis=...)`, then `save()`. This copi
 one file into an exclusive managed location. Pass `ref` instead of analytical
 context to append an existing figure's revision. Older copies and external files
 are never overwritten. An external file's hash alone provides no preserved copy.
-See the [full contract](docs/api/API_0.9.0.md#exact-designs-and-saved-figure-copies--050).
+See the [figure-copy API](docs/API.md#save_figure).
 
 ## Share a result
 
@@ -377,7 +377,9 @@ Project folder: [absolute path]
 Language: [R or Python]
 Task: [what I want to do]
 
-Open the registry and read status() and get_design_summary().
+Use the current API reference in docs/API.md.
+Open the registry once. Print the handle to check the loaded package version,
+registry revision and unsaved changes, then read compact status().
 If no registry exists, ask before creating one.
 Use exact dataset references or my chosen current-for-purpose input.
 Report missing files, ambiguous choices and unknown provenance.
@@ -387,7 +389,7 @@ code and parameters, then save. Preserve staged work on a stale-write error.
 Preview all files and metadata before an authorized export.
 ```
 
-The [agent guide](docs/agent/USAGE.md) gives the full usage rules. You can also use the package directly from R or Python.
+Use the [current API reference](docs/API.md) for signatures and the [agent guide](docs/agent/USAGE.md) for operating guidance.
 
 Keep the project loaded in the active process and query it only when needed.
 There is no required call on every chat turn. Group related lookups when a tool
@@ -432,7 +434,7 @@ publication, not scientific approval. A failed save raises an error and retains
 pending edits. A clean call returns `no_changes`, performs no disk I/O and does not
 refresh a stale session. Registration/setters still need an explicit save boundary;
 there is no background autosave or rollback transaction. See the
-[receipt contract](docs/api/API_0.9.0.md#save-and-confirm-persistence).
+[persistence receipt](docs/API.md#save_and_confirm).
 
 ## Exact derived results
 
@@ -572,7 +574,7 @@ execution receipts with their exact inputs, methods, fixed parameters and requir
 outputs. It separates data-dependent results and unknown evidence. Approval is a
 scientist-submitted decision pinned to one protocol revision.
 See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
-[protocol API](docs/api/API_0.10.0.md).
+[current protocol API](docs/API.md#register_protocol).
 
 ### Execution chronology
 
