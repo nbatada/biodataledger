@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 — 2026-11-06
 
 - Show a concise Python and R project overview with recent analysis registrations,
   exact linked outputs, current input selections, and the latest figure path.
   Keep the technical card available through `summary_text()`.
 - Add `help()` for common inspection commands and `recent_figures()` for full
   figure paths and UTC registration order. Both use loaded metadata.
+- Publish the complete R and Python [API reference](docs/API.md) and link to it
+  from both help menus.
 
 ## 0.16.0 — 2026-11-06
 

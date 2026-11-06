@@ -1,6 +1,6 @@
 args <- commandArgs(trailingOnly = TRUE)
 library(BioDataLedger, lib.loc = args[[1]])
-stopifnot(as.character(packageVersion("BioDataLedger")) == "0.16.0")
+stopifnot(as.character(packageVersion("BioDataLedger")) == "0.17.0")
 action <- args[[2]]
 root <- args[[3]]
 if (action == "create") {

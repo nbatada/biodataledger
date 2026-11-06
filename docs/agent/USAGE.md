@@ -4,7 +4,7 @@ Use the [current BioDataLedger API reference](../API.md) for Python and R signat
 
 ## Open and choose the input
 
-- Open the explicit project root once per process. Read compact status once for the loaded package version, registry revision and unsaved state, then group the lookups the task needs. The source checkout's `print(p)` is a human overview of loaded metadata. If the registry is absent, obtain authorization before creating it.
+- Open the explicit project root once per process. Read compact status once for the loaded package version, registry revision and unsaved state, then group the lookups the task needs. `print(p)` gives a project overview from loaded metadata. If the registry is absent, obtain authorization before creating it.
 - Use the exact DATA ref or scientist-selected purpose. Discovery results may be partial, and a role may be ambiguous. Keep the chosen exact ref and ask for the missing selection when needed. An unchecked availability field means unknown.
 - Before loading the selected input, use [strict resolution](../API.md#resolve_data) with `verify="sha256"`. Report missing baselines, mismatches, or unmet scope requirements. Keep the original input selector and return mapping when updating an older helper. See [updating a project](../UPDATING.md).
 - Use the project's native loader. For new authorized work, the [retained input workflow](../RETAINED_INPUTS.md) pairs the loaded object with its exact source view. Apply that pattern when useful without retrofitting a nearly complete project solely for bookkeeping.

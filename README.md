@@ -19,18 +19,18 @@ It is a project-helper pattern, not a migration instruction for existing helpers
 
 ## Install
 
-Version **0.16.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.17.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-Version 0.16.0 adds a presentation view for tracing a retained figure to its
-recorded sources, with optional colors for selected input branches. See the
-[changelog](CHANGELOG.md).
+Version 0.17.0 adds a project overview, a quick help menu, and a lookup for recent
+figure paths in R and Python. The [API reference](docs/API.md) covers both clients.
+See the [changelog](CHANGELOG.md).
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.16.0 from its release tag:
+Run this in R to install version 0.17.0 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -39,28 +39,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.16.0",
+  ref = "v0.17.0",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.16.0 directly from GitHub**
+**Python — install version 0.17.0 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.16.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.17.0#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.16.0` with the release's full commit SHA in either installation command.
+`v0.17.0` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.16.0
+git checkout v0.17.0
 ```
 
 **Python 3.9 or newer**
@@ -213,19 +213,21 @@ This R-only prototype is included. See the [manual example and report contract](
 ## Inspect and resume
 
 Inspect the loaded project with `print(ledger)` in R or `print(p)` in Python.
-In this source checkout, the overview shows recent analysis registrations and
-their exact linked outputs, the project folder, current input selections, and
-the latest figure with its recorded file and folder paths. Use `ledger$help()`
-or `p.help()` for common commands, and `ledger$recent_figures()` or
-`p.recent_figures()` for more figure paths. These views use loaded metadata.
-Registration order describes the registry, and file availability stays unchecked.
-The new overview and helpers are unreleased.
+The overview lists up to four recently registered analyses by ticket or analysis
+name, with exact revision references and linked output names. It also shows the
+project folder, recorded current input choices, and the file and folder paths for
+the latest active figure by registration.
 
-`summary_text()` still returns the technical card shown by the 0.16.0 release.
-Pass `purpose="comparison"` to inspect that input choice. Use `status()` for
-structured metadata including the loaded package version, registry revision and
-unsaved changes. Unsaved changes remain in memory until an explicit save or an
-execution-receipt save.
+Use `ledger$help()` or `p.help()` for common inspection commands and the
+[full API reference](docs/API.md). Use `ledger$recent_figures()` or
+`p.recent_figures()` for more figure paths. These views use loaded metadata and
+leave file availability unchecked. Registration dates describe registry entries.
+Use the recorded run history to inspect execution evidence.
+
+Use `summary_text()` for the technical card. Pass `purpose="comparison"` to
+inspect that input choice. Use `status()` for structured metadata including the
+loaded package version, registry revision and unsaved changes. Unsaved changes
+remain in memory until an explicit save or an execution-receipt save.
 
 Open the project once and use exact getters for frequent metadata lookups. Availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 
@@ -421,7 +423,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.16.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.17.0.tar.gz
 ```
 
 ## Confirm a saved change

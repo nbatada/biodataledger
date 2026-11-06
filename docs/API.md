@@ -1,10 +1,10 @@
 # BioDataLedger API reference
 
-Current API for BioDataLedger in Python (`biodataledger`) and R (`BioDataLedger`). The new project overview, `help()` and `recent_figures()` are available from this source checkout and are unreleased. The loaded package version is still 0.16.0. Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.16.0](https://github.com/nbatada/biodataledger/tree/v0.16.0).
+BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 
 ## Open and inspect a project
 
-Use the scientist's explicit project root. Open once per process and read compact status once at task start. Status reports the loaded package version, registry revision and unsaved changes. In this checkout, `print(p)` shows the human overview and `p.help()` or `p$help()` lists common commands. A loaded handle keeps its own view of the registry until deliberately reopened.
+Use the scientist's explicit project root. Open once per process and read compact status once at task start. Status reports the loaded package version, registry revision and unsaved changes. `print(p)` shows the project overview. Use `p.help()` or `p$help()` for common commands. A loaded handle keeps its own view of the registry until deliberately reopened.
 
 ```python
 from biodataledger import ProjectBundle
@@ -103,7 +103,7 @@ R       p$summary_text(purpose = NULL)
 
 Return the technical card with project, design, record counts, loaded package version, registry revision, and unsaved state. With `purpose`, the card shows the selected input context. Python presents the compact dataset section. R keeps the record counts and adds selected-purpose details. Call `p.summary_text(purpose="review")` or `p$summary_text(purpose="review")`. Python `p.unsaved` is a read-only boolean property. R exposes the flag in `p$status()$unsaved` and `p$summary()$unsaved`. Use the documented constructors and accessors for project state. For loaded package version alone, use `biodataledger.__version__` or `getNamespaceVersion("BioDataLedger")`.
 
-In this checkout, `repr(p)` returns the project overview and `print(p)` displays it. R `print(p)` returns the handle invisibly. The overview shows recorded purpose, at most four distinct analyses at their latest revisions, the full project folder, up to three recorded current input selections, and the latest active figure by registration. Analyses use the same registration ordering as [`recent_figures()`](#recent_figures). The analysis table uses a recorded string `details.ticket_name` when available, or the analysis name. It shows the latest linked revision of each recorded output for the exact analysis revision in that row, with up to two names and a remaining count. Historical or non-active outputs include an exact ref and qualifier. Current selections show recorded scope. Use the exact figure getters to inspect that figure's historical inputs. Exact DATA references identify registry revisions. Use `summary_text()` to retrieve the technical card previously shown by default.
+In Python, `repr(p)` returns the project overview and `print(p)` displays it. R `print(p)` returns the handle invisibly. The overview shows recorded purpose, at most four distinct analyses at their latest revisions, the full project folder, up to three recorded current input selections, and the latest active figure by registration. Analyses use the same registration ordering as [`recent_figures()`](#recent_figures). The analysis table uses a recorded string `details.ticket_name` when available, or the analysis name. It shows the latest linked revision of each recorded output for the exact analysis revision in that row, with up to two names and a remaining count. Historical or non-active outputs include an exact ref and qualifier. Current selections show recorded scope. Use the exact figure getters to inspect that figure's historical inputs. Exact DATA references identify registry revisions. Use `summary_text()` to retrieve the technical card previously shown by default.
 
 ### help
 
@@ -112,7 +112,7 @@ Python  p.help()
 R       p$help()
 ```
 
-Print common inspection commands, the loaded package version, registry revision, and unsaved state. The menu covers the overview, topic search, exact lookups, history, current input choices, and paths. Returns `None` in Python or invisible `NULL` in R. Available from this source checkout.
+Print common inspection commands, the loaded package version, registry revision, and unsaved state. The menu covers the overview, topic search, exact lookups, history, current input choices, and paths. Returns `None` in Python or invisible `NULL` in R.
 
 ### get_raw_dir
 
@@ -170,7 +170,7 @@ R       p$recent_figures(limit = 3L, structured = FALSE)
 
 Select the latest revision of each figure ID, then retain only active records. Sort by newest recorded UTC registration, with unknown times last. Within a tied UTC second or among records with unknown times, entries later in the loaded registry appear first. For imports, this uses the order stored in the imported registry. Use recorded runs to inspect execution timing. A metadata correction can change registration recency. A generation date appears only when recorded in a valid presentation descriptor. The default prints a list with exact refs, full file and folder paths, and the number of omitted figures. It returns `None` in Python or invisible `NULL` in R. Use a limit of 1–20.
 
-Set `structured=True` or `TRUE` to return a report with `items`, `total`, and `omitted`. Items contain `name`, exact `ref`, `recorded_at`, `generated_on`, `path`, `directory`, and `availability_checked` (false). Times and unresolved paths may be null. Like the overview, this method uses loaded metadata and maps registered local paths against the loaded root and explicit bindings. It does not check file availability, symlink targets or hashes. Printed paths with control characters are marked as escaped. Use an exact getter for the raw path and explicit checks before consuming files. Available from this source checkout.
+Set `structured=True` or `TRUE` to return a report with `items`, `total`, and `omitted`. Items contain `name`, exact `ref`, `recorded_at`, `generated_on`, `path`, `directory`, and `availability_checked` (false). Times and unresolved paths may be null. Like the overview, this method uses loaded metadata and maps registered local paths against the loaded root and explicit bindings. It does not check file availability, symlink targets or hashes. Printed paths with control characters are marked as escaped. Use an exact getter for the raw path and explicit checks before consuming files.
 
 ### related_work
 
