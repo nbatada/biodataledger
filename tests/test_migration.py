@@ -82,7 +82,7 @@ else:
     p = ProjectBundle.open(root)
     status = p.status()
     assert status["package_version"] == expected_version and not status["unsaved"]
-    assert expected_version in repr(p)
+    assert expected_version in p.summary_text()
     assert p.get_data(purpose="qc").ref == p.get_data(ref="DATA-001@1").ref
     assert p.get_figure("FIG-001@1").analysis == p.get_analysis("ANA-001@1").ref
     assert p.read_figure_source("FIG-001@1")["content"]
@@ -114,7 +114,7 @@ if (action == "create") {
   p <- ProjectBundle$open(root)
   status <- p$status()
   stopifnot(identical(status$package_version, args[[3]]), !status$unsaved,
-            any(grepl(args[[3]], capture.output(print(p)), fixed = TRUE)),
+            grepl(args[[3]], p$summary_text(), fixed = TRUE),
             same_ref(p$get_data(purpose = "qc")$ref, p$get_data(ref = "DATA-001@1")$ref),
             same_ref(p$get_figure("FIG-001@1")$analysis, p$get_analysis("ANA-001@1")$ref),
             length(p$read_figure_source("FIG-001@1")$content) > 0)

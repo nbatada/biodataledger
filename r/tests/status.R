@@ -44,7 +44,9 @@ stopifnot(scoped_status$counts$data == 106L, scoped_status$dataset$design$trunca
           scoped_status$truncated$text, identical(scoped_status$dataset$ref, scoped))
 # Nested declarations remain metadata, not vectors to sort or scientific objects.
 nested <- list(note=list(values=list(NULL,'é',list(levels=list('a','b')))))
-b$register_analysis('nested',list(scoped),params=nested,details=nested)
+analysis <- b$register_analysis('nested',list(scoped),params=nested,details=nested)
+writeLines("<svg/>", file.path(root, "figure.svg"))
+figure <- b$register_figure("figure.svg", "qc", analysis = analysis)
 b$save()
 before <- readBin(registry,'raw',n=file.info(registry)$size)
 for (args in list(list(),list(purpose='scope_summary'),list(check_files=TRUE))) {
@@ -57,7 +59,8 @@ for (args in list(list(),list(purpose='scope_summary'),list(check_files=TRUE))) 
 local({
   ns <- asNamespace('BioDataLedger')
   blocked <- list(c('file.exists','base'), c('file.info','base'), c('readBin','base'),
-                  c('readLines','base'), c('read.dcf','base'), c('.hash','BioDataLedger'))
+                  c('readLines','base'), c('read.dcf','base'), c('normalizePath','base'),
+                  c('.hash','BioDataLedger'))
   for (entry in blocked) trace(entry[[1]], where=asNamespace(entry[[2]]),
                               tracer=quote(stop('unexpected inspection I/O')), print=FALSE)
   on.exit(for (entry in rev(blocked)) untrace(entry[[1]], where=asNamespace(entry[[2]])))
@@ -71,7 +74,15 @@ local({
               grepl('Unsaved changes: no',text,fixed=TRUE),
               identical(b$status(purpose=purpose)$package_version,as.character(getNamespaceVersion('BioDataLedger'))))
   }
-  stopifnot(any(grepl('Package version:',capture.output(print(b)),fixed=TRUE)))
+  overview <- capture.output(print(b))
+  recent <- b$recent_figures(structured=TRUE)
+  stopifnot(any(grepl('Current input selections', overview, fixed=TRUE)),
+            !any(grepl('Package version:', overview, fixed=TRUE)),
+            any(grepl(paste0('Package version: ',getNamespaceVersion('BioDataLedger')),
+                      capture.output(b$help()),fixed=TRUE)),
+            recent$total == b$summary()$counts$figure,
+            identical(recent$items[[1L]]$ref, figure), !recent$items[[1L]]$availability_checked)
   b$set_context(list(next_task='staged task'))
-  stopifnot(grepl('Unsaved changes: yes',b$summary_text(),fixed=TRUE),b$status()$unsaved)
+  stopifnot(grepl('Unsaved changes: yes',b$summary_text(),fixed=TRUE),
+            any(grepl('Unsaved changes: yes',capture.output(b$help()),fixed=TRUE)),b$status()$unsaved)
 })

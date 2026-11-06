@@ -100,7 +100,7 @@
   base <- paste0(normalizePath(root, mustWork = TRUE), "/")
   if (startsWith(real, base)) .obj(kind = "project", value = substring(real, nchar(base) + 1L)) else .obj(kind = "external", value = real)
 }
-.resolve <- function(root, state, loc) {
+.resolve <- function(root, state, loc, lexical = FALSE) {
   if (is.null(loc)) return(NULL)
   key <- paste0(loc$kind, ":", loc$value)
   if (!is.null(state$bindings[[key]])) {
@@ -112,11 +112,11 @@
   if (identical(loc$kind, "project")) {
     if (!.safe_rel(loc$value)) .fail("Unsafe project locator")
     p <- file.path(root, loc$value)
-    if (file.exists(p) && !startsWith(normalizePath(p, mustWork = TRUE), paste0(normalizePath(root), "/"))) .fail("Project locator escapes root")
+    if (!lexical && file.exists(p) && !startsWith(normalizePath(p, mustWork = TRUE), paste0(normalizePath(root), "/"))) .fail("Project locator escapes root")
     return(p)
   }
   if (identical(loc$kind, "external") && !isTRUE(state$imported)) return(loc$value)
-  if (identical(loc$kind, "uri")) return(loc$value)
+  if (identical(loc$kind, "uri") && !lexical) return(loc$value)
   NULL
 }
 # Derived indexes stay in memory and are rebuilt after accepted mutations.
@@ -1696,6 +1696,19 @@ ProjectBundle <- local({
       .timeline_page(state, dirty, timeline_cache, view, order, limit, cursor)
     }
     self$timeline_summary <- function(view = "registration", order = "oldest", limit = 10L, cursor = NULL) .timeline_summary(self$timeline(view, order, limit, cursor))
+    self$help <- function() {
+      cat(.project_help(state, dirty), "\n", sep = "")
+      invisible(NULL)
+    }
+    self$recent_figures <- function(limit = 3L, structured = FALSE) {
+      if (!.is_int(limit, TRUE) || limit > 20L) .fail("Limit must be 1 to 20")
+      if (!is.logical(structured) || length(structured) != 1L || is.na(structured)) .fail("structured must be boolean")
+      report <- .recent_figures(root, state, limit)
+      if (structured) return(report)
+      cat(c("Recent figures by registration (UTC)", .recent_figure_lines(report),
+            "File availability not checked."), sep = "\n")
+      invisible(NULL)
+    }
     self$set_presentation <- function(ref, primary_topic, description, generated_on, topics = NULL, questions = NULL,
                                       uses = NULL, title = NULL, subtitle = NULL, reason) {
       supplied <- c(!missing(topics), !missing(questions), !missing(uses), !missing(title), !missing(subtitle))
@@ -1710,12 +1723,16 @@ ProjectBundle <- local({
     self$export_named_output <- function(ref, destination_dir) .export_named_output(root, state, ref, destination_dir)
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
-    class(self) <- "ProjectBundle"; self
+    structure(self, class = "ProjectBundle",
+              overview = function() .project_overview(root, state, result_graph))
   }
   import_zip <- function(path, project_dir) .import_zip(path, project_dir, open)
   list(create = create, open = open, import_zip = import_zip)
 })
-print.ProjectBundle <- function(x, ...) {cat(x$summary_text(), "\n", sep = ""); invisible(x)}
+print.ProjectBundle <- function(x, ...) {
+  cat(attr(x, "overview", exact = TRUE)(), sep = "\n")
+  invisible(x)
+}
 .plan_digest <- function(plan) .hash_raw(charToRaw(.json(plan)))
 .hash_raw <- function(bytes) digest::digest(bytes, algo = "sha256", serialize = FALSE)
 .payload_source <- function(root, state, loc) .resolve(root, state, loc)

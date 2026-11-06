@@ -1,3 +1,4 @@
 export(ProjectBundle)
+importFrom(stringi,stri_width)
 S3method(print,ProjectBundle)
 S3method(print,BioDataLedgerInputCheck)

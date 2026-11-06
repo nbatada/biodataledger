@@ -1,5 +1,7 @@
 """Synthetic experimental design contract, exercised through installed clients."""
+from contextlib import redirect_stdout
 import copy
+import io
 import json
 import os
 from pathlib import Path
@@ -54,7 +56,7 @@ class DesignTests(unittest.TestCase):
                        self.p.get_selected_levels, self.p.get_reference_level,
                        self.p.get_replicate, self.p.get_design_summary):
             self.assertIsNone(method())
-        self.assertIn("not configured", repr(self.p))
+        self.assertIn("not configured", self.p.summary_text())
         self.assertEqual((self.root / STATE_PATH).read_bytes(), before)
         self.assertFalse(self.p.unsaved)
         for source in ("minimal.json", "with-provenance.json"):
@@ -137,7 +139,7 @@ class DesignTests(unittest.TestCase):
         original = self.p.get_design()
         r = json.loads(r_design("inspect", self.root))
         self.assertEqual(r["design"], original)
-        self.assertEqual(r["text"], repr(self.p))
+        self.assertEqual(r["text"], self.p.summary_text())
         self.assertEqual(r["analysis_design"], original)
         self.assertEqual(r["figure_design"], original)
         r_design("change", self.root)
@@ -248,6 +250,8 @@ class DesignTests(unittest.TestCase):
         before = canonical(self.p.state)
         with patch.object(Path, "open", side_effect=AssertionError("unexpected read")), \
                 patch.object(Path, "exists", side_effect=AssertionError("unexpected probe")), \
+                patch.object(Path, "stat", side_effect=AssertionError("unexpected stat")), \
+                patch.object(Path, "resolve", side_effect=AssertionError("unexpected path resolution")), \
                 patch("builtins.open", side_effect=AssertionError("unexpected read")), \
                 patch("biodataledger.core.fingerprint", side_effect=AssertionError("unexpected hash")):
             for purpose in (None, "comparison"):
@@ -256,17 +260,26 @@ class DesignTests(unittest.TestCase):
                 self.assertIn(f"Registry revision: {self.p.state['state_revision']}", text)
                 self.assertIn("Unsaved changes: no", text)
                 self.assertEqual(self.p.status(purpose=purpose)["package_version"], __version__)
-            self.assertIn(f"Package version: {__version__}", repr(self.p))
+            self.assertIn("Latest figure by registration (UTC)", repr(self.p))
+            self.assertFalse(self.p.recent_figures(structured=True)["items"][0]["availability_checked"])
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertIsNone(self.p.help())
+            self.assertIn(f"Package version: {__version__}", output.getvalue())
             self.assertEqual(canonical(self.p.state), before)
             self.p.set_context({"next_task": "staged task"})
-            self.assertIn("Unsaved changes: yes", repr(self.p))
+            self.assertNotIn("Unsaved changes", repr(self.p))
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.p.help()
+            self.assertIn("Unsaved changes: yes", output.getvalue())
             self.assertTrue(self.p.status()["unsaved"])
         self.assertNotIn("package_version", self.p.state)
 
     def test_compact_print_and_design_endpoint(self):
         self.populate()
         with patch.object(Path, "open", side_effect=AssertionError("unexpected read")):
-            text = repr(self.p)
+            text = self.p.summary_text()
             compact = self.p.get_design_summary()
         for expected in ("BioDataLedger: PRMT5 (synthetic)", "Selected levels:  Vehicle, LowDose", "Excluded:         HighDose", "Data/artifact records: 1"):
             self.assertIn(expected, text)
@@ -275,7 +288,7 @@ class DesignTests(unittest.TestCase):
         levels = [str(i) + "漢" * 500 for i in range(12)]
         self.p.set_design("é" * 500, levels, reference_level=levels[0], selection_reason="x" * 10000)
         self.p.save()
-        self.assertLess(len(repr(self.p).encode()), 8000)
+        self.assertLess(len(self.p.summary_text().encode()), 8000)
         self.assertTrue(self.p.get_design_summary()["truncated"])
         self.assertEqual(len(self.p.get_design_summary()["selected_levels"]), 5)
         self.assertEqual(json.loads(r_design("inspect", self.root))["compact"], self.p.get_design_summary())
@@ -308,6 +321,174 @@ class DesignTests(unittest.TestCase):
         self.assertEqual(self.p.summary()["counts"]["data"], 14)
         self.assertEqual(native["counts"]["analysis"], 2)
         self.assertEqual((self.root / STATE_PATH).read_bytes(), before)
+
+    def test_overview_orders_distinct_analyses_and_uses_exact_output_links(self):
+        def analysis(name, stamp, **details):
+            with patch("biodataledger.core.now", return_value=stamp):
+                return self.p.register_analysis(name, None, **details)
+
+        first = analysis("Earlier analysis label", "2025-01-01T12:00:00Z")
+        tied = analysis("Internal analysis name", "2025-01-03T12:00:00Z", ticket_name="Cell counts — vérifié")
+        prior = analysis("Prior day", "2025-01-02T12:00:00Z", ticket_name={"unreadable": "ignore"})
+        analysis("Omitted legacy", "")
+        legacy = analysis("Legacy date unknown", "2025-02-31T12:00:00Z")
+        path = self.root / "figure.svg"
+        path.write_text("<svg/>")
+        self.p.register_figure(path, "qc", analysis=first, name="Prior revision figure")
+        with patch("biodataledger.core.now", return_value="2025-01-03T12:00:00Z"):
+            corrected = self.p.update_record(first, {"name": "Corrected label"}, "label correction")
+        counts = self.root / "counts.csv"
+        counts.write_text("group,count\na,1\n")
+        self.p.register_result(counts, analysis_ref=tied)
+        output = self.p.register_data(counts, "table", name="Declared transformation")
+        self.p.set_data_scope(output, {"transformation_ref": prior}, "explicit transformation")
+        f = self.p.register_figure(path, "qc", analysis=tied, name="Old caption")
+        same_producer = self.p.update_record(f, {"name": "Historical caption"}, "label correction")
+        self.p.update_record(same_producer, {"name": "Latest caption", "analysis": prior}, "association correction")
+        self.p.register_figure(path, "qc", analysis=tied, name="Third retained output")
+        inactive = self.p.register_figure(path, "qc", analysis=legacy, name="Retired figure")
+        self.p.update_record(inactive, {"status": "inactive"}, "retired output")
+        self.p.register_figure(path, "qc", name="Standalone figure")
+        self.p.save()
+        overview = repr(self.p)
+        table = overview.split("Project folder")[0]
+        labels = ("Corrected label", "Cell counts — vérifié", "Prior day", "Legacy date unknown")
+        self.assertEqual(sorted(labels, key=table.index), list(labels))
+        for expected in ("Recorded (UTC)", "Recorded outputs", "2025-01-03 12:00:00", "Unknown", "ANA-001@2",
+                         "None linked to this revision", "counts.csv", "Historical caption", "FIG-002@2 (historical)",
+                         "Declared transformation", "Latest caption", "Retired figure", "FIG-004@2 (inactive)",
+                         "+1 more"):
+            self.assertIn(expected, table)
+        for excluded in ("ANA-001@1", "Earlier analysis label", "Omitted legacy", "Prior revision figure",
+                         "Old caption", "Standalone figure", "Internal analysis name"):
+            self.assertNotIn(excluded, table)
+        native = json.loads(r_design("overview", self.root))
+        self.assertEqual(overview.replace("p.help()", "p$help()"), "\n".join(native["overview"]))
+
+        same_second = "2025-01-03T12:00:00Z"
+        for i in range(1, 5):
+            analysis(f"Batch analysis {i}", same_second)
+        with patch("biodataledger.core.now", return_value=same_second):
+            self.p.update_record(corrected, {"name": "Latest label"}, "label correction")
+        self.p.save()
+        overview = repr(self.p)
+        table = overview.split("Project folder")[0]
+        newest = ("Latest label", "Batch analysis 4", "Batch analysis 3", "Batch analysis 2")
+        self.assertEqual(sorted(newest, key=table.index), list(newest))
+        self.assertIn("ANA-001@3", table)
+        for omitted in ("Batch analysis 1", "Corrected label", "Cell counts", "Prior day", "Legacy date unknown"):
+            self.assertNotIn(omitted, table)
+        native = json.loads(r_design("overview", self.root))
+        self.assertEqual(overview.replace("p.help()", "p$help()"), "\n".join(native["overview"]))
+
+    def test_overview_paths_and_presentation_roundtrip(self):
+        parent = self.root / ("recorded input " + "a" * 90)
+        parent.mkdir()
+        source = parent / ("long dataset " + "b" * 75 + ".csv")
+        source.write_text("synthetic")
+        data = self.p.register_data(source, "input", name="T-cell reference")
+        scoped = self.p.set_data_scope(data, {"condition_values": ["Control", "Treated"],
+            "assignment_inclusion": ["hashed", "unassigned"], "assay": "RNA", "layer": "counts",
+            "observation_unit": "cell", "selection": "Retained T cells"}, "explicit scope")
+        for purpose in ("a-review", "b-review", "c-review", "d-review"):
+            self.p.set_current(scoped, purpose, "fixture selection")
+
+        outside = self.base / "publication"
+        outside.mkdir()
+        external = outside / "plot\nwith-control.svg"
+        external.write_text("<svg/>")
+        with patch("biodataledger.core.now", return_value="2020-01-01T00:00:00Z"):
+            ext_ref = self.p.register_figure(external, "qc", name="External plot")
+        regular = outside / "regular.svg"
+        regular.write_text("<svg/>")
+        with patch("biodataledger.core.now", return_value="2020-01-02T00:00:00Z"):
+            managed = self.p.save_figure(regular, "qc", name="Managed plot")
+        managed_path = self.p.get_figure(managed).path
+        managed_path.unlink()
+        self.p.save()
+        registry = self.root / STATE_PATH
+        before = registry.read_bytes()
+        report = self.p.recent_figures(structured=True)
+        self.assertEqual(report, json.loads(r_design("overview", self.root))["report"])
+        self.assertEqual(before, registry.read_bytes())
+        self.assertEqual(report["items"][0]["path"], str(managed_path))
+        self.assertEqual(report["items"][0]["directory"], str(managed_path.parent))
+        self.assertEqual(report["items"][1]["path"], str(external.resolve()))
+        card = repr(self.p)
+        for expected in (str(source.resolve()), "a-review — T-cell reference", "DATA-001@2", "+1 more selections",
+                         "Conditions Control, Treated | Assignment hashed, unassigned | Assay RNA | Layer counts",
+                         "Observation unit cell | Selection Retained T cells",
+                         str(managed_path), "File availability not checked"):
+            self.assertIn(expected, card)
+        self.assertNotIn("d-review", card)
+        self.assertNotIn("Package version:", card)
+
+        native = json.loads(r_design("overview_revision", self.root, ext_ref["id"] + "@1"))
+        reopened = ProjectBundle.open(self.root)
+        updated = reopened.recent_figures(structured=True)
+        self.assertEqual(updated, native["report"])
+        self.assertEqual(updated["items"][0]["ref"]["revision"], 2)
+        self.assertEqual(updated["items"][0]["generated_on"], "2019-12-31")
+        self.assertGreater(updated["items"][0]["recorded_at"], updated["items"][1]["recorded_at"])
+        overview = repr(reopened)
+        self.assertIn("T-cell distribution", overview)
+        self.assertIn(r"plot\u{A}with-control.svg [escaped; see exact getter for raw path]", overview)
+        self.assertNotIn("plot\nwith-control.svg", overview)
+        self.assertEqual(overview.replace("p.help()", "p$help()"), "\n".join(native["overview"]))
+
+    def test_recent_figures_import_requires_a_local_binding(self):
+        external = self.base / "external.svg"
+        external.write_text("<svg/>")
+        fig = self.p.register_figure(external, "qc")
+        self.p.save()
+        archive = self.base / "context.zip"
+        self.p.export_zip(self.p.preview_export("context"), archive)
+        imported = ProjectBundle.import_zip(archive, self.base / "imported")
+        item = imported.recent_figures(structured=True)["items"][0]
+        self.assertIsNone(item["path"])
+        self.assertIsNone(item["directory"])
+        self.assertIn("File   Unresolved", repr(imported))
+        rebound = imported.root / "recovered.svg"
+        rebound.write_bytes(external.read_bytes())
+        imported.rebind_external(fig, rebound, "synthetic explicit binding")
+        self.assertEqual(imported.recent_figures(structured=True)["items"][0]["path"], str(rebound))
+        imported.save()
+        self.assertEqual(imported.recent_figures(structured=True), json.loads(r_design("overview", imported.root))["report"])
+
+    def test_recent_figures_limits_and_unicode_overview(self):
+        self.p.set_context({"purpose": "  "})
+        empty = self.p.recent_figures(structured=True)
+        self.assertEqual(empty, {"items": [], "total": 0, "omitted": 0})
+        self.assertEqual(repr(self.p).count("None recorded"), 3)
+        self.assertNotIn("Purpose", repr(self.p))
+        with patch("biodataledger.core.now", return_value="2020-01-01T00:00:00Z"):
+            self.p.register_analysis("漢字" * 70 + "\tTruncated", None)
+            path = self.root / "figure.svg"
+            path.write_text("<svg/>")
+            for i in range(21):
+                self.p.register_figure(path, "qc", name=f"Figure {i + 1:02d}")
+            self.p.update_record("FIG-001@1", {"name": "Updated first figure"}, "label correction")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertIsNone(self.p.recent_figures())
+        self.assertIn("+18 more figures", output.getvalue())
+        newest = ("FIG-001@2", "FIG-021@1", "FIG-020@1")
+        self.assertEqual(sorted(newest, key=output.getvalue().index), list(newest))
+        self.assertNotIn("FIG-019@1", output.getvalue())
+        self.assertIn("漢字漢字", repr(self.p))
+        self.assertIn("...", repr(self.p))
+        self.assertNotIn("\t", repr(self.p))
+        maximum = self.p.recent_figures(20, structured=True)
+        self.assertEqual(len(maximum["items"]), 20)
+        self.assertEqual(maximum["omitted"], 1)
+        maximum["items"][0]["ref"]["id"] = "modified"
+        self.assertEqual(self.p.recent_figures(1, structured=True)["items"][0]["ref"]["id"], "FIG-001")
+        with self.assertRaises(BundleError):
+            self.p.recent_figures(21)
+        self.p.save()
+        native = json.loads(r_design("overview", self.root))
+        self.assertEqual(repr(self.p).replace("p.help()", "p$help()"), "\n".join(native["overview"]))
+        self.assertEqual(self.p.recent_figures(structured=True), native["report"])
 
     def test_design_stale_writers_in_both_directions(self):
         self.populate()

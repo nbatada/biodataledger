@@ -418,23 +418,25 @@ class ProjectBundle:
         except ValueError:
             return {"kind": "external", "value": str(file)}
 
-    def _resolve(self, locator):
+    def _resolve(self, locator, *, lexical=False):
         if locator is None:
             return None
         key = locator_key(locator)
         if key in self.state["bindings"]:
             value = self.state["bindings"][key]
             file = Path(value)
-            return file if file.is_absolute() else self._internal(value)
+            return file if file.is_absolute() else self._internal(value, lexical=lexical)
         if locator["kind"] == "project":
-            return self._internal(locator["value"])
+            return self._internal(locator["value"], lexical=lexical)
         if locator["kind"] == "external" and not self.state["imported"]:
-            return Path(locator["value"])
+            file = Path(locator["value"])
+            return file if not lexical or file.is_absolute() else None
         return None
 
-    def _internal(self, value):
+    def _internal(self, value, *, lexical=False):
         path = self.root / safe_relative(value)
-        require(os.path.commonpath([str(self.root), str(path.resolve())]) == str(self.root), "project path escapes root")
+        if not lexical:
+            require(os.path.commonpath([str(self.root), str(path.resolve())]) == str(self.root), "project path escapes root")
         return path
 
     def _ref(self, rec):
@@ -1292,7 +1294,24 @@ class ProjectBundle:
 
 
     def __repr__(self):
-        return self.summary_text()
+        from .presentation import project_overview
+        return project_overview(self)
+
+    def help(self):
+        """Print common project inspection commands."""
+        from .presentation import project_help
+        print(project_help(self))
+
+    def recent_figures(self, limit=3, structured=False):
+        """Show the latest active figure records by UTC registration time."""
+        from .presentation import recent_figures, recent_figure_lines
+        require(type(limit) is int and 1 <= limit <= 20, "limit must be 1 to 20")
+        require(type(structured) is bool, "structured must be boolean")
+        report = recent_figures(self, limit)
+        if structured:
+            return report
+        print("\n".join(["Recent figures by registration (UTC)", *recent_figure_lines(report),
+                         "File availability not checked."]))
 
     def check(self, hashes=False):
         validate_state(self.state)

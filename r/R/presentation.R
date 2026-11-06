@@ -7,6 +7,205 @@
 .presentation_detail_bytes <- 16384L
 .presentation_lower <- function(x) chartr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", x)
 
+.console_controls <- "[\\p{Cc}\\p{Cf}\\p{Cs}\\p{Zl}\\p{Zp}]"
+
+.console_label <- function(value, width = 72L) {
+  label <- stringi::stri_trim_both(stringi::stri_replace_all_regex(value, .console_controls, " "))
+  if (stri_width(label) <= width) return(label)
+  prefix <- substr(label, 1L, width - 3L)
+  while (stri_width(prefix) > width - 3L)
+    prefix <- substr(prefix, 1L, nchar(prefix) - 1L)
+  paste0(stringi::stri_trim_right(prefix), "...")
+}
+
+.console_path <- function(path) {
+  if (is.null(path)) return("Unresolved")
+  if (!stringi::stri_detect_regex(path, .console_controls)) return(path)
+  points <- utf8ToInt(enc2utf8(path))
+  chars <- intToUtf8(points, multiple = TRUE)
+  control <- stringi::stri_detect_regex(chars, .console_controls)
+  chars[chars == "\\"] <- "\\\\"
+  chars[control] <- paste0("\\u{", sprintf("%X", points[control]), "}")
+  paste0(paste(chars, collapse = ""), " [escaped; see exact getter for raw path]")
+}
+
+.console_ref <- function(ref) paste0(ref$id, "@", sprintf("%.0f", ref$revision))
+
+.recent_records <- function(state, kind, active_only = FALSE) {
+  latest <- attr(state, "record_index")$latest
+  ids <- ls(latest, all.names = TRUE, sorted = FALSE)
+  prefix <- if (kind == "analysis") "ANA-" else "FIG-"
+  positions <- unlist(mget(ids[startsWith(ids, prefix)], latest, inherits = FALSE), use.names = FALSE)
+  records <- state$records[positions]
+  if (active_only) {
+    keep <- vapply(records, function(rec) rec$status == "active", logical(1))
+    positions <- positions[keep]
+    records <- records[keep]
+  }
+  stamps <- vapply(records, "[[", character(1), "created_at")
+  unique_stamps <- unique(stamps)
+  valid <- vapply(unique_stamps, .timeline_timestamp, logical(1))
+  stamps[!valid[match(stamps, unique_stamps)]] <- ""
+  # Reverse stored order breaks ties and orders records with unknown dates.
+  order <- order(stamps, as.integer(positions), decreasing = TRUE, method = "radix")
+  list(records = records[order], stamps = stamps[order])
+}
+
+.output_title <- function(rec, descriptor) {
+  if (is.null(descriptor$title)) rec$name else descriptor$title
+}
+
+.recent_figures <- function(root, state, limit) {
+  rows <- .recent_records(state, "figure", active_only = TRUE)
+  total <- length(rows$records)
+  items <- lapply(seq_len(min(limit, total)), function(i) {
+    rec <- rows$records[[i]]; stamp <- rows$stamps[[i]]
+    descriptor <- .presentation_read(rec)$descriptor
+    path <- .resolve(root, state, rec$locator, lexical = TRUE)
+    .obj(name = .output_title(rec, descriptor), ref = .make_ref(state, rec),
+         recorded_at = if (nzchar(stamp)) stamp else NULL, generated_on = descriptor$generated_on,
+         path = path, directory = if (is.null(path)) NULL else dirname(path),
+         availability_checked = FALSE)
+  })
+  .obj(items = items, total = total, omitted = total - length(items))
+}
+
+.recorded_text <- function(stamp) {
+  if (is.null(stamp) || !nzchar(stamp)) "Unknown" else sub("T", " ", substr(stamp, 1L, 19L), fixed = TRUE)
+}
+
+.recent_figure_lines <- function(report) {
+  if (!length(report$items)) return("  None recorded")
+  lines <- lapply(report$items, function(item) {
+    label <- .console_label(item$name)
+    c(paste0("  ", if (nzchar(label)) label else "Unnamed figure"),
+      paste0("    ", .console_ref(item$ref), " | Recorded (UTC) ", .recorded_text(item$recorded_at)),
+      if (!is.null(item$generated_on)) paste0("    Recorded generation date ", item$generated_on),
+      paste0("    File   ", .console_path(item$path)),
+      paste0("    Folder ", .console_path(item$directory)))
+  })
+  c(unlist(lines, use.names = FALSE), if (report$omitted) sprintf("  +%d more figures", report$omitted))
+}
+
+.analysis_output_labels <- function(state, graph, rec, width) {
+  latest <- attr(state, "record_index")$latest
+  exact <- .make_ref(state, rec)
+  edges <- c(.result_adjacent(graph, exact, "downstream"),
+             get0(.result_id(exact), graph$extra_forward, inherits = FALSE, ifnotfound = list()))
+  kinds <- c("produced_result", "transformation_context", "analytical_association")
+  edges <- .result_sort_edges(Filter(function(edge) edge$type %in% kinds, edges))
+  if (!length(edges)) return("None linked to this revision")
+  ids <- vapply(edges, function(edge) edge$to$id, character(1))
+  # Edges are ordered by target ID and then ascending target revision.
+  linked <- edges[!duplicated(ids, fromLast = TRUE)]
+  labels <- character()
+  for (edge in utils::head(linked, 2L)) {
+    ref <- edge$to
+    output <- .record(state, ref)
+    label <- .console_label(.output_title(output, .presentation_read(output)$descriptor), width)
+    labels <- c(labels, if (nzchar(label)) label else "Unnamed output")
+    current <- state$records[[get(ref$id, latest, inherits = FALSE)]]
+    flags <- c(if (output$revision != current$revision) "historical",
+               if (output$status != "active") output$status)
+    if (length(flags)) labels <- c(labels, paste0(.console_ref(ref), " (", paste(flags, collapse = ", "), ")"))
+  }
+  c(labels, if (length(linked) > 2L) sprintf("+%d more", length(linked) - 2L))
+}
+
+.analysis_table <- function(state, graph) {
+  rows <- .recent_records(state, "analysis")
+  analyses <- utils::head(rows$records, 4L)
+  if (!length(analyses)) return("  None recorded")
+  refs <- vapply(analyses, .console_ref, character(1))
+  outputs <- lapply(analyses, function(rec) .analysis_output_labels(state, graph, rec, 39L))
+  widths <- c(19L, max(34L, nchar(refs)), max(39L, stri_width(unlist(outputs, use.names = FALSE))))
+  border <- paste0("+", paste(strrep("-", widths + 2L), collapse = "+"), "+")
+  row <- function(values) {
+    cells <- paste0(values, strrep(" ", widths - stri_width(values)))
+    paste0("| ", paste(cells, collapse = " | "), " |")
+  }
+  lines <- c(border, row(c("Recorded (UTC)", "Ticket / analysis", "Recorded outputs")), border)
+  for (i in seq_along(analyses)) {
+    rec <- analyses[[i]]
+    ticket <- rec$details[["ticket_name"]]
+    label <- if (is.character(ticket) && length(ticket) == 1L) .console_label(ticket, widths[2L]) else ""
+    if (!nzchar(label)) label <- .console_label(rec$name, widths[2L])
+    if (!nzchar(label)) label <- "Unnamed analysis"
+    labels <- outputs[[i]]
+    n <- max(2L, length(labels))
+    dates <- c(.recorded_text(rows$stamps[[i]]), rep("", n - 1L))
+    names <- c(label, refs[[i]], rep("", n - 2L))
+    labels <- c(labels, rep("", n - length(labels)))
+    lines <- c(lines, vapply(seq_len(n), function(j) row(c(dates[[j]], names[[j]], labels[[j]])), character(1)), border)
+  }
+  c(lines, "Each output shows its latest linked revision for the exact analysis revision in that row.")
+}
+
+.console_scope <- function(scope) {
+  fields <- character()
+  labels <- c(condition_values = "Conditions", assignment_inclusion = "Assignment")
+  for (key in names(labels)) {
+    values <- scope[[key]]
+    if (length(values)) {
+      shown <- paste(vapply(utils::head(values, 3L), .console_label, character(1), width = 24L), collapse = ", ")
+      if (length(values) > 3L) shown <- paste0(shown, " (+", length(values) - 3L, " more)")
+      fields <- c(fields, paste(labels[[key]], shown))
+    }
+  }
+  labels <- c(assay = "Assay", layer = "Layer", observation_unit = "Observation unit", selection = "Selection")
+  for (key in names(labels)) {
+    width <- if (key == "selection") 64L else 36L
+    if (!is.null(scope[[key]])) fields <- c(fields, paste(labels[[key]], .console_label(scope[[key]], width)))
+  }
+  fields
+}
+
+.project_overview <- function(root, state, graph) {
+  info <- state$project
+  name <- .console_label(info$name)
+  purpose <- if (is.null(info$purpose)) "" else .console_label(info$purpose, 160L)
+  lines <- c(paste0("BioDataLedger for \u2014 ", if (nzchar(name)) name else "Unnamed project"),
+             if (nzchar(purpose)) purpose, "", "Recent analyses", .analysis_table(state, graph), "",
+             "Project folder", paste0("  ", .console_path(root)), "", "Current input selections")
+  purposes <- attr(state, "record_index")$summary$purposes
+  for (purpose in utils::head(purposes, 3L)) {
+    rec <- .record(state, state$current[[purpose]])
+    path <- .resolve(root, state, rec$locator, lexical = TRUE)
+    name <- .console_label(rec$name)
+    scope <- .console_scope(rec$scope)
+    lines <- c(lines, paste0("  ", .console_label(purpose), " \u2014 ", if (nzchar(name)) name else "Unnamed data"),
+               if (length(scope)) paste0("    Recorded scope \u2014 ", paste(scope, collapse = " | ")),
+               paste0("    File ", .console_path(path)), paste0("    ", .console_ref(rec)))
+  }
+  if (!length(purposes)) lines <- c(lines, "  None recorded")
+  if (length(purposes) > 3L) lines <- c(lines, sprintf("  +%d more selections", length(purposes) - 3L))
+  c(lines, "", "Latest figure by registration (UTC)", .recent_figure_lines(.recent_figures(root, state, 1L)), "",
+    "File availability not checked. More: p$help()")
+}
+
+.project_help <- function(state, dirty) {
+  paste(c("BioDataLedger help",
+          paste0("Package version: ", getNamespaceVersion("BioDataLedger"),
+                 " | Registry revision: ", state$state_revision, " | Unsaved changes: ", if (dirty) "yes" else "no"),
+          "",
+          "Project overview         print(p)",
+          "Technical status         p$status()",
+          'Find a topic             p$find_outputs(topic="QC")',
+          'Analysis inputs/outputs  p$get_info("ANA-001@1")',
+          'Figure sources and code  p$get_info("FIG-001@1")',
+          'Inspect data             p$get_data("DATA-001@1")',
+          'Registration history     cat(p$timeline_summary(order="newest"), "\\n")',
+          'Recorded runs            cat(p$timeline_summary(view="runs", order="newest"), "\\n")',
+          "Recent figures & folders p$recent_figures()",
+          'Current input choice     p$get_data(purpose="review")',
+          'Full figure file path    p$get_figure("FIG-001@1")$path',
+          'Full data file path      p$get_data("DATA-001@1")$path',
+          "",
+          "Use your project's exact references and recorded purposes.",
+          "Registration dates describe registry entries. See recorded runs for wrapper execution evidence.",
+          "Full API                 docs/API.md in the BioDataLedger source checkout"), collapse = "\n")
+}
+
 .presentation_text <- function(x, limit) {
   is.character(x) && length(x) == 1L && !is.na(x) && nchar(enc2utf8(x), type = "bytes") <= limit &&
     nzchar(stringi::stri_trim_both(x)) && !stringi::stri_detect_regex(x, "\\p{Cc}")

@@ -1,12 +1,14 @@
 """Caller-declared naming and discovery for exact retained outputs."""
 from copy import deepcopy
 from datetime import date
+from itertools import islice, zip_longest
 from pathlib import Path
 import os
 import re
 import shutil
 import sys
 import tempfile
+from unicodedata import category, east_asian_width
 
 from .core import BundleError, _DEFAULT, _record_evidence, canonical, fingerprint, require, safe_relative
 from .related_work import _clip
@@ -113,6 +115,218 @@ def _key(rec):
 
 def _project(project):
     return {k: project.state["project"][k] for k in ("id", "name")}
+
+
+_CONSOLE_CONTROLS = {"Cc", "Cf", "Cs", "Zl", "Zp"}
+
+
+def _console_width(value):
+    return sum(0 if category(c) in ("Mn", "Me") else
+               2 if east_asian_width(c) in ("W", "F") else 1 for c in value)
+
+
+def _console_label(value, width=72):
+    label = "".join(" " if category(c) in _CONSOLE_CONTROLS else c for c in value).strip()
+    if _console_width(label) <= width:
+        return label
+    prefix = label[:width - 3]
+    while _console_width(prefix) > width - 3:
+        prefix = prefix[:-1]
+    return prefix.rstrip() + "..."
+
+
+def _console_path(path):
+    if path is None:
+        return "Unresolved"
+    if not any(category(c) in _CONSOLE_CONTROLS for c in path):
+        return path
+    escaped = "".join(f"\\u{{{ord(c):X}}}" if category(c) in _CONSOLE_CONTROLS
+                      else "\\\\" if c == "\\" else c for c in path)
+    return escaped + " [escaped; see exact getter for raw path]"
+
+
+def _console_ref(record):
+    return f"{record['id']}@{record['revision']}"
+
+
+def _recent_records(project, kind, *, active_only=False):
+    from .protocol import _timestamp
+
+    stamps = {}
+    rows = []
+    # Stable sorting preserves reverse stored order for ties and unknown dates.
+    for rec in reversed(project.state["records"]):
+        if rec["kind"] != kind or project._latest_index[rec["id"]] is not rec:
+            continue
+        if active_only and rec["status"] != "active":
+            continue
+        value = rec["created_at"]
+        if value not in stamps:
+            stamps[value] = value if _timestamp(value) is not None else None
+        rows.append((rec, stamps[value]))
+    rows.sort(key=lambda row: row[1] or "", reverse=True)
+    return rows
+
+
+def _output_title(record, presentation):
+    return (presentation and presentation["title"]) or record["name"]
+
+
+def recent_figures(project, limit):
+    rows = _recent_records(project, "figure", active_only=True)
+    items = []
+    for rec, stamp in rows[:limit]:
+        _, descriptor = _read(rec)
+        path = project._resolve(rec["locator"], lexical=True)
+        items.append({"name": _output_title(rec, descriptor), "ref": project._ref(rec),
+                      "recorded_at": stamp, "generated_on": descriptor["generated_on"] if descriptor else None,
+                      "path": str(path) if path is not None else None,
+                      "directory": str(path.parent) if path is not None else None,
+                      "availability_checked": False})
+    return {"items": items, "total": len(rows), "omitted": len(rows) - len(items)}
+
+
+def recent_figure_lines(report):
+    lines = []
+    for item in report["items"]:
+        lines += [f"  {_console_label(item['name']) or 'Unnamed figure'}",
+                  f"    {_console_ref(item['ref'])} | Recorded (UTC) {_recorded_text(item['recorded_at'])}"]
+        if item["generated_on"]:
+            lines.append(f"    Recorded generation date {item['generated_on']}")
+        lines += ["    File   " + _console_path(item["path"]),
+                  "    Folder " + _console_path(item["directory"])]
+    if not lines:
+        return ["  None recorded"]
+    if report["omitted"]:
+        lines.append(f"  +{report['omitted']} more figures")
+    return lines
+
+
+def _recorded_text(stamp):
+    return stamp[:-1].replace("T", " ") if stamp is not None else "Unknown"
+
+
+def _analysis_output_labels(project, record, width):
+    linked = {}
+    for edge in project._lineage.adjacent(project._ref(record), "downstream", extended=True):
+        if edge["type"] in ("produced_result", "transformation_context", "analytical_association"):
+            # The index orders edges by target ID and then ascending target revision.
+            ref = edge["to"]
+            linked[ref["id"]] = ref
+    labels = []
+    for ref in islice(linked.values(), 2):
+        output = project._record(ref)
+        _, descriptor = _read(output)
+        labels.append(_console_label(_output_title(output, descriptor), width) or "Unnamed output")
+        flags = []
+        if output["revision"] != project._latest_index[ref["id"]]["revision"]:
+            flags.append("historical")
+        if output["status"] != "active":
+            flags.append(output["status"])
+        if flags:
+            labels.append(f"{_console_ref(ref)} ({', '.join(flags)})")
+    if len(linked) > 2:
+        labels.append(f"+{len(linked) - 2} more")
+    return labels or ["None linked to this revision"]
+
+
+def _analysis_table(project):
+    analyses = _recent_records(project, "analysis")[:4]
+    if not analyses:
+        return ["  None recorded"]
+    headings = ("Recorded (UTC)", "Ticket / analysis", "Recorded outputs")
+    refs = [_console_ref(record) for record, _ in analyses]
+    outputs = [_analysis_output_labels(project, record, 39) for record, _ in analyses]
+    widths = (19, max(34, max(map(len, refs))),
+              max(39, max(_console_width(line) for group in outputs for line in group)))
+    border = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
+
+    def row(*values):
+        cells = [value + " " * (width - _console_width(value)) for value, width in zip(values, widths)]
+        return "| " + " | ".join(cells) + " |"
+
+    lines = [border, row(*headings), border]
+    for (record, stamp), ref, labels in zip(analyses, refs, outputs):
+        ticket = record["details"].get("ticket_name")
+        label = _console_label(ticket, widths[1]) if isinstance(ticket, str) else ""
+        label = label or _console_label(record["name"], widths[1]) or "Unnamed analysis"
+        lines.extend(row(*cells) for cells in zip_longest(
+            [_recorded_text(stamp)], [label, ref], labels, fillvalue=""))
+        lines.append(border)
+    lines.append("Each output shows its latest linked revision for the exact analysis revision in that row.")
+    return lines
+
+
+def _console_scope(scope):
+    if scope is None:
+        return []
+    fields = []
+    for key, label in (("condition_values", "Conditions"), ("assignment_inclusion", "Assignment")):
+        values = scope[key]
+        if values:
+            shown = ", ".join(_console_label(value, 24) for value in values[:3])
+            if len(values) > 3:
+                shown += f" (+{len(values) - 3} more)"
+            fields.append(label + " " + shown)
+    for key, label, width in (("assay", "Assay", 36), ("layer", "Layer", 36),
+                              ("observation_unit", "Observation unit", 36), ("selection", "Selection", 64)):
+        if scope[key]:
+            fields.append(label + " " + _console_label(scope[key], width))
+    return fields
+
+
+def project_overview(project):
+    info = project.state["project"]
+    lines = ["BioDataLedger for — " + (_console_label(info["name"]) or "Unnamed project")]
+    purpose = _console_label(info["purpose"] or "", 160)
+    if purpose:
+        lines.append(purpose)
+    lines += ["", "Recent analyses", *_analysis_table(project), "",
+              "Project folder", "  " + _console_path(str(project.root)),
+              "", "Current input selections"]
+    for purpose in project._purposes[:3]:
+        rec = project._record(project.state["current"][purpose], "data")
+        path = project._resolve(rec["locator"], lexical=True)
+        lines += [f"  {_console_label(purpose)} — {_console_label(rec['name']) or 'Unnamed data'}"]
+        scope = _console_scope(rec.get("scope"))
+        if scope:
+            lines.append("    Recorded scope — " + " | ".join(scope))
+        lines += ["    File " + _console_path(str(path) if path is not None else None),
+                  "    " + _console_ref(rec)]
+    if not project._purposes:
+        lines.append("  None recorded")
+    elif len(project._purposes) > 3:
+        lines.append(f"  +{len(project._purposes) - 3} more selections")
+    return "\n".join([*lines, "", "Latest figure by registration (UTC)",
+                      *recent_figure_lines(recent_figures(project, 1)), "",
+                      "File availability not checked. More: p.help()"])
+
+
+def project_help(project):
+    from . import __version__
+
+    return "\n".join([
+        "BioDataLedger help",
+        f"Package version: {__version__} | Registry revision: {project.state['state_revision']} | "
+        f"Unsaved changes: {'yes' if project.unsaved else 'no'}",
+        "",
+        "Project overview         print(p)",
+        "Technical status         p.status()",
+        'Find a topic             p.find_outputs(topic="QC")',
+        'Analysis inputs/outputs  p.get_info("ANA-001@1")',
+        'Figure sources and code  p.get_info("FIG-001@1")',
+        'Inspect data             p.get_data("DATA-001@1")',
+        'Registration history     print(p.timeline_summary(order="newest"))',
+        'Recorded runs            print(p.timeline_summary(view="runs", order="newest"))',
+        "Recent figures & folders p.recent_figures()",
+        'Current input choice     p.get_data(purpose="review")',
+        'Full figure file path    p.get_figure("FIG-001@1").path',
+        'Full data file path      p.get_data("DATA-001@1").path',
+        "",
+        "Use your project's exact references and recorded purposes.",
+        "Registration dates describe registry entries. See recorded runs for wrapper execution evidence.",
+        "Full API                 docs/API.md in the BioDataLedger source checkout",
+    ])
 
 
 def set_presentation(project, ref, *, primary_topic, description, generated_on, topics,

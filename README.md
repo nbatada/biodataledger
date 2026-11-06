@@ -213,16 +213,19 @@ This R-only prototype is included. See the [manual example and report contract](
 ## Inspect and resume
 
 Inspect the loaded project with `print(ledger)` in R or `print(p)` in Python.
-The card shows the loaded package version, registry revision, unsaved changes,
-data/artifact record, analysis record and figure counts, and experimental design.
-Data/artifact records include inputs and retained outputs; analysis records can
-include a template and its execution run. These counts do not measure distinct
-biological datasets or independent analyses. Paste this card
-with feedback to identify the runtime version. Use `ledger$summary_text(purpose="comparison")`
-or `p.summary_text(purpose="comparison")` for a selected purpose; `status()` returns
-compact structured metadata including `package_version`. These views do not reload
-the registry, read scientific payloads or hash files by default. Unsaved changes
-remain in memory until an explicit save or an execution-receipt save.
+In this source checkout, the overview shows recent analysis registrations and
+their exact linked outputs, the project folder, current input selections, and
+the latest figure with its recorded file and folder paths. Use `ledger$help()`
+or `p.help()` for common commands, and `ledger$recent_figures()` or
+`p.recent_figures()` for more figure paths. These views use loaded metadata.
+Registration order describes the registry, and file availability stays unchecked.
+The new overview and helpers are unreleased.
+
+`summary_text()` still returns the technical card shown by the 0.16.0 release.
+Pass `purpose="comparison"` to inspect that input choice. Use `status()` for
+structured metadata including the loaded package version, registry revision and
+unsaved changes. Unsaved changes remain in memory until an explicit save or an
+execution-receipt save.
 
 Open the project once and use exact getters for frequent metadata lookups. Availability is unknown until explicitly checked: use `check_files=True` in Python (`TRUE` in R) for existence, or `resolve_data(..., verify="sha256")` for a selected input's byte integrity. Clean `save()` performs no disk write. A loaded object does not automatically refresh after another writer saves.
 

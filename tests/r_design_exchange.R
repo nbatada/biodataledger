@@ -22,6 +22,15 @@ if (action == "create") {
   result <- tryCatch({apply_design(p, invalid); "ACCEPTED"}, error = function(e) "REJECTED")
   stopifnot(identical(before, p$get_design()), !p$summary()$unsaved)
   cat(result)
+} else if (action %in% c("overview", "overview_revision")) {
+  p <- ProjectBundle$open(root)
+  if (action == "overview_revision") {
+    p$set_presentation(args[[5]], "QC", "t-cell-distribution", "2019-12-31",
+                       title = "T-cell distribution", reason = "fixture metadata edit")
+    p$save()
+  }
+  json(list(overview = as.list(capture.output(print(p))),
+            report = p$recent_figures(structured = TRUE)))
 } else {
   p <- if (action == "import") ProjectBundle$import_zip(args[[5]], root) else ProjectBundle$open(root)
   if (action == "change") {

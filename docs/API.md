@@ -1,10 +1,10 @@
 # BioDataLedger API reference
 
-Current agent API for **BioDataLedger 0.16.0** in Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.16.0](https://github.com/nbatada/biodataledger/tree/v0.16.0).
+Current API for BioDataLedger in Python (`biodataledger`) and R (`BioDataLedger`). The new project overview, `help()` and `recent_figures()` are available from this source checkout and are unreleased. The loaded package version is still 0.16.0. Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.16.0](https://github.com/nbatada/biodataledger/tree/v0.16.0).
 
 ## Open and inspect a project
 
-Use the scientist's explicit project root. Open once per process, print the handle to see the **loaded package version**, **registry revision**, and **unsaved changes**, and read compact status once at task start. A loaded handle keeps its own view of the registry until deliberately reopened.
+Use the scientist's explicit project root. Open once per process and read compact status once at task start. Status reports the loaded package version, registry revision and unsaved changes. In this checkout, `print(p)` shows the human overview and `p.help()` or `p$help()` lists common commands. A loaded handle keeps its own view of the registry until deliberately reopened.
 
 ```python
 from biodataledger import ProjectBundle
@@ -31,8 +31,8 @@ See [agent operating guidance](agent/USAGE.md), [updating a running project](UPD
 
 | Task | Functions |
 | --- | --- |
-| [Project lifecycle and orientation](#project-lifecycle-and-orientation) | [`create`](#create), [`open`](#open), [`status`](#status), [`summary`](#summary), [`summary_text`](#summary_text), [`get_raw_dir`](#get_raw_dir), [`get_metadata_path`](#get_metadata_path), [`get_output_dir`](#get_output_dir) |
-| [Find and search](#find-and-search) | [`find_figures`](#find_figures), [`find_outputs`](#find_outputs), [`related_work`](#related_work) |
+| [Project lifecycle and orientation](#project-lifecycle-and-orientation) | [`create`](#create), [`open`](#open), [`status`](#status), [`summary`](#summary), [`summary_text`](#summary_text), [`help`](#help), [`get_raw_dir`](#get_raw_dir), [`get_metadata_path`](#get_metadata_path), [`get_output_dir`](#get_output_dir) |
+| [Find and search](#find-and-search) | [`find_figures`](#find_figures), [`find_outputs`](#find_outputs), [`recent_figures`](#recent_figures), [`related_work`](#related_work) |
 | [Retrieve exact records and code](#retrieve-exact-records-and-code) | [`get_data`](#get_data), [`get_analysis`](#get_analysis), [`get_figure`](#get_figure), [`get_info`](#get_info), [`read_figure_source`](#read_figure_source) |
 | [Explicit verification](#explicit-verification) | [`resolve_data`](#resolve_data), [`resolve_figure`](#resolve_figure), [`check`](#check), [`check_context`](#check_context), [`check_design_metadata`](#check_design_metadata), [`check_object`](#check_object), [`check_result`](#check_result) |
 | [Register files and revise records](#register-files-and-revise-records) | [`register_data`](#register_data), [`register_analysis`](#register_analysis), [`register_figure`](#register_figure), [`save_figure`](#save_figure), [`register_result`](#register_result), [`update_record`](#update_record), [`set_current`](#set_current), [`set_context`](#set_context), [`set_data_scope`](#set_data_scope) |
@@ -101,7 +101,18 @@ Python  p.summary_text(purpose=None)
 R       p$summary_text(purpose = NULL)
 ```
 
-Format a human-readable card with project, design, record counts, loaded package version, registry revision, and unsaved state. With `purpose`, the card shows the selected input context. Python presents the compact dataset section. R keeps the record counts and adds selected-purpose details. Call `p.summary_text(purpose="review")` or `p$summary_text(purpose="review")`. Python `repr(p)` returns the default card text, and `print(p)` displays it. R `print(p)` displays the default card and returns the handle invisibly. Python `p.unsaved` is a read-only boolean property. R exposes the flag in `p$status()$unsaved` and `p$summary()$unsaved`. Use the documented constructors and these accessors instead of direct Python initialization or editing the internal `root` and `state` fields. For loaded package version alone, use `biodataledger.__version__` or `getNamespaceVersion("BioDataLedger")`.
+Return the technical card with project, design, record counts, loaded package version, registry revision, and unsaved state. With `purpose`, the card shows the selected input context. Python presents the compact dataset section. R keeps the record counts and adds selected-purpose details. Call `p.summary_text(purpose="review")` or `p$summary_text(purpose="review")`. Python `p.unsaved` is a read-only boolean property. R exposes the flag in `p$status()$unsaved` and `p$summary()$unsaved`. Use the documented constructors and accessors for project state. For loaded package version alone, use `biodataledger.__version__` or `getNamespaceVersion("BioDataLedger")`.
+
+In this checkout, `repr(p)` returns the project overview and `print(p)` displays it. R `print(p)` returns the handle invisibly. The overview shows recorded purpose, at most four distinct analyses at their latest revisions, the full project folder, up to three recorded current input selections, and the latest active figure by registration. Analyses use the same registration ordering as [`recent_figures()`](#recent_figures). The analysis table uses a recorded string `details.ticket_name` when available, or the analysis name. It shows the latest linked revision of each recorded output for the exact analysis revision in that row, with up to two names and a remaining count. Historical or non-active outputs include an exact ref and qualifier. Current selections show recorded scope. Use the exact figure getters to inspect that figure's historical inputs. Exact DATA references identify registry revisions. Use `summary_text()` to retrieve the technical card previously shown by default.
+
+### help
+
+```text
+Python  p.help()
+R       p$help()
+```
+
+Print common inspection commands, the loaded package version, registry revision, and unsaved state. The menu covers the overview, topic search, exact lookups, history, current input choices, and paths. Returns `None` in Python or invisible `NULL` in R. Available from this source checkout.
 
 ### get_raw_dir
 
@@ -149,6 +160,17 @@ R       p$find_outputs(topic = NULL, question = NULL, query = NULL, kind = NULL,
 ```
 
 Search retained DATA and FIG by recorded presentation topics, question text, free text, kind (`DATA` or `FIG`), or exact case-sensitive `document_id`. Filters combine. The default includes the latest revision of each DATA or FIG ID. Set `historical=True` or `TRUE` to include earlier revisions. Inspect `record_status` independently of revision scope. Returns `items`, `total`, `offset`, `next_offset`, and `truncated` with report context. Use a limit of 1–100 and a nonnegative offset. Continue on the same unchanged handle. Use `p.find_outputs(topic="QC")` or `p$find_outputs(topic="QC")`, then inspect an exact returned ref. See [matching rules and paired examples](api/OUTPUT_DISCOVERY_V1.md#find-and-inspect).
+
+### recent_figures
+
+```text
+Python  p.recent_figures(limit=3, structured=False)
+R       p$recent_figures(limit = 3L, structured = FALSE)
+```
+
+Select the latest revision of each figure ID, then retain only active records. Sort by newest recorded UTC registration, with unknown times last. Within a tied UTC second or among records with unknown times, entries later in the loaded registry appear first. For imports, this uses the order stored in the imported registry. Use recorded runs to inspect execution timing. A metadata correction can change registration recency. A generation date appears only when recorded in a valid presentation descriptor. The default prints a list with exact refs, full file and folder paths, and the number of omitted figures. It returns `None` in Python or invisible `NULL` in R. Use a limit of 1–20.
+
+Set `structured=True` or `TRUE` to return a report with `items`, `total`, and `omitted`. Items contain `name`, exact `ref`, `recorded_at`, `generated_on`, `path`, `directory`, and `availability_checked` (false). Times and unresolved paths may be null. Like the overview, this method uses loaded metadata and maps registered local paths against the loaded root and explicit bindings. It does not check file availability, symlink targets or hashes. Printed paths with control characters are marked as escaped. Use an exact getter for the raw path and explicit checks before consuming files. Available from this source checkout.
 
 ### related_work
 
