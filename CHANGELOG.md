@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.15.0 — 2026-11-05
 
 - Explain exact reference syntax when R receives an ID without a revision.
 - Document how to find and verify inputs, stage an analysis before writing

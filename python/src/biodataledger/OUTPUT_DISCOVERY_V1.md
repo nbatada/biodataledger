@@ -1,7 +1,5 @@
 # Name and find retained outputs
 
-This feature is available in the source checkout and is unreleased.
-
 Register an existing file first. Then describe the retained output with
 `set_presentation` and use its **returned exact revision** to suggest a filename
 or make an optional named copy. No filename is reserved before registration.

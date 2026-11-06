@@ -2,17 +2,16 @@
 
 **Resume your analysis without reconstructing its history.**
 
-A research folder can contain several dataset versions, scripts and figures, with little indication of which belong together. Returning after a break—or handing the project to a colleague—can mean searching old code just to recover earlier choices.
-
-BioDataLedger records the dataset revisions, cohort notes, code and parameters you associate with each retained analysis and figure. You can then retrieve a result’s recorded sources, find the input you designated for a task, and see what information is missing. It works in R and Python with your existing files.
-
-Use it when your analysis spans multiple sessions, your datasets change, or someone else needs to understand and continue your work.
+BioDataLedger helps you find retained figures and data and trace them to the
+exact inputs, code and parameters you recorded. It works in R and Python with
+your existing files, so you can recover those links when you reopen a project
+or hand it to a colleague.
 
 ![Without BioDataLedger, the source of a saved CD8 figure is unclear. With BioDataLedger, an exact figure lookup retrieves its recorded input, analysis code and parameters.](docs/assets/biodataledger-provenance-gemini-v1.jpg)
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
+[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/api/API_0.9.0.md)
 
 For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
@@ -20,17 +19,18 @@ It is a project-helper pattern, not a migration instruction for existing helpers
 
 ## Install
 
-Version **0.14.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+Version **0.15.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
 
-Version 0.14.0 adds [project timelines](#execution-chronology) for registrations
-and recorded runs. See the [changelog](CHANGELOG.md).
+Version 0.15.0 lets you [find retained outputs](#find-retained-figures-and-data)
+by recorded topic, question and document link, and suggest filenames for exact
+revisions. See the [changelog](CHANGELOG.md).
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
 **R — install the tested version from GitHub**
 
-Run this in R to install version 0.14.0 from its release tag:
+Run this in R to install version 0.15.0 from its release tag:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -39,28 +39,28 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.14.0",
+  ref = "v0.15.0",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.14.0 directly from GitHub**
+**Python — install version 0.15.0 directly from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.14.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.15.0#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.14.0` with the release's full commit SHA in either installation command.
+`v0.15.0` with the release's full commit SHA in either installation command.
 
 **Source checkout — repository examples or a source install**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.14.0
+git checkout v0.15.0
 ```
 
 **Python 3.9 or newer**
@@ -416,7 +416,7 @@ After installing both clients:
 ```sh
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.14.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.15.0.tar.gz
 ```
 
 ## Confirm a saved change
@@ -502,18 +502,22 @@ See [matching rules, native examples and limits](docs/api/RELATED_WORK_V1.md).
 
 ### Find retained figures and data
 
-This feature is available in the source checkout and is unreleased.
+- **Start with a topic.** Call `p.find_outputs(topic="QC")` in Python or
+  `p$find_outputs(topic = "QC")` in R to find figures and data tagged `QC`
+  or with a tag such as `QC-samples`.
+- **Start with an analysis.** Call `get_info("ANA-001@1")` with its exact
+  reference to see named inputs and immediate outputs.
+- **Start with a figure.** Call `get_info("FIG-001@2")` with its exact reference
+  to see the declared plotting script and rendering inputs, recorded questions,
+  and links to slides or manuscripts. Plotting code stays unknown without an
+  explicit selection. The recorded links do not prove which script ran.
+- **Name a retained output.** Register the saved file, then use `set_presentation`
+  to record its generation date, primary topic and description. Pass the
+  returned exact revision to `output_name(ref)` for a suggested filename such
+  as `20261105_QC-samples_F001r2_donor-view.svg`. The file stays in place.
+  Use `export_named_output` if you want a digest-verified copy with that name.
 
-After registering a saved file, use `set_presentation` to record its generation
-date, topic tags, questions and any stable slide or manuscript links. The
-returned exact revision gives a suggested filename such as
-`20261105_QC-samples_F001r2_donor-view.svg`. Use `find_outputs(topic="QC")`
-to find tagged work and `get_info(ref)` to see its exact recorded sources.
-For a figure this includes its declared plotting script and rendering inputs
-when recorded; for an analysis it lists named inputs and immediate outputs.
-Browsing and naming do not move, read or copy files. Use the optional verified
-`export_named_output` only when you want a copy with the suggested name.
-See [paired Python and R examples](docs/api/OUTPUT_DISCOVERY_V1.md).
+These queries read registry metadata. See the [paired Python and R examples](docs/api/OUTPUT_DISCOVERY_V1.md).
 
 ### Ordered protocols
 
