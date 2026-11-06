@@ -271,11 +271,17 @@ def _dot(report):
     return '\n'.join(lines + ['}', ''])
 
 
-def export_graph(project, ref, direction, depth, limit, format, filters, offset):
+def export_graph(project, ref, direction, depth, limit, format, filters, offset, style, lineage_roots):
     require(direction in ('upstream', 'downstream'), 'direction must be upstream or downstream')
     require(type(depth) is int and 1 <= depth <= 10 and type(limit) is int and 1 <= limit <= 100,
             'depth 1..10 and limit 1..100 required')
     require(format in ('dot', 'structured'), 'format must be dot or structured')
+    require(style in ('detailed', 'presentation'), 'style must be detailed or presentation')
+    require(style != 'presentation' or format == 'dot', 'presentation style requires DOT format')
+    require(style == 'presentation' or lineage_roots is None, 'lineage_roots requires presentation style')
+    if style == 'presentation':
+        from .diagram import presentation_dot, presentation_roots
+        roots = presentation_roots(project, lineage_roots)
     require(type(offset) is int and 0 <= offset <= 2147483647, 'offset must be a nonnegative 32-bit integer')
     require(ref is None or filters is None and offset == 0, 'filters and offset are overview-only')
     state = project.state
@@ -309,6 +315,8 @@ def export_graph(project, ref, direction, depth, limit, format, filters, offset)
         report['cycle'] = _cycle(nodes, report['edges'], report['truncated'] or unresolved)
         dot = _dot(report)
         if len(canonical(report)) <= BYTE_LIMIT and len(dot.encode('utf-8')) <= BYTE_LIMIT:
+            if style == 'presentation':
+                return presentation_dot(project, report, roots)
             return dot if format == 'dot' else report
         require(bool(nodes), 'graph selector exceeds byte limit')
         # In overview, move the cursor back to the first omitted match so it can be retrieved.

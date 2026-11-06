@@ -1676,8 +1676,9 @@ ProjectBundle <- local({
     }
     check_result <- function(ref) .result_check(root,state,.result_ref(state,ref))
     dependencies <- function(ref,direction,depth=1,limit=20) .result_dependencies(state,result_graph,.ref(state,ref),direction,depth,limit)
-    export_graph <- function(ref=NULL,direction="upstream",depth=3L,limit=100L,format="dot",filters=NULL,offset=0L)
-      .export_graph(state,result_graph,dirty,ref,direction,depth,limit,format,filters,offset)
+    export_graph <- function(ref=NULL,direction="upstream",depth=3L,limit=100L,format="dot",filters=NULL,offset=0L,
+                             style="detailed",lineage_roots=NULL)
+      .export_graph(state,result_graph,dirty,ref,direction,depth,limit,format,filters,offset,style,lineage_roots)
     get_raw_dir <- function() .resolve(root, state, state$project$raw_dir)
     get_metadata_path <- function() .resolve(root, state, state$project$metadata)
     get_output_dir <- function(kind) file.path(root, "results", kind)

@@ -4,7 +4,8 @@ Python and R expose the same read-only ProjectBundle method:
 
 ```text
 export_graph(ref = NULL, direction = "upstream", depth = 3, limit = 100,
-             format = "dot", filters = NULL, offset = 0)
+             format = "dot", filters = NULL, offset = 0,
+             style = "detailed", lineage_roots = NULL)
 ```
 
 Use `None` in Python and `NULL` in R. The default returns DOT text. Use
@@ -12,6 +13,66 @@ Use `None` in Python and `NULL` in R. The default returns DOT text. Use
 Both formats describe the same bounded view. They require no Graphviz, file writes,
 payload reads, availability checks, hashing, or execution. Export is on demand.
 Use the ordinary `dependencies()` method for its original, narrower edge contract.
+
+## Presentation DOT (unreleased; source checkout)
+
+`style="presentation"` produces a top to bottom diagram from the same bounded
+query. Exact revision IDs appear under distinct record types. The
+header shows graph cutoffs, the visible cycle check and any imported or unsaved
+state. The default `style="detailed"` and structured report are unchanged;
+presentation styling is DOT only.
+
+Focused diagrams hide revision links and records reachable only through those
+links in the selected direction. Other links still show the exact revisions
+they reference, including older revisions. The header counts the omitted
+records and links and preserves cutoffs and the cycle check from the detailed
+view. Overview diagrams keep revision links as context.
+
+Pass up to six distinct exact local DATA references in the order you want them
+numbered and colored. A selected root marks a new source boundary, even if it
+descends from another selected root. Colors follow visible declared inputs,
+results, transformations, dataset parents and figure rendering links. A figure
+gets colors only from its declared rendering inputs. Standalone analytical
+inputs, figure-to-analysis associations and revision links are dashed context.
+The diagram marks unknown rendering inputs when none are recorded or the
+descriptor is invalid. It marks links as unconfirmed when exact input
+candidates are recorded without a declared rendering relationship.
+Mixed nodes list their known selected sources and mixed
+edges retain parallel strokes. Roots outside the selected view stay in the
+legend without contributing colors. Colors do not establish input consumption,
+cohort membership or scientific approval.
+
+```python
+from pathlib import Path
+
+dot = project.export_graph(
+    "FIG-001@1", depth=8, style="presentation",
+    lineage_roots=["DATA-002@1", "DATA-003@1"],
+)
+Path("lineage.dot").write_text(dot, encoding="utf-8")
+```
+
+```r
+dot <- project$export_graph(
+  "FIG-001@1", depth = 8L, style = "presentation",
+  lineage_roots = c("DATA-002@1", "DATA-003@1")
+)
+writeLines(enc2utf8(dot), "lineage.dot", useBytes = TRUE)
+```
+
+Render the file with an optional Graphviz installation: `dot -Tsvg lineage.dot
+-o lineage.svg` (or use `-Tpng` for PNG). BioDataLedger returns text and does
+not invoke the renderer. See the [synthetic lineage demo](../LINEAGE_DEMO.md).
+
+Questions are optional recorded context on visible outputs. Plotting code
+notes require a valid generating code selector for the exact figure. A note
+shows the code filename when available, exact owner revision, zero based entry
+index and digest prefix. Without a selector, the figure shows plotting code as
+unknown. Neither note verifies execution. Review names and questions before
+sharing. Titles and notes mark clipped text; at most eight distinct notes and
+24 links to notes of each kind are shown. Omitted links are counted. Inspect
+the full recorded metadata with `get_info()` or the detailed graph. If the
+decorated DOT exceeds 128 KiB, request a narrower view.
 
 - Omit `ref` for a project overview. `limit` is the node limit (1–100).
   Each page examines at most 1,000 registry slots in stored order, starting at the

@@ -465,6 +465,11 @@ queries to inspect links across pages and check the reported cutoffs.
 See the [graph contract](docs/api/GRAPH_V1.md) and the synthetic PRMT5 examples
 in [Python](examples/dependency_graph.py) and [R](examples/dependency_graph.R).
 
+In the source checkout, `style="presentation"` draws a top to bottom diagram
+with exact revisions, optional colors for chosen DATA roots, and notes for
+recorded questions and plotting code. The [synthetic lineage demo](docs/LINEAGE_DEMO.md)
+shows the R and Python calls and optional Graphviz rendering to SVG.
+
 ## Optional execution receipts
 
 Use `run_analysis` when you explicitly want to execute a named function from a

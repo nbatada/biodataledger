@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from xml.etree import ElementTree
 
 from biodataledger import BundleError, ProjectBundle
 
@@ -50,7 +51,9 @@ class GraphTests(unittest.TestCase):
                                  str(self.root), str(request_file)], env=env, capture_output=True, text=True, timeout=90)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         native = json.loads(result.stdout)
-        self.assertEqual(native, [{'report': self.graph(**opts), 'dot': self.p.export_graph(**opts)} for opts in requests])
+        self.assertEqual(native, [
+            {'report': self.graph(**{k: v for k, v in opts.items() if k not in ('style', 'lineage_roots')}),
+             'dot': self.p.export_graph(**opts)} for opts in requests])
 
     def edit_fixture(self, edit):
         path = self.root / REGISTRY
@@ -207,6 +210,185 @@ class GraphTests(unittest.TestCase):
                        {'ref': self.fig, 'filters': {}}, {'filters': {'asset_type': 'unknown'}}):
             with self.assertRaises(BundleError):
                 self.graph(**kwargs)
+
+    def diagram(self, **opts):
+        return self.p.export_graph(style='presentation', **opts)
+
+    def split_branches(self):
+        a = self.p.register_data('original-gex.txt', 'subset', name='Assigned only', parent=self.original)
+        b = self.p.register_data('original-gex.txt', 'subset', name='Assigned plus unassigned', parent=self.original)
+        analysis = self.p.register_analysis('Compare cohorts', [a, b])
+        result = self.p.register_result('umap.csv', analysis)
+        figure = self.p.register_figure('figure.svg', 'umap', analysis=analysis, name='Combined comparison',
+                                        figure_sources={'rendering_inputs': [result], 'relationship': 'declared'})
+        return a, b, analysis, result, figure
+
+    def test_presentation_uses_the_same_report_and_matches_native_r(self):
+        a, b, _, _, figure = self.split_branches()
+        self.p.save()
+        opts = {'ref': figure, 'depth': 7}
+        default_dot = self.p.export_graph(**opts)
+        self.assertEqual(self.p.export_graph(style='detailed', **opts), default_dot)
+        self.assertEqual(self.p.export_graph(style='detailed', format='structured', **opts), self.graph(**opts))
+        self.assertNotIn('rankdir=', default_dot)
+        styled = self.diagram(lineage_roots=[a, exact(b)], **opts)
+        self.assertIn('rankdir=TB', styled)
+        record_nodes = {line.split('"')[1] for line in styled.splitlines()
+                        if line.startswith(('  "DATA-', '  "ANA-', '  "FIG-')) and ' [shape=' in line}
+        record_edges = {tuple(line.split('"')[i] for i in (1, 3)) for line in styled.splitlines() if ' -> ' in line}
+        report = self.graph(**opts)
+        self.assertEqual(record_nodes, set(refs(report)))
+        self.assertEqual(record_edges, {(exact(e['from']), exact(e['to'])) for e in report['edges']})
+        shallow = self.diagram(ref=figure, depth=1, lineage_roots=[a, b])
+        self.assertIn(f'Source 1: {exact(a)} (not in view)', shallow)
+        self.assertNotIn('#17628D', shallow)
+        self.native_parity([opts, {**opts, 'style': 'presentation', 'lineage_roots': [a, exact(b)]},
+                            {'ref': figure, 'depth': 1, 'style': 'presentation', 'lineage_roots': [a, b]},
+                            {'style': 'presentation', 'limit': 2, 'lineage_roots': [a, b]}])
+        revised_a = self.p.update_record(a, {'name': 'New cohort name'}, 'synthetic rename')
+        revised_figure = self.p.update_record(figure, {'name': 'New figure name'}, 'synthetic rename')
+        self.p.save()
+        focus_opts = {'ref': revised_figure, 'depth': 8}
+        self.assertIn(exact(figure), refs(self.graph(**focus_opts)))
+        styled = self.diagram(lineage_roots=[a, b], **focus_opts)
+        self.assertIn(f'FIGURE  ·  {exact(revised_figure)}', styled)
+        self.assertIn(f'DATA  ·  {exact(a)}', styled)
+        self.assertNotIn(exact(revised_a), styled)
+        self.assertNotIn(exact(figure), styled)
+        self.assertIn('Revision history omitted (records: 1; links: 3). See detailed view.', styled)
+        down = self.diagram(ref=figure, direction='downstream', depth=1)
+        self.assertNotIn(exact(revised_figure), down)
+        self.native_parity([{**focus_opts, 'style': 'presentation', 'lineage_roots': [a, b]},
+                            {'ref': figure, 'direction': 'downstream', 'style': 'presentation'}])
+
+    def test_presentation_colors_stop_at_roots_and_context_edges(self):
+        a, b, analysis, result, figure = self.split_branches()
+        subset = self.p.register_figure('figure.svg', 'umap', analysis=analysis, name='One cohort only',
+                                        figure_sources={'rendering_inputs': [a], 'relationship': 'declared'})
+        unknown = self.p.register_figure('figure.svg', 'umap', analysis=analysis,
+                                         figure_sources={'rendering_inputs': [b], 'relationship': 'unknown'})
+        revised = self.p.update_record(a, {'name': 'New revision'}, 'synthetic rename')
+        explicit = self.p.register_data('umap.csv', 'result', name='Explicit transformation')
+        explicit = self.p.set_data_scope(explicit, {'transformation_ref': analysis}, 'record transformation')
+        standalone = self.p.register_figure('figure.svg', 'umap', inputs=[a],
+                                            figure_sources={'rendering_inputs': [b], 'relationship': 'declared'})
+        legacy = self.p.register_figure('figure.svg', 'umap', inputs=[a])
+        self.p.save()
+        dot = self.diagram(lineage_roots=[a, b])
+
+        def node(ref, text=dot):
+            return next(line for line in text.splitlines() if line.startswith(f'  "{exact(ref)}" [shape='))
+
+        def edge(source, target, text=dot):
+            return next(line for line in text.splitlines() if line.startswith(f'  "{exact(source)}" -> "{exact(target)}"'))
+
+        self.assertNotIn('Source ', node(self.original))
+        self.assertIn('Source boundary 1', node(a))
+        self.assertIn('Source boundary 2', node(b))
+        for mixed in (analysis, result, figure, explicit):
+            self.assertIn('Sources 1 + 2 (mixed)', node(mixed))
+        self.assertIn('color="#17628D:#A24520"', edge(result, figure))
+        self.assertIn('style=dashed, constraint=false, color="#64748B"', edge(analysis, subset))
+        self.assertIn(r'\nSource 1\n', node(subset))
+        self.assertIn(r'\nSource 2\n', node(standalone))
+        self.assertNotIn('mixed', node(standalone))
+        self.assertNotIn('Rendering inputs unknown', node(standalone))
+        self.assertIn('style=dashed, constraint=false, color="#64748B", label="analytical input"', edge(a, standalone))
+        self.assertIn('color="#A24520"', edge(b, standalone))
+        self.assertNotIn('Source ', node(legacy))
+        self.assertIn('Rendering inputs unknown', node(legacy))
+        self.assertIn('label="analytical input"', edge(a, legacy))
+        self.assertNotIn('Source ', node(unknown))
+        self.assertIn('Rendering link unconfirmed', node(unknown))
+        self.assertNotIn('Rendering inputs unknown', node(unknown))
+        self.assertIn('label="rendering unconfirmed"', edge(b, unknown))
+        self.assertNotIn('Source ', node(revised))
+        self.assertIn('label="revision"', edge(a, revised))
+        reset = self.diagram(lineage_roots=[self.original, a, b])
+        self.assertIn('color="#17628D"', edge(self.original, a, reset))
+        self.assertIn('color="#A24520"', edge(a, analysis, reset))
+        self.assertIn('Sources 2 + 3 (mixed)', node(analysis, reset))
+        self.native_parity([{'style': 'presentation', 'lineage_roots': [self.original, a, b]},
+                            *[{'ref': fig, 'style': 'presentation', 'lineage_roots': [a, b]}
+                              for fig in (standalone, legacy, unknown)]])
+
+    def test_presentation_notes_use_exact_declarations_and_flag_clipping(self):
+        (self.root / 'private-scripts').mkdir()
+        (self.root / 'private-scripts' / 'plot_α.py').write_text('pass\n')
+        analysis = self.p.register_analysis('With candidate code', [self.original], code='private-scripts/plot_α.py')
+        figure = self.p.register_figure(
+            'figure.svg', 'umap', analysis=analysis, name='µ' * 100,
+            figure_sources={'generating_code': {'record': analysis, 'index': 0}})
+        no_selector = self.p.register_figure('figure.svg', 'umap', analysis=analysis)
+        fields = {'primary_topic': 'Cohort', 'description': 'Summary', 'generated_on': '2026-11-05', 'reason': 'Context'}
+        first = 'What does α "mean" \\N <IMG SRC="bogus">? ' + 'µ' * 55
+        annotated = self.p.set_presentation(figure, questions=[first, first] + [f'Question {i}' for i in range(6)], **fields)
+        self.p.set_presentation(no_selector, questions=[first, 'Keep this', 'Omit this'], **fields)
+        self.p.save()
+        dot = self.diagram()
+        self.assertEqual(dot.count('Question context'), 8)
+        self.assertIn(r'α \"mean\" \\N <IMG SRC=\"bogus\">?', dot)
+        self.assertIn('µ…', dot)
+        self.assertNotIn('Omit this', dot)
+        self.assertIn('Annotation links omitted: questions 1; plotting code 0', dot)
+        self.assertIn(f'Declared plotting code\\nplot_α.py\\n{exact(analysis)} · entry 0 · sha256 ', dot)
+        self.assertEqual(dot.count('Declared plotting code'), 1)
+        self.assertIn('Plotting code unknown', dot)
+        self.assertNotIn('private-scripts', dot)
+        self.assertEqual(self.p.get_info(annotated)['presentation']['questions'][0], first)
+        self.native_parity([{'style': 'presentation'}, {'ref': annotated, 'style': 'presentation'}])
+
+    def test_presentation_preserves_bounds_and_does_no_query_io(self):
+        for opts in ({'style': 'not-a-style'}, {'format': 'structured', 'style': 'presentation'},
+                     {'lineage_roots': []}, {'style': 'presentation', 'lineage_roots': 'DATA-001@1'},
+                     {'style': 'presentation', 'lineage_roots': [self.original] * 7},
+                     {'style': 'presentation', 'lineage_roots': [self.original, exact(self.original)]},
+                     {'style': 'presentation', 'lineage_roots': ['DATA-001']},
+                     {'style': 'presentation', 'lineage_roots': ['DATA-999@1']},
+                     {'style': 'presentation', 'lineage_roots': [self.fig]},
+                     {'style': 'presentation', 'lineage_roots': [{**self.original, 'project_id': 'foreign'}]}):
+            with self.subTest(opts=opts), self.assertRaises(BundleError):
+                self.p.export_graph(**opts)
+        def cycle(state):
+            state['records'][0]['details']['parent'] = self.original
+            state['imported'] = True
+        self.edit_fixture(cycle)
+        self.p.register_analysis('Unsaved', [self.original])
+        with patch.object(Path, 'open', side_effect=AssertionError('unexpected file I/O')), \
+                patch.object(Path, 'stat', side_effect=AssertionError('unexpected path probe')), \
+                patch.object(Path, 'resolve', side_effect=AssertionError('unexpected path resolution')), \
+                patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected process')):
+            cycle_dot = self.diagram(ref=self.original, lineage_roots=[self.original])
+            cut_dot = self.diagram(ref=self.fig, depth=1)
+        self.assertIn('Visible cycle check: detected', cycle_dot)
+        self.assertIn('Imported records; execution claims unverified', cycle_dot)
+        self.assertIn('Includes unsaved edits', cycle_dot)
+        self.assertIn('Omissions: depth', cut_dot)
+        self.assertLessEqual(len(cycle_dot.encode('utf-8')), 128 * 1024)
+        with patch('biodataledger.diagram.BYTE_LIMIT', 300), self.assertRaisesRegex(BundleError, 'narrower view'):
+            self.diagram(ref=self.original)
+
+    def test_presentation_dot_renders_mixed_edges_with_graphviz(self):
+        renderer = os.environ.get('BDL_GRAPHVIZ_DOT') or shutil.which('dot')
+        if not renderer:
+            self.skipTest('optional Graphviz dot executable unavailable')
+        a, b, _, result, figure = self.split_branches()
+        self.p.set_presentation(figure, primary_topic='Cohort', description='Summary', generated_on='2026-11-05',
+                                questions=['Cohort comparison: α "quoted" \\N <IMG SRC="bogus">?'], reason='Context')
+        dot = self.diagram(lineage_roots=[a, b])
+        rendered = subprocess.run([renderer, '-Tsvg'], input=dot, capture_output=True, text=True, timeout=15, check=True)
+        self.assertEqual(rendered.stderr, '')
+        svg = ElementTree.fromstring(rendered.stdout)
+        ns = {'s': 'http://www.w3.org/2000/svg'}
+        text = [item.text for item in svg.findall('.//s:text', ns)]
+        self.assertIn('Recorded lineage', text)
+        self.assertIn('Sources 1 + 2 (mixed)', text)
+        self.assertIn('Cohort comparison: α "quoted" \\N <IMG SRC="bogus">?', text)
+        self.assertFalse(svg.findall('.//s:image', ns))
+        edges = [g for g in svg.findall('.//s:g[@class="edge"]', ns)
+                 if g.find('s:title', ns).text == f'{exact(result)}->{exact(figure)}']
+        self.assertEqual(len(edges), 1)
+        self.assertEqual({p.get('stroke').lower() for p in edges[0].findall('s:path', ns)}, {'#17628d', '#a24520'})
 
 
 if __name__ == '__main__':

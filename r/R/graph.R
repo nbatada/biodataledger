@@ -224,10 +224,14 @@
     " [label=",.graph_quote(edge$type),", basis=",.graph_quote(edge$basis),", source_field=",.graph_quote(edge$source_field),"];"))
   paste(c(lines,"}",""),collapse="\n")
 }
-.export_graph <- function(state,graph,dirty,ref,direction,depth,limit,format,filters,offset) {
+.export_graph <- function(state,graph,dirty,ref,direction,depth,limit,format,filters,offset,style,lineage_roots) {
   if (!.graph_text(direction) || !direction %in% c("upstream","downstream")) .fail("Direction must be upstream or downstream")
   if (!.is_int(depth,TRUE) || depth>10L || !.is_int(limit,TRUE) || limit>100L) .fail("Depth 1..10 and limit 1..100 required")
   if (!.graph_text(format) || !format %in% c("dot","structured")) .fail("Format must be dot or structured")
+  if (!.graph_text(style) || !style %in% c("detailed","presentation")) .fail("Style must be detailed or presentation")
+  if (style=="presentation" && format!="dot") .fail("Presentation style requires DOT format")
+  if (style!="presentation" && !is.null(lineage_roots)) .fail("lineage_roots requires presentation style")
+  if (style=="presentation") roots <- .diagram_roots(state,lineage_roots)
   if (!.is_int(offset) || offset<0 || offset>2147483647) .fail("Offset must be a nonnegative 32-bit integer")
   if (!is.null(ref) && (!is.null(filters) || offset!=0L)) .fail("Filters and offset are overview-only")
   filters <- .graph_filters(state,filters)
@@ -255,8 +259,10 @@
       any(unlist(node$unknown) %in% c("invalid_result","unrecognized_result","rendering_relationship_invalid")),logical(1)))
     report$cycle <- .graph_cycle(report$nodes,report$edges,report$truncated || unresolved)
     dot <- .graph_dot(report)
-    if (nchar(.json(report),type="bytes")<=.graph_byte_limit && nchar(dot,type="bytes")<=.graph_byte_limit)
+    if (nchar(.json(report),type="bytes")<=.graph_byte_limit && nchar(dot,type="bytes")<=.graph_byte_limit) {
+      if (style=="presentation") return(.diagram_dot(state,report,roots))
       return(if (format=="dot") dot else report)
+    }
     n <- length(report$nodes)
     if (!n) .fail("Graph selector exceeds byte limit")
     if (!is.null(ref) && n==1L) .fail("Graph root exceeds byte limit")

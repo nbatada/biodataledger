@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Add a presentation style for lineage DOT in R and Python, with optional
+  colors for exact DATA roots and notes for recorded questions and plotting code.
+
 ## 0.15.0 — 2026-11-05
 
 - Explain exact reference syntax when R receives an ID without a revision.
