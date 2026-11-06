@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add a private, [read-only browser snapshot](docs/VIEWER.md) in R and Python.
+  Search loaded records, follow exact revisions, and optionally include
+  digest-verified previews of selected figures.
+
 ## 0.17.0 — 2026-11-06
 
 - Show a concise Python and R project overview with recent analysis registrations,

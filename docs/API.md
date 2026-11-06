@@ -1,6 +1,6 @@
 # BioDataLedger API reference
 
-BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
+BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. The browser snapshot below is an unreleased development method. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 
 ## Open and inspect a project
 
@@ -31,7 +31,7 @@ See [agent operating guidance](agent/USAGE.md), [updating a running project](UPD
 
 | Task | Functions |
 | --- | --- |
-| [Project lifecycle and orientation](#project-lifecycle-and-orientation) | [`create`](#create), [`open`](#open), [`status`](#status), [`summary`](#summary), [`summary_text`](#summary_text), [`help`](#help), [`get_raw_dir`](#get_raw_dir), [`get_metadata_path`](#get_metadata_path), [`get_output_dir`](#get_output_dir) |
+| [Project lifecycle and orientation](#project-lifecycle-and-orientation) | [`create`](#create), [`open`](#open), [`status`](#status), [`summary`](#summary), [`summary_text`](#summary_text), [`help`](#help), [`view`](#view), [`get_raw_dir`](#get_raw_dir), [`get_metadata_path`](#get_metadata_path), [`get_output_dir`](#get_output_dir) |
 | [Find and search](#find-and-search) | [`find_figures`](#find_figures), [`find_outputs`](#find_outputs), [`recent_figures`](#recent_figures), [`related_work`](#related_work) |
 | [Retrieve exact records and code](#retrieve-exact-records-and-code) | [`get_data`](#get_data), [`get_analysis`](#get_analysis), [`get_figure`](#get_figure), [`get_info`](#get_info), [`read_figure_source`](#read_figure_source) |
 | [Explicit verification](#explicit-verification) | [`resolve_data`](#resolve_data), [`resolve_figure`](#resolve_figure), [`check`](#check), [`check_context`](#check_context), [`check_design_metadata`](#check_design_metadata), [`check_object`](#check_object), [`check_result`](#check_result) |
@@ -113,6 +113,24 @@ R       p$help()
 ```
 
 Print common inspection commands, the loaded package version, registry revision, and unsaved state. The menu covers the overview, topic search, exact lookups, history, current input choices, and paths. Returns `None` in Python or invisible `NULL` in R.
+
+### view
+
+```text
+Python  p.view(path=None, open_browser=True, limit=5000, preview_refs=None)
+R       p$view(path = NULL, open_browser = TRUE, limit = 5000, preview_refs = NULL)
+```
+
+Write a private local HTML snapshot of the loaded project, including pending
+edits, bounded exact record cards, current-purpose refs, and qualified
+timeline pages. Supply a new path in an existing directory or omit it for a
+private temporary file. Relative paths are project-relative. Pass
+`open_browser=False` or `FALSE` to skip the default-browser request. Default
+capture reads loaded metadata. An explicit list of up to 10 exact FIG refs
+adds bounded, digest-verified previews when available. The report includes
+the path, capture time, coverage, preview results, and browser request outcome.
+See the [browser snapshot guide](VIEWER.md) for the supported formats, limits,
+and local privacy considerations. Available in the development checkout.
 
 ### get_raw_dir
 

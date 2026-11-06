@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-__BDL_SCRIPT_HASH__'; style-src 'sha256-__BDL_STYLE_HASH__'; img-src data:; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+<title>BioDataLedger project snapshot</title>
+<style id="bdl-style">
+:root {
+  color-scheme: light;
+  --background: #E7ECEF;
+  --surface: #F3F5F6;
+  --sidebar: #DDE4E8;
+  --details: #EDF2F4;
+  --text: #18242D;
+  --muted: #53636E;
+  --accent: #176B80;
+  --link: #0E5366;
+  --selection: #C8E1E7;
+  --border: #B7C4CA;
+  --focus: #0B6075;
+  --warning: #6A4900;
+  --warning-surface: #F5EBCF;
+  --warning-border: #D8C58D;
+  font: 100%/1.45 system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--background); color: var(--text); }
+header, #workbench { max-width: 110rem; margin: auto; }
+header { padding: 1rem 1.5rem .75rem; }
+h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 .6rem; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.1rem; }
+h4 { font-size: 1rem; }
+p { margin: .45rem 0; }
+p, li, dd, td, h1, h2, h3, button, code, pre { overflow-wrap: anywhere; }
+ul { margin: .45rem 0; padding-inline-start: 1.35rem; }
+li + li { margin-top: .35rem; }
+button, select, input {
+  color: inherit;
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: .28rem;
+  padding: .35rem .6rem;
+  min-height: 2.4rem;
+}
+button, select, summary { cursor: pointer; }
+button:hover:not(:disabled), .record-link:hover { background: var(--selection); }
+button:disabled { cursor: default; color: var(--muted); }
+button[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: white; }
+button[aria-current="page"]:hover { background: var(--link); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+input[type="checkbox"] { min-height: auto; width: 1.05em; height: 1.05em; accent-color: var(--accent); }
+nav, .controls, .pager, .topics { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+nav { margin-top: 1rem; }
+#workbench {
+  display: grid;
+  grid-template-columns: minmax(10rem, 13rem) minmax(0, 1.65fr) minmax(19rem, 1fr);
+  border-block: 1px solid var(--border);
+  align-items: start;
+}
+#filters, #main, #inspector { min-width: 0; padding: 1.1rem 1.25rem 1.35rem; }
+#filters { background: var(--sidebar); border-inline-end: 1px solid var(--border); }
+#main { background: var(--surface); min-height: 24rem; }
+#inspector { background: var(--details); border-inline-start: 1px solid var(--border); }
+#filters label, #search-label { display: block; font-weight: 600; }
+#filters input, #filters select, #search { display: block; width: 100%; margin: .3rem 0 .85rem; }
+#history-label { display: flex; align-items: center; gap: .4rem; min-height: 2.4rem; }
+#filters[hidden] + #main { grid-column: 1 / 3; }
+.quiet, .status-line, .pager, caption { color: var(--muted); }
+.warning {
+  color: var(--warning);
+  background: var(--warning-surface);
+  border: 1px solid var(--warning-border);
+  padding: .4rem .65rem;
+}
+.badge {
+  display: inline-block;
+  padding: .1rem .4rem;
+  background: var(--selection);
+  border-radius: .2rem;
+  font-weight: 600;
+}
+.pager { margin-top: .85rem; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+caption { text-align: left; padding-block: .4rem; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .55rem; border-bottom: 1px solid var(--border); }
+th { background: var(--sidebar); font-weight: 600; }
+th:first-child { width: 60%; }
+tr.selected { background: var(--selection); }
+.record-link { text-align: left; color: var(--link); background: transparent; }
+td .record-link { padding: .15rem .3rem; border-color: transparent; }
+.selected .record-link { font-weight: 650; }
+.secondary { display: block; }
+section + section, #inspector details { border-top: 1px solid var(--border); padding-top: .9rem; margin-top: 1rem; }
+#inspector section { margin-top: 1rem; }
+#inspector section + section { border-top: 1px solid var(--border); }
+dl { margin: .4rem 0; }
+dt { font-weight: 600; margin-top: .45rem; }
+dd { margin: .08rem 0 0; white-space: pre-wrap; }
+pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: .35rem 0; }
+.copy-value { padding: .45rem; background: var(--surface); border: 1px solid var(--border); unicode-bidi: plaintext; }
+.lineage-focus { padding: .65rem; border-inline-start: .25rem solid var(--accent); background: var(--selection); }
+#inspector img { display: block; max-width: 100%; max-height: 60vh; margin-top: .6rem; background: var(--surface); }
+@media (max-width: 65rem) {
+  #workbench { grid-template-columns: minmax(9rem, 12rem) minmax(0, 1fr); }
+  #inspector { grid-column: 1 / -1; border-inline-start: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 40rem) {
+  #workbench { display: block; }
+  header, #filters, #main, #inspector { padding-inline: 1rem; }
+  #filters { border-inline-end: 0; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="project-name">BioDataLedger project snapshot</h1>
+  <p id="purpose"></p>
+  <p id="snapshot" class="status-line">Read-only snapshot</p>
+  <p id="coverage" class="status-line"></p>
+  <p id="notice" class="warning" hidden></p>
+  <nav id="modes" aria-label="Project views">
+    <button type="button" data-mode="overview">Overview</button>
+    <button type="button" data-mode="records">Records</button>
+    <button type="button" data-mode="timeline">Timeline</button>
+  </nav>
+  <noscript><p class="warning">Enable JavaScript to read this snapshot.</p></noscript>
+</header>
+<div id="workbench" hidden>
+  <aside id="filters" aria-labelledby="filters-title">
+    <h2 id="filters-title">Filters</h2>
+    <label for="kind">Record type</label>
+    <select id="kind">
+      <option value="">All types</option>
+      <option value="analysis">Analyses</option>
+      <option value="figure">Figures</option>
+      <option value="data">Data</option>
+      <option value="design">Designs</option>
+      <option value="decision">Decisions</option>
+    </select>
+    <label for="topic">Topic</label>
+    <input id="topic" list="topics" autocomplete="off" placeholder="Any topic">
+    <datalist id="topics"></datalist>
+  </aside>
+  <main id="main"></main>
+  <aside id="inspector" aria-labelledby="inspector-title"></aside>
+</div>
+<template id="bdl-data">__BDL_PAYLOAD_BASE64__</template>
+<script id="bdl-app">
+"use strict";
+(() => {
+  const byId = id => document.getElementById(id);
+  const list = value => Array.isArray(value) ? value : [];
+  const keyFor = ref => ref && typeof ref.project_id === "string" &&
+    typeof ref.id === "string" && Number.isSafeInteger(ref.revision) && ref.revision > 0
+    ? ref.project_id + "/" + ref.id + "@" + ref.revision : null;
+  const shortRef = ref => ref.id + "@" + ref.revision;
+  function decode(encoded) {
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+    return new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+  }
+  const words = value => typeof value === "string" ? value.replaceAll("_", " ") : "Unknown";
+  const kindName = kind => ({
+    analysis: "Analysis", figure: "Figure", data: "Data", design: "Design", decision: "Decision"
+  })[kind] || "Other";
+  const omittedText = "Outside this snapshot";
+  const main = byId("main");
+  const inspector = byId("inspector");
+  const modeButtons = [...byId("modes").querySelectorAll("button")];
+
+  function add(parent, tag, value, className) {
+    const node = document.createElement(tag);
+    if (value !== undefined) node.textContent = value;
+    if (className) node.className = className;
+    parent.append(node);
+    return node;
+  }
+
+  function button(parent, title, action, className) {
+    const node = add(parent, "button", title, className);
+    node.type = "button";
+    node.addEventListener("click", action);
+    return node;
+  }
+
+  function section(parent, title, tag = "h3") {
+    const group = add(parent, "section");
+    add(group, tag, title);
+    return group;
+  }
+
+  function field(group, label, value, fallback = "Unknown") {
+    add(group, "dt", label);
+    const display = value === null || value === undefined ? fallback : value;
+    const item = add(group, "dd");
+    if (typeof display === "object") add(item, "pre", JSON.stringify(display, null, 2));
+    else item.textContent = String(display);
+  }
+
+  function copyValue(parent, label, value, fallback) {
+    add(parent, "h4", label);
+    if (value === null || value === undefined) {
+      add(parent, "p", fallback, "quiet");
+      return;
+    }
+    const shown = add(parent, "pre", value, "copy-value");
+    const controls = add(parent, "div", undefined, "controls");
+    const feedback = add(controls, "span", "", "quiet");
+    feedback.setAttribute("role", "status");
+    const copy = button(controls, "Copy " + label.toLowerCase(), async () => {
+      try {
+        await navigator.clipboard.writeText(value);
+        feedback.textContent = "Copied.";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(shown);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        feedback.textContent = "Text selected. Use your browser’s Copy command.";
+      }
+    });
+    controls.prepend(copy);
+  }
+
+  let snapshot;
+  try {
+    snapshot = JSON.parse(decode(byId("bdl-data").content.textContent.trim()));
+    if (snapshot.report_version !== "biodataledger-view/1" ||
+        !snapshot.project || !snapshot.coverage || !Array.isArray(snapshot.records)) {
+      throw new Error("Unsupported snapshot");
+    }
+  } catch {
+    byId("notice").textContent = "This snapshot could not be read. Generate a new file with view().";
+    byId("notice").hidden = false;
+    byId("modes").hidden = true;
+    return;
+  }
+  // The native flag is global. An included historical record can never stand in for a missing latest record.
+  const records = snapshot.records.slice().sort((a, b) =>
+    Number(b.is_latest) - Number(a.is_latest) || b.stored_order - a.stored_order);
+  const byKey = new Map(records.map(record => [record.key, record]));
+  const purposes = list(snapshot.current);
+  const previews = snapshot.previews || {};
+  const state = {query: "", kind: "", topic: "", history: false, page: 0,
+    timeline: "registration", timelinePage: 0, selected: null, back: []};
+  const PAGE_SIZE = 25;
+  const displayName = record => record.info?.presentation?.title || record.name || "[Name omitted]";
+  const searchIndex = new Map(records.map(record => {
+    const desc = record.info?.presentation || {};
+    const topics = list(desc.topics);
+    const terms = [record.name, shortRef(record.ref), desc.title, desc.subtitle, desc.description,
+      ...topics, ...list(desc.questions), ...list(desc.uses).map(use => use.title)];
+    return [record, {topics, text: terms.filter(term => typeof term === "string").map(term => term.toLowerCase())}];
+  }));
+
+  const title = snapshot.project.name || "BioDataLedger project snapshot";
+  document.title = title + " · BioDataLedger snapshot";
+  byId("project-name").textContent = title;
+  byId("purpose").textContent = snapshot.project.purpose || "";
+  byId("purpose").hidden = !snapshot.project.purpose;
+  byId("snapshot").textContent = "Read-only snapshot · Captured " +
+    (snapshot.captured_at_utc || "at an unknown time") + " · Registry revision " +
+    (snapshot.registry_revision ?? "unknown");
+  const coverage = snapshot.coverage;
+  byId("coverage").textContent = coverage.included_records + " of " + coverage.total_records +
+    " record revisions included. Run view() again to capture changes.";
+  const notices = [];
+  if (snapshot.unsaved) notices.push("Includes unsaved changes.");
+  if (snapshot.imported) notices.push("Imported metadata. Execution receipt claims are untrusted.");
+  if (coverage.omitted_records) notices.push(coverage.omitted_records + " record revisions omitted.");
+  if (coverage.byte_limit_hit) notices.push("Snapshot metadata reached its size limit.");
+  if (coverage.omitted_card_details) notices.push(coverage.omitted_card_details + " records have details omitted.");
+  if (list(coverage.omitted_project_fields).length) {
+    notices.push("Project fields omitted for size (" + coverage.omitted_project_fields.join(", ") + ").");
+  }
+  if (coverage.omitted_current) notices.push(coverage.omitted_current + " current-purpose links omitted.");
+  byId("notice").textContent = notices.join(" ");
+  byId("notice").hidden = !notices.length;
+
+  function recordLink(parent, ref, name, selected = false) {
+    const key = keyFor(ref);
+    if (!key) return add(parent, "span", "Unknown", "quiet");
+    const record = byKey.get(key);
+    const label = name || (record && displayName(record));
+    const text = label ? label + " · " + shortRef(ref) : shortRef(ref);
+    if (!record) return add(parent, "span", text + " · " + omittedText, "quiet");
+    const link = button(parent, undefined, () => selectRecord(key), "record-link");
+    if (label) {
+      add(link, "bdi", label);
+      link.append(" · ");
+    }
+    add(link, "bdi", shortRef(ref));
+    if (selected) link.setAttribute("aria-current", "true");
+    return link;
+  }
+
+  function selectRecord(key) {
+    if (!byKey.has(key)) return;
+    if (state.selected && state.selected !== key) {
+      state.back.push(state.selected);
+      if (state.back.length > records.length) state.back.shift();
+    }
+    state.selected = key;
+    renderInspector(true);
+    updateSelection();
+  }
+
+  function updateSelection() {
+    for (const row of main.querySelectorAll("tr[data-key]")) {
+      const selected = row.dataset.key === state.selected;
+      row.classList.toggle("selected", selected);
+      const link = row.querySelector("button");
+      if (selected) link?.setAttribute("aria-current", "true");
+      else link?.removeAttribute("aria-current");
+    }
+  }
+
+  function related(parent, links, getRef, getName, getType) {
+    const group = add(parent, "ul");
+    for (const item of links) {
+      const row = add(group, "li");
+      recordLink(row, getRef(item), getName?.(item));
+      if (getType) add(row, "span", words(getType(item)), "secondary quiet");
+    }
+  }
+
+  function linkedPage(parent, label, page, output = false) {
+    add(parent, "h4", label);
+    if (page?.relationship) add(parent, "p", "Relationship · " + words(page.relationship), "quiet");
+    if (!page || page.status === "unknown") {
+      add(parent, "p", "Unknown", "quiet");
+      return;
+    }
+    const items = list(page.items);
+    if (items.length) {
+      related(parent, items, item => output ? item.to : item.ref,
+        item => output ? item.output?.name : item.name,
+        output ? item => item.type : undefined);
+    } else add(parent, "p", "None recorded", "quiet");
+    if (page.truncated) {
+      add(parent, "p", (page.total - items.length) + " links omitted from this detail.", "quiet");
+    }
+  }
+
+  function codeEntry(parent, entry, index, owner) {
+    const selector = entry.selector;
+    const values = add(parent, "dl");
+    const source = selector?.record || owner;
+    if (source) {
+      add(values, "dt", "Code record");
+      recordLink(add(values, "dd"), source);
+    }
+    field(values, "Code entry index (zero-based)", selector?.index ?? index);
+    field(values, "Recorded SHA-256", selector?.sha256 ?? entry.sha256);
+    if (selector?.registered_ref) {
+      add(values, "dt", "Registered code reference");
+      recordLink(add(values, "dd"), selector.registered_ref);
+    }
+    if (entry.locator) {
+      const label = {
+        project: "Project-relative source path", external: "Recorded source path", uri: "Recorded source URI"
+      }[entry.locator.kind] || "Recorded source locator";
+      copyValue(parent, label, entry.locator.value);
+    }
+    if (entry.snapshot) {
+      const captured = snapshot.project.root && snapshot.project.root.replace(/\/$/, "") + "/" + entry.snapshot;
+      copyValue(parent, captured ? "Recorded code snapshot path" : "Project-relative code snapshot path",
+        captured || entry.snapshot);
+    }
+    add(parent, "p", "Code availability and integrity unchecked.", "quiet");
+  }
+
+  function renderCode(parent, info) {
+    const source = info.analytical_source;
+    const plotting = info.plotting_code;
+    if (plotting) {
+      const plot = section(parent, "Plotting code");
+      if (plotting.generating_code) codeEntry(plot, plotting.generating_code);
+      else add(plot, "p", "Exact generating code unknown. Source declaration · " +
+        words(plotting.source_status) + ".", "quiet");
+      const candidates = list(plotting.candidates?.items);
+      if (candidates.length) {
+        const details = add(plot, "details");
+        add(details, "summary", "Recorded code candidates (" + candidates.length + ")");
+        for (const entry of candidates) codeEntry(add(details, "section"), entry);
+        if (plotting.candidates.truncated) add(details, "p",
+          (plotting.candidates.total - candidates.length) + " candidates omitted.", "quiet");
+      }
+    } else if (source) {
+      const code = list(source.code);
+      const group = section(parent, "Analytical code");
+      if (!code.length) add(group, "p", "No code entries recorded.", "quiet");
+      code.forEach((entry, index) => codeEntry(add(group, "section"), entry, index, source.ref));
+    }
+  }
+
+  function renderPresentation(parent, desc, status) {
+    const group = section(parent, "Topics, questions and uses");
+    if (!desc) {
+      add(group, "p", "Presentation metadata · " + words(status), "quiet");
+      return;
+    }
+    const values = add(group, "dl");
+    if (desc.subtitle) field(values, "Subtitle", desc.subtitle);
+    field(values, "Description", desc.description);
+    field(values, "Declared generation date", desc.generated_on);
+    const topics = add(group, "div", undefined, "topics");
+    for (const topic of list(desc.topics)) {
+      button(topics, topic, () => {
+        state.topic = topic;
+        byId("topic").value = topic;
+        state.page = 0;
+        showMode("records");
+        byId("search").focus();
+      });
+    }
+    add(group, "h4", "Questions");
+    if (list(desc.questions).length) {
+      const items = add(group, "ul");
+      for (const question of desc.questions) add(items, "li", question);
+    } else add(group, "p", "None declared", "quiet");
+    add(group, "h4", "Uses");
+    if (list(desc.uses).length) {
+      const items = add(group, "ul");
+      for (const use of desc.uses) {
+        const item = add(items, "li", use.title);
+        add(item, "span", words(use.kind) + " · " + use.document_id + " · " + use.item_id, "secondary quiet");
+      }
+    } else add(group, "p", "None declared", "quiet");
+  }
+
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const xlinkNamespace = "http://www.w3.org/1999/xlink";
+  const xmlNamespace = "http://www.w3.org/XML/1998/namespace";
+  const xmlnsNamespace = "http://www.w3.org/2000/xmlns/";
+  const staticTags = new Set(("svg g defs symbol use path rect circle ellipse line polyline polygon text tspan title desc " +
+    "linearGradient radialGradient stop clipPath mask marker pattern").split(" "));
+  const plainAttributes = new Set(("id version x y x1 y1 x2 y2 cx cy r rx ry width height viewBox preserveAspectRatio " +
+    "d points transform opacity fill-opacity stroke-opacity stroke-width stroke-linecap stroke-linejoin " +
+    "stroke-dasharray stroke-dashoffset stroke-miterlimit fill-rule clip-rule offset gradientUnits gradientTransform " +
+    "spreadMethod fx fy fr maskUnits maskContentUnits clipPathUnits patternUnits patternContentUnits patternTransform " +
+    "markerUnits refX refY markerWidth markerHeight orient font-size font-family font-weight font-style text-anchor " +
+    "dominant-baseline alignment-baseline dx dy rotate textLength lengthAdjust letter-spacing word-spacing " +
+    "visibility display vector-effect shape-rendering role aria-label aria-labelledby aria-describedby").split(" "));
+  const localID = "#[A-Za-z_][A-Za-z0-9_.:-]*";
+  const localRef = new RegExp("^" + localID + "$");
+  const localPaint = new RegExp("^url\\(" + localID + "\\)$");
+  const paints = new Set(["fill", "stroke", "stop-color"]);
+  const references = new Set(["clip-path", "mask", "marker-start", "marker-mid", "marker-end"]);
+
+  function safeSvg(encoded) {
+    const source = decode(encoded);
+    if (/<!\s*(?:DOCTYPE|ENTITY)/i.test(source)) return "SVG contains a doctype or entity declaration.";
+    const svg = new DOMParser().parseFromString(source, "image/svg+xml");
+    const root = svg.documentElement;
+    if (svg.getElementsByTagName("parsererror").length || root.localName !== "svg" ||
+        root.namespaceURI !== svgNamespace) return "SVG is invalid or lacks an SVG root.";
+    const walker = svg.createTreeWalker(svg, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_PROCESSING_INSTRUCTION);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeType !== Node.ELEMENT_NODE || node.namespaceURI !== svgNamespace ||
+          !staticTags.has(node.localName)) return "SVG contains an unsupported element or processing instruction.";
+      for (const {localName, name, namespaceURI, value} of node.attributes) {
+        if (namespaceURI === xmlnsNamespace &&
+            ((name === "xmlns" && value === svgNamespace) ||
+             (name === "xmlns:xlink" && value === xlinkNamespace))) continue;
+        if (namespaceURI === xmlNamespace && (localName === "space" || localName === "lang")) continue;
+        if ((namespaceURI === null || namespaceURI === xlinkNamespace) && localName === "href" &&
+            ["use", "linearGradient", "radialGradient", "pattern"].includes(node.localName) &&
+            localRef.test(value)) continue;
+        if (namespaceURI === null && plainAttributes.has(name)) continue;
+        if (namespaceURI === null && paints.has(name) &&
+            (/^[a-zA-Z]+$|^#[0-9a-fA-F]{3,8}$|^(?:rgb|hsl)a?\([0-9., %+-]+\)$/.test(value) ||
+            localPaint.test(value))) continue;
+        if (namespaceURI === null && references.has(name) && (value === "none" || localPaint.test(value))) continue;
+        return "SVG contains an unsupported attribute or reference (" + name + ").";
+      }
+    }
+    return null;
+  }
+
+  function renderPreview(parent, record) {
+    const group = section(parent, "Figure preview");
+    const preview = previews[keyFor(record.ref)];
+    if (!preview) {
+      add(group, "p", "Preview not included in this snapshot.", "quiet");
+      const ref = JSON.stringify(shortRef(record.ref));
+      const example = snapshot.client === "R"
+        ? "project$view(preview_refs = list(" + ref + "))"
+        : "project.view(preview_refs=[" + ref + "])";
+      add(group, "p", "Generate a new snapshot with this exact figure revision.");
+      copyValue(group, "Preview command", example);
+      return;
+    }
+    if (preview.status !== "included") {
+      add(group, "p", "Preview unavailable · " + words(preview.status) +
+        (preview.reason ? ". " + preview.reason : ""), "quiet");
+      return;
+    }
+    const {mime, base64} = preview;
+    const svg = mime === "image/svg+xml";
+    const supported = ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"].includes(mime);
+    if (!supported || typeof base64 !== "string" || !base64.length || base64.length % 4 ||
+        base64.length > 4 * Math.ceil(2 * 1024 * 1024 / 3) || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+      add(group, "p", "Preview refused. Unsupported image type or invalid image encoding.", "warning");
+      return;
+    }
+    if (svg) {
+      let reason;
+      try {
+        reason = safeSvg(base64);
+      } catch {
+        reason = "SVG could not be decoded.";
+      }
+      if (reason) {
+        add(group, "p", "Preview refused. " + reason, "warning");
+        return;
+      }
+    }
+    const image = add(group, "img");
+    image.alt = displayName(record);
+    const caption = add(group, "p", "Embedded figure revision · " + shortRef(record.ref), "quiet");
+    image.addEventListener("error", () => {
+      image.remove();
+      caption.textContent = "The browser could not decode the embedded preview.";
+    }, {once: true});
+    image.src = "data:" + mime + ";base64," + base64;
+  }
+
+  function renderInspector(focus = false) {
+    inspector.replaceChildren();
+    const record = byKey.get(state.selected);
+    if (!record) {
+      add(inspector, "h2", "Record details").id = "inspector-title";
+      add(inspector, "p", "Select a record to inspect its exact revision and recorded links.", "quiet");
+      return;
+    }
+    if (state.back.length) button(inspector, "Back to previous record", () => {
+      state.selected = state.back.pop();
+      renderInspector(true);
+      updateSelection();
+    });
+    const heading = add(inspector, "h2", displayName(record));
+    heading.id = "inspector-title";
+    heading.tabIndex = -1;
+    if (focus) heading.focus();
+    add(inspector, "p", kindName(record.kind) + " · " + shortRef(record.ref) + " · " +
+      (record.is_latest ? "Latest revision" : "Historical revision") + " · " + words(record.status), "badge");
+    const identity = add(inspector, "dl");
+    if (record.name && record.name !== displayName(record)) field(identity, "Registered name", record.name);
+    field(identity, "Registered (UTC)", record.recorded_at, "Unknown or unqualified");
+    copyValue(inspector, "Exact reference", record.key);
+    if (record.omission) {
+      add(inspector, "p", "Record details omitted. " + record.omission + ".", "warning");
+    }
+    if (["data", "figure"].includes(record.kind)) {
+      const paths = section(inspector, "Recorded location");
+      copyValue(paths, "File path", record.path, record.omission ? "Omitted from snapshot" : "Unresolved");
+      if (record.directory) copyValue(paths, "Folder path", record.directory);
+      add(paths, "p", "File availability and integrity unchecked.", "quiet");
+    }
+    const current = purposes.filter(item => keyFor(item.ref) === state.selected);
+    if (current.length) {
+      const group = section(inspector, "Current for recorded purposes");
+      const items = add(group, "ul");
+      for (const item of current) add(items, "li", item.purpose);
+    }
+    if (record.kind === "figure") renderPreview(inspector, record);
+    const info = record.info;
+    if (!info) return;
+    if (info.presentation_status && info.presentation_status !== "not_applicable") {
+      renderPresentation(inspector, info.presentation, info.presentation_status);
+    }
+    if (info.inputs || info.outputs || info.producer_ref || info.rendering_inputs) {
+      const lineage = section(inspector, "Lineage");
+      if (info.producer_ref) {
+        add(lineage, "h4", "Recorded producer");
+        recordLink(lineage, info.producer_ref, info.producer?.name);
+      }
+      linkedPage(lineage, "Analytical inputs", info.inputs);
+      if (info.rendering_inputs) linkedPage(lineage, "Rendering inputs", info.rendering_inputs);
+      add(lineage, "p", "Selected · " + shortRef(record.ref), "lineage-focus");
+      linkedPage(lineage, "Recorded downstream links", info.outputs, true);
+    }
+    const raw = info.record;
+    const source = info.analytical_source;
+    if (raw || info.record_fields_status || info.analytical_source_status) {
+      const context = section(inspector, "Scientific context");
+      const values = add(context, "dl");
+      if (info.record_fields_status === "size_limit") field(values, "Record fields", "Omitted for size");
+      if (raw?.scope !== undefined) field(values, "Data scope", raw.scope);
+      if (raw?.role) field(values, "Data role", raw.role);
+      if (raw?.sha256) field(values, "Recorded file SHA-256", raw.sha256);
+      if (source || info.analytical_source_ref) {
+        if (info.analytical_source_ref) {
+          add(values, "dt", "Analytical source");
+          recordLink(add(values, "dd"), info.analytical_source_ref);
+        }
+        if (source) {
+          field(values, "Method", source.method);
+          field(values, "Parameters", source.params);
+          field(values, "Input mode", source.input_mode);
+          field(values, "Input relationships", source.evidence?.input_relationships);
+          field(values, "Code relationships", source.evidence?.code_relationships);
+        } else field(values, "Analytical source fields", words(info.analytical_source_status));
+      }
+      const design = source?.design || raw?.design;
+      if (design) {
+        add(values, "dt", "Recorded design");
+        recordLink(add(values, "dd"), design);
+      }
+      if (record.kind === "design" || record.kind === "decision") field(values, "Recorded details", raw?.details);
+      if (!values.childElementCount) add(context, "p", "No additional context shown.", "quiet");
+    }
+    renderCode(inspector, info);
+    const details = add(inspector, "details");
+    add(details, "summary", "Raw captured metadata");
+    details.addEventListener("toggle", () => {
+      if (details.open && details.childElementCount === 1) add(details, "pre", JSON.stringify(info, null, 2));
+    });
+  }
+
+  function recentOverview() {
+    add(main, "h2", "Project overview");
+    const current = section(main, "Current inputs by purpose");
+    if (purposes.length) {
+      const items = add(current, "dl");
+      for (const item of purposes) {
+        add(items, "dt", item.purpose);
+        recordLink(add(items, "dd"), item.ref);
+      }
+    } else add(current, "p", coverage.omitted_current
+      ? "Current-purpose links omitted from this snapshot." : "No current-purpose links recorded.", "quiet");
+    const recent = section(main, "Recently recorded");
+    const latest = records.filter(record => record.is_latest).slice(0, 8);
+    if (latest.length) recordTable(recent, latest, "Latest revisions in reverse stored order");
+    else add(recent, "p", "No latest revisions included.", "quiet");
+    if (snapshot.project.root) {
+      const location = section(main, "Project location");
+      copyValue(location, "Project folder path", snapshot.project.root);
+    }
+  }
+
+  function table(parent, caption, columns) {
+    const element = add(parent, "table");
+    add(element, "caption", caption);
+    const headers = add(add(element, "thead"), "tr");
+    for (const title of columns) {
+      const header = add(headers, "th", title);
+      header.scope = "col";
+    }
+    return add(element, "tbody");
+  }
+
+  function recordTable(parent, rows, caption) {
+    const body = table(parent, caption, ["Record", "Type and revision"]);
+    for (const record of rows) {
+      const row = add(body, "tr");
+      const key = record.key;
+      row.dataset.key = key;
+      row.classList.toggle("selected", state.selected === key);
+      const cell = add(row, "td");
+      recordLink(cell, record.ref, displayName(record), state.selected === key);
+      if (record.info?.presentation?.primary_topic) {
+        add(cell, "span", record.info.presentation.primary_topic, "secondary quiet");
+      }
+      const type = add(row, "td", kindName(record.kind));
+      add(type, "span", (record.is_latest ? "Latest" : "Historical") + " · " +
+        words(record.status), "secondary quiet");
+    }
+  }
+
+  function pager(parent, label, page, pages, move) {
+    const controls = add(parent, "div", undefined, "pager");
+    add(controls, "span", label);
+    const previous = button(controls, "Previous page", () => move(page - 1, "previous"));
+    previous.disabled = page === 0;
+    previous.dataset.pageButton = "previous";
+    const next = button(controls, "Next page", () => move(page + 1, "next"));
+    next.disabled = page >= pages - 1;
+    next.dataset.pageButton = "next";
+  }
+
+  function focusPager(direction) {
+    const buttons = [...main.querySelectorAll("[data-page-button]")];
+    const target = buttons.find(item => item.dataset.pageButton === direction && !item.disabled) ||
+      buttons.find(item => !item.disabled);
+    if (target) target.focus();
+  }
+
+  function showRecords() {
+    add(main, "h2", "Records");
+    const label = add(main, "label", "Search names, topics, questions and uses");
+    label.id = "search-label";
+    label.htmlFor = "search";
+    const search = add(main, "input");
+    search.id = "search";
+    search.type = "search";
+    search.autocomplete = "off";
+    search.value = state.query;
+    const historyLabel = add(main, "label");
+    historyLabel.id = "history-label";
+    const history = add(historyLabel, "input");
+    history.type = "checkbox";
+    history.checked = state.history;
+    historyLabel.append(" Include historical revisions");
+    const status = add(main, "p", "", "quiet");
+    status.setAttribute("role", "status");
+    const results = add(main, "div");
+
+    function renderResults() {
+      const query = state.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const topic = state.topic.trim().toLowerCase();
+      const filtered = records.filter(record => {
+        const {topics, text} = searchIndex.get(record);
+        return (state.history || record.is_latest) && (!state.kind || record.kind === state.kind) &&
+          (!topic || topics.some(value => value.toLowerCase() === topic)) &&
+          query.every(term => text.some(value => value.includes(term)));
+      });
+      results.replaceChildren();
+      status.textContent = filtered.length + (filtered.length === 1 ? " matching revision." : " matching revisions.");
+      if (!filtered.length) {
+        add(results, "p", records.length ? "No included records match these filters." :
+          "This snapshot contains no record revisions.", "quiet");
+        return;
+      }
+      const start = state.page * PAGE_SIZE;
+      recordTable(results, filtered.slice(start, start + PAGE_SIZE), "Included revisions · Latest first");
+      const pages = Math.ceil(filtered.length / PAGE_SIZE);
+      if (pages > 1) pager(results, "Page " + (state.page + 1) + " of " + pages, state.page, pages, (page, direction) => {
+        state.page = page;
+        renderResults();
+        focusPager(direction);
+      });
+    }
+
+    search.addEventListener("input", () => { state.query = search.value; state.page = 0; renderResults(); });
+    history.addEventListener("change", () => { state.history = history.checked; state.page = 0; renderResults(); });
+    renderResults();
+    return renderResults;
+  }
+
+  function timelineValue(row, field) {
+    if (list(row.omitted_text_fields).includes(field)) return "Omitted";
+    return row[field] ?? "Unknown";
+  }
+
+  function timelineRows(parent, page, runs) {
+    const body = table(parent, runs ? "Wrapper times (UTC)" : "Registration times (UTC)",
+      ["Record", runs ? "Wrapper interval and evidence" : "Registered (UTC)"]);
+    list(page.rows).forEach((row, index) => {
+      const tr = add(body, "tr");
+      const identity = add(tr, "td");
+      const key = keyFor(row.ref);
+      tr.dataset.key = key;
+      tr.classList.toggle("selected", state.selected === key);
+      add(identity, "span", "Row " + (index + 1), "secondary quiet");
+      recordLink(identity, row.ref, row.name ?? "[Name omitted]", state.selected === key);
+      if (row.analysis_ref) {
+        add(identity, "span", "Analysis", "secondary quiet");
+        recordLink(identity, row.analysis_ref);
+      }
+      for (const [ref, label] of [[row.run_ref, "Run"], [row.template_ref, "Template"]]) {
+        if (!ref) continue;
+        add(identity, "span", label, "secondary quiet");
+        recordLink(identity, ref);
+      }
+      const values = add(add(tr, "td"), "dl");
+      if (runs) {
+        field(values, "Qualified start", row.time_utc, "Unknown or unqualified");
+        field(values, "Recorded start", timelineValue(row, "started_at_utc"));
+        field(values, "Recorded end", timelineValue(row, "ended_at_utc"));
+        field(values, "Timing", words(row.timing_status));
+      } else field(values, "Time", row.time_utc, "Unknown or unqualified");
+      if (row.outcome) field(values, "Outcome", words(row.outcome));
+      if (row.evidence) field(values, "Receipt evidence", words(row.evidence));
+      for (const [fieldName, label] of [["input_refs", "Declared inputs"], ["output_refs", "Registered outputs"]]) {
+        if (row[fieldName] === null || row[fieldName] === undefined) continue;
+        const refs = list(row[fieldName]);
+        add(identity, "span", label, "secondary quiet");
+        if (refs.length) related(identity, refs, ref => ref);
+        else add(identity, "span", "None shown", "quiet");
+        if (row[fieldName + "_omitted"]) add(identity, "span",
+          row[fieldName + "_omitted"] + " links omitted.", "secondary quiet");
+      }
+    });
+  }
+
+  function showTimeline() {
+    add(main, "h2", "Timeline");
+    const controls = add(main, "div", undefined, "controls");
+    const runs = state.timeline === "runs";
+    for (const [mode, label] of [["registration", "Registration"], ["runs", "Recorded runs"]]) {
+      const control = button(controls, label, () => {
+        state.timeline = mode;
+        state.timelinePage = 0;
+        showMode("timeline");
+        main.querySelector('[aria-pressed="true"]').focus();
+      });
+      control.setAttribute("aria-pressed", String(mode === state.timeline));
+    }
+    add(main, "p", runs
+      ? "Oldest qualified wrapper start first. Wrapper intervals are partial evidence. Unrecorded execution remains unknown."
+      : "Oldest qualified registration time first. Equal times share the same displayed time.", "quiet");
+    const timeline = snapshot.timelines?.[state.timeline];
+    const pages = list(timeline?.pages);
+    if (timeline?.omitted) add(main, "p", timeline.omitted + " timeline rows omitted from this snapshot.", "warning");
+    if (!pages.length) {
+      add(main, "p", runs ? "No recorded run rows included." : "No registration rows included.", "quiet");
+      return;
+    }
+    const page = pages[state.timelinePage];
+    if (!list(page.rows).length) {
+      add(main, "p", runs ? "No recorded run rows included." : "No registration rows included.", "quiet");
+      return;
+    }
+    timelineRows(main, page, runs);
+    const relations = list(page.relations).filter(item => ["tied", "tied_boundary", "overlap"].includes(item.relation));
+    if (relations.length) {
+      const details = add(main, "details");
+      add(details, "summary", "Overlaps and ties on this page (" + relations.length + ")");
+      const items = add(details, "ul");
+      for (const item of relations) add(items, "li",
+        "Rows " + item.left + " and " + item.right + " · " + words(item.relation));
+    }
+    if (pages.length > 1) pager(main, "Captured page " + (state.timelinePage + 1) + " of " + pages.length,
+      state.timelinePage, pages.length, (pageNumber, direction) => {
+        state.timelinePage = pageNumber;
+        showMode("timeline");
+        focusPager(direction);
+      });
+  }
+
+  let updateResults;
+  function showMode(mode) {
+    for (const item of modeButtons) {
+      if (item.dataset.mode === mode) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    }
+    byId("filters").hidden = mode !== "records";
+    main.replaceChildren();
+    if (mode === "records") updateResults = showRecords();
+    else if (mode === "timeline") showTimeline();
+    else recentOverview();
+  }
+
+  const suggestions = new Map();
+  for (const {topics} of searchIndex.values()) {
+    for (const topic of topics) suggestions.set(topic.toLowerCase(), topic);
+  }
+  // Suggestions are bounded. The exact topic field accepts any topic in the snapshot.
+  for (const topic of [...suggestions.values()].sort().slice(0, 100)) add(byId("topics"), "option").value = topic;
+  byId("kind").addEventListener("change", event => {
+    state.kind = event.target.value;
+    state.page = 0;
+    updateResults();
+  });
+  byId("topic").addEventListener("input", event => {
+    state.topic = event.target.value;
+    state.page = 0;
+    updateResults();
+  });
+  for (const item of modeButtons) item.addEventListener("click", () => showMode(item.dataset.mode));
+  showMode("overview");
+  renderInspector();
+  byId("workbench").hidden = false;
+})();
+</script>
+</body>
+</html>

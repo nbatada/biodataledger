@@ -319,6 +319,7 @@ def project_help(project):
         'Registration history     print(p.timeline_summary(order="newest"))',
         'Recorded runs            print(p.timeline_summary(view="runs", order="newest"))',
         "Recent figures & folders p.recent_figures()",
+        "Browse project            p.view()",
         'Current input choice     p.get_data(purpose="review")',
         'Full figure file path    p.get_figure("FIG-001@1").path',
         'Full data file path      p.get_data("DATA-001@1").path',

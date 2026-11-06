@@ -18,6 +18,11 @@ Use the [current BioDataLedger API reference](../API.md) for Python and R signat
 
 ## Share or resume
 
+For an explicitly requested local browser snapshot, use [`view()`](../VIEWER.md)
+in the development checkout. Use the loaded handle and request previews only
+for specified exact FIG revisions. Treat the generated file as private project
+metadata.
+
 Preview the complete registry metadata and history alongside the selected payloads before an authorized export. Use exact getters and explicit verification to determine readiness for a named next task after import. Import leaves scripts inert. See [sharing and recovery](../API.md#save-share-and-recover).
 
 These instructions guide use of the registry. They do not restrict an unrestricted interpreter or require calls on every chat turn.

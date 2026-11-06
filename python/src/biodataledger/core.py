@@ -1499,6 +1499,11 @@ class ProjectBundle:
         from .graph import export_graph
         return export_graph(self, ref, direction, depth, limit, format, filters, offset, style, lineage_roots)
 
+    def view(self, path=None, open_browser=True, limit=5000, preview_refs=None):
+        """Write a private, read-only browser snapshot of loaded project metadata."""
+        from .viewer import export_view
+        return export_view(self, path, open_browser, limit, preview_refs)
+
     def related_work(self, input_ref=None, query=None, limit=5):
         from .related_work import related_work
         return related_work(self, input_ref, query, limit)

@@ -28,3 +28,16 @@ and immediate outputs. These queries do not check file availability.
 one retained file into an existing directory without replacing an existing path.
 See installed OUTPUT_DISCOVERY_V1.md for paired examples and exact scope.
 }
+
+\section{Local browser snapshot}{
+\code{view(path = NULL, open_browser = TRUE, limit = 5000L, preview_refs = NULL)}
+writes a private local HTML file from loaded metadata and returns the path,
+capture time, coverage, preview results, and any default browser launch error.
+Omit the path for a private temporary file or choose a new path in an existing
+directory. Relative paths are project-relative. Set \code{open_browser = FALSE}
+to write the file without requesting a browser. The limit is 1--5000 exact
+record revisions. An explicit list of up to 10 exact FIG refs enables bounded,
+digest-verified previews. The snapshot can contain private metadata and image
+bytes. Export leaves the registry and pending edits as they are. Writes are
+supported on tested local macOS filesystems.
+}

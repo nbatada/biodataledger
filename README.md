@@ -224,6 +224,10 @@ Use `ledger$help()` or `p.help()` for common inspection commands and the
 leave file availability unchecked. Registration dates describe registry entries.
 Use the recorded run history to inspect execution evidence.
 
+In the development checkout, `ledger$view()` or `p.view()` writes a private
+[read-only browser snapshot](docs/VIEWER.md) for searching records and following
+exact references.
+
 Use `summary_text()` for the technical card. Pass `purpose="comparison"` to
 inspect that input choice. Use `status()` for structured metadata including the
 loaded package version, registry revision and unsaved changes. Unsaved changes
