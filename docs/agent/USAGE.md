@@ -18,6 +18,11 @@ Use the [current BioDataLedger API reference](../API.md) for Python and R signat
 
 ## Share or resume
 
+For a saved-project handoff, use the [resume procedure and agent prompt](../RESUMING.md).
+For a reviewed ZIP handoff, use the [share procedure and agent prompt](../SHARING.md).
+For an installation change around live work, use the [upgrade procedure and agent
+prompt](../UPDATING.md).
+
 For an explicitly requested local browser snapshot, use [`view()`](../VIEWER.md)
 in the development checkout. Use the loaded handle and request previews only
 for specified exact FIG revisions. Treat the generated file as private project

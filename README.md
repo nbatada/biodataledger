@@ -11,7 +11,13 @@ or hand it to a colleague.
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Update a running project](docs/UPDATING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
+[Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
+
+**Resume** a saved registry without guessing what an interrupted analysis did:
+[procedure and agent prompt](docs/RESUMING.md). **Upgrade** a live project while
+protecting its current R or Python session: [procedure and agent prompt](docs/UPDATING.md).
+**Share** a reviewed, explicit subset of retained files: [procedure and agent
+prompt](docs/SHARING.md).
 
 For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).

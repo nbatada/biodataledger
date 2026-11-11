@@ -10,13 +10,46 @@ paths, code snapshots, exact references and ZIP format. Keep the previous
 installation for rollback, since earlier clients can preserve optional newer
 metadata without enforcing all its semantics.
 
+An upgrade keeps saved exact references. Changing a scientific input is separate:
+register the saved replacement as a new DATA record, or explicitly revise an
+existing record when authorized. Select the replacement explicitly for future work. Earlier results retain their original input references.
+BioDataLedger does not convert Seurat to AnnData (or the reverse), or upgrade a
+live native object or handle.
+
 Installing a package does not update a loaded R namespace, Python module or
 existing `ProjectBundle` handle. Use a fresh process and reopen the saved project
 after protecting pending work. Do not silently restart R/Jupyter, detach a package,
 reload Python modules, overwrite objects or close the old session. An unsaved
 Seurat/AnnData object is separate from the saved registry.
 
-## Copy-paste agent prompt
+## Short procedure
+
+1. In the current session, inspect `status()` once and protect pending registry
+   edits, live objects, scripts and outputs. A registry save commits every pending
+   registry edit; it does not save a live Seurat or AnnData object.
+2. Keep the current installation and live session available. Install the chosen
+   version separately, then start a fresh R or Python process.
+3. In the fresh process, open the saved project, check `status()`, and use exact
+   getters to compare the saved references you need. Resume only after the owner
+   has resolved any pending work in the old session.
+
+## Short agent prompt
+
+```text
+Safely upgrade this BioDataLedger project without changing scientific choices.
+
+Project folder: [absolute path]
+Task after upgrade: [specific next task]
+Target package version or full commit: [version or SHA]
+
+Protect the live R/Python session and its unsaved objects. Inspect saved state in
+a fresh process, keep the old installation available, install the target separately,
+then reopen and compare exact saved refs needed for the task. Do not auto-save,
+convert Seurat/AnnData, replace live handles, or change input selection. Follow
+the detailed procedure below for safeguards, synthetic checks and reporting.
+```
+
+## Detailed agent procedure
 
 Paste this into the agent helping with your existing project. It authorizes the
 package installation and synthetic checks, while keeping scientific save decisions
