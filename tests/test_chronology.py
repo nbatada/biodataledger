@@ -125,6 +125,35 @@ class ChronologyTests(unittest.TestCase):
                       self.p.timeline_summary(view='runs'))
         self.assertEqual(self.p.execution_history()['entries'][0]['receipt_ref'], blocked['receipt_ref'])
 
+    def test_timeline_analyses_keeps_exact_data_flow_and_receipt_anchor(self):
+        first = self.run_record(self.a)
+        result = first['outputs'][0]['record_ref']
+        downstream = self.p.register_analysis('downstream', [result], method='synthetic', params={})
+        self.interval(first, '2020-01-01T00:00:02Z', '2020-01-01T00:00:03Z')
+        self.p._record(self.a)['created_at'] = '2020-01-01T00:00:01Z'
+        self.p._record(downstream)['created_at'] = '2020-01-01T00:00:04Z'
+        self.persist_fixture()
+        rows = self.assert_native_timeline(view='analyses', limit=1)
+        receipt = next(row for row in rows if row['ref'] == first['receipt_ref'])
+        self.assertEqual(receipt['time_source'], 'wrapper_start')
+        self.assertEqual(receipt['run_ref'], first['run_ref'])
+        self.assertEqual(receipt['output_refs'], [result])
+        self.assertEqual(receipt['output_items'][0]['registration_at_utc'], self.p._record(result)['created_at'])
+        self.assertEqual(receipt['downstream_analysis_refs'], [downstream])
+        ordinary = next(row for row in rows if row['ref'] == downstream)
+        self.assertEqual(ordinary['time_source'], 'registration')
+        text = self.p.timeline_summary(view='analyses')
+        self.assertIn(result['id'] + '@' + str(result['revision']) + ' out1.txt [Registered', text)
+        self.assertIn('-> ' + downstream['id'] + '@' + str(downstream['revision']), text)
+
+    def test_timeline_analyses_null_receipt_is_unqualified_not_ordinary(self):
+        receipt = self.run_record()
+        self.p._record(receipt['receipt_ref'])['details']['execution_receipt'] = None
+        self.persist_fixture()
+        rows = self.assert_native_timeline(view='analyses', limit=1)
+        row = next(item for item in rows if item['ref'] == receipt['receipt_ref'])
+        self.assertEqual((row['time_source'], row['time_utc'], row['output_refs']), ('unqualified', None, []))
+
     def test_timeline_untrusted_and_malformed_runs_stay_unknown(self):
         first, second = self.run_record(self.template(fail=True)), self.run_record()
         self.interval(first, '2020-01-01T00:00:03Z', '2020-01-01T00:00:05Z')

@@ -591,41 +591,53 @@ scientist-submitted decision pinned to one protocol revision.
 See the [protocol contract](docs/api/PROTOCOLS_V1.md) and
 [current protocol API](docs/API.md#register_protocol).
 
-### Execution chronology
+### Follow analyses and their data
 
-With an open project `p`, call `timeline_summary()` to see when each record
-revision was registered. Use the runs view to see recorded runs, their inputs
-and registered outputs. `print(p)` still shows the compact project card.
+`print(p)` shows an oldest-first page of analysis inputs and outputs, using
+recorded names and exact revisions. Intermediate data connects the steps:
+`ANA-001@1 -> DATA-002@1 -> ANA-002@1`. These are recorded dependencies,
+not proof that the code consumed the declared input.
+
+Use the analyses view for named input/output chains; use registration for every
+DATA, ANA, FIG and other record revision, or runs for recorded execution alone.
 
 **Python**
 
 ```python
-print(p.timeline_summary(view="registration", order="oldest"))
-print(p.timeline_summary(view="runs", order="newest"))
-page = p.timeline(view="registration", order="oldest", limit=2)
+print(p)
+print(p.timeline_summary(view="analyses"))
+print(p.timeline_summary(view="registration"))
+print(p.timeline_summary(view="runs"))
+page = p.timeline(view="analyses", order="oldest", limit=2)
 if page["next_cursor"] is not None:
-    next_page = p.timeline(view="registration", order="oldest", limit=2,
+    next_page = p.timeline(view="analyses", order="oldest", limit=2,
                            cursor=page["next_cursor"])
 ```
 
 **R**
 
 ```r
-cat(p$timeline_summary(view = "registration", order = "oldest"), "\n")
-cat(p$timeline_summary(view = "runs", order = "newest"), "\n")
-page <- p$timeline(view = "registration", order = "oldest", limit = 2L)
+print(p)
+cat(p$timeline_summary(view = "analyses"), "\n")
+cat(p$timeline_summary(view = "registration"), "\n")
+cat(p$timeline_summary(view = "runs"), "\n")
+page <- p$timeline(view = "analyses", order = "oldest", limit = 2L)
 if (!is.null(page$next_cursor)) {
-  next_page <- p$timeline(view = "registration", order = "oldest", limit = 2L,
+  next_page <- p$timeline(view = "analyses", order = "oldest", limit = 2L,
                           cursor = page$next_cursor)
 }
 ```
 
-Known times appear in UTC. Run times describe the recorded execution wrapper.
-Both sort orders put unknown times last, including runs with imported or open
-receipts. `timeline()` returns structured pages of up to 10 rows by default.
-Set `limit` from 1 to 20. Each report is capped at 64 KiB. Continue with
-`next_cursor` on the same loaded project using the same view and order. Start
-from the first page after editing or reopening the project.
+Dates and times use UTC. Each analysis identifies its ordering time: registration
+for ordinary records, qualified wrapper start for recorded runs. Unqualified run
+times stay unknown. Inputs and outputs retain their own registration timestamps.
+The caller-declared generation day used in output filenames stays separate.
+
+`oldest` is the default; use `order="newest"` for reverse order. Both put unknown
+times last. Pages contain up to 10 rows by default (limit 1–20), capped at 64 KiB.
+Continue with `next_cursor` on the same unchanged loaded project and the same view
+and order. Restart after edits or reopening. Inspection reads loaded metadata,
+without loading or hashing scientific files.
 
 `execution_history()` retrieves bounded recorded runs by project, exact analysis
 or protocol. Pairwise timing evidence preserves overlaps, ties, failures and

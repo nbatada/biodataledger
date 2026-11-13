@@ -41,3 +41,15 @@ digest-verified previews. The snapshot can contain private metadata and image
 bytes. Export leaves the registry and pending edits as they are. Writes are
 supported on tested local macOS filesystems.
 }
+
+\section{Chronological analysis inputs and outputs}{
+\code{timeline(view = "analyses", order = "oldest", limit = 10L, cursor = NULL)}
+returns a bounded page of exact analysis revisions and their named inputs,
+outputs and downstream data consumers. Ordinary registrations and qualified
+wrapper start times are labeled separately; unqualified run times remain unknown.
+\code{timeline_summary(view = "analyses")} formats the same page. Default
+\code{print(p)} shows the first four oldest entries, current selections and
+figure location. Artifact timestamps are UTC registration times, not inferred
+generation dates. Existing registration and runs views remain available.
+See installed CHRONOLOGY_V1.md for bounds, exact refs and cursor behavior.
+}

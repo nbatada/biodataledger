@@ -1,6 +1,6 @@
 # BioDataLedger API reference
 
-BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. The browser snapshot below is an unreleased development method. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
+BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. The browser snapshot and analysis-focused timeline below are unreleased development additions. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 
 ## Open and inspect a project
 
@@ -103,7 +103,17 @@ R       p$summary_text(purpose = NULL)
 
 Return the technical card with project, design, record counts, loaded package version, registry revision, and unsaved state. With `purpose`, the card shows the selected input context. Python presents the compact dataset section. R keeps the record counts and adds selected-purpose details. Call `p.summary_text(purpose="review")` or `p$summary_text(purpose="review")`. Python `p.unsaved` is a read-only boolean property. R exposes the flag in `p$status()$unsaved` and `p$summary()$unsaved`. Use the documented constructors and accessors for project state. For loaded package version alone, use `biodataledger.__version__` or `getNamespaceVersion("BioDataLedger")`.
 
-In Python, `repr(p)` returns the project overview and `print(p)` displays it. R `print(p)` returns the handle invisibly. The overview shows recorded purpose, at most four distinct analyses at their latest revisions, the full project folder, up to three recorded current input selections, and the latest active figure by registration. Analyses use the same registration ordering as [`recent_figures()`](#recent_figures). The analysis table uses a recorded string `details.ticket_name` when available, or the analysis name. It shows the latest linked revision of each recorded output for the exact analysis revision in that row, with up to two names and a remaining count. Historical or non-active outputs include an exact ref and qualifier. Current selections show recorded scope. Use the exact figure getters to inspect that figure's historical inputs. Exact DATA references identify registry revisions. Use `summary_text()` to retrieve the technical card previously shown by default.
+In Python, `repr(p)` returns the project overview and `print(p)` displays it.
+R `print(p)` returns the handle invisibly. The overview starts with a bounded,
+oldest-first analysis input/output page. It shows exact references and recorded
+names, input/output registration timestamps, qualified run start/end times, and
+which later analyses reference each intermediate DATA revision. Ordinary analysis
+registrations and observed run intervals are labeled separately; unqualified run
+times remain unknown. Associated figures are distinguished from produced data.
+The project folder, current input selections and latest active figure path remain
+available. Use `timeline(view="analyses")` for continuation and
+`timeline(view="registration")` for all record revisions. The technical card stays
+available through `summary_text()`; these views do not check file availability.
 
 ### help
 
@@ -542,7 +552,7 @@ Python  p.timeline(view='registration', order='oldest', limit=10, cursor=None)
 R       p$timeline(view = "registration", order = "oldest", limit = 10L, cursor = NULL)
 ```
 
-Page recorded UTC chronology. `view="registration"` shows every record revision. `view="runs"` uses qualifying recorded wrapper start times and preserves unqualified times separately. `order` is `"oldest"` or `"newest"`, with unknown times last. Returns `rows`, timing `relations`, qualifiers, and `next_cursor` in a report capped at 64 KiB. Use limit 1–20. A cursor is valid for the same view/order on the same unchanged handle. Restart paging after an edit or reopen. Example `p.timeline(view="runs", order="newest")` or `p$timeline(view="runs", order="newest")`. See [timeline fields](api/CHRONOLOGY_V1.md#read-the-project-timeline).
+Page recorded UTC chronology. `view="analyses"` shows named exact analysis inputs, outputs and downstream data consumers. `view="registration"` shows every record revision. `view="runs"` uses qualifying recorded wrapper start times and preserves unqualified times separately. `order` is `"oldest"` or `"newest"`, with unknown times last. Returns `rows`, timing `relations`, qualifiers, and `next_cursor` in a report capped at 64 KiB. Use limit 1–20. A cursor is valid for the same view/order on the same unchanged handle. Restart paging after an edit or reopen. Example `p.timeline(view="analyses")` or `p$timeline(view="analyses")`. The analyses view labels ordinary registration time separately from qualified wrapper start and leaves unqualified run times unknown. See [timeline fields](api/CHRONOLOGY_V1.md#read-the-project-timeline).
 
 ### timeline_summary
 

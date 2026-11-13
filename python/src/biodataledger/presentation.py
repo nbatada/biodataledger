@@ -1,7 +1,6 @@
 """Caller-declared naming and discovery for exact retained outputs."""
 from copy import deepcopy
 from datetime import date
-from itertools import islice, zip_longest
 from pathlib import Path
 import os
 import re
@@ -206,57 +205,6 @@ def _recorded_text(stamp):
     return stamp[:-1].replace("T", " ") if stamp is not None else "Unknown"
 
 
-def _analysis_output_labels(project, record, width):
-    linked = {}
-    for edge in project._lineage.adjacent(project._ref(record), "downstream", extended=True):
-        if edge["type"] in ("produced_result", "transformation_context", "analytical_association"):
-            # The index orders edges by target ID and then ascending target revision.
-            ref = edge["to"]
-            linked[ref["id"]] = ref
-    labels = []
-    for ref in islice(linked.values(), 2):
-        output = project._record(ref)
-        _, descriptor = _read(output)
-        labels.append(_console_label(_output_title(output, descriptor), width) or "Unnamed output")
-        flags = []
-        if output["revision"] != project._latest_index[ref["id"]]["revision"]:
-            flags.append("historical")
-        if output["status"] != "active":
-            flags.append(output["status"])
-        if flags:
-            labels.append(f"{_console_ref(ref)} ({', '.join(flags)})")
-    if len(linked) > 2:
-        labels.append(f"+{len(linked) - 2} more")
-    return labels or ["None linked to this revision"]
-
-
-def _analysis_table(project):
-    analyses = _recent_records(project, "analysis")[:4]
-    if not analyses:
-        return ["  None recorded"]
-    headings = ("Recorded (UTC)", "Ticket / analysis", "Recorded outputs")
-    refs = [_console_ref(record) for record, _ in analyses]
-    outputs = [_analysis_output_labels(project, record, 39) for record, _ in analyses]
-    widths = (19, max(34, max(map(len, refs))),
-              max(39, max(_console_width(line) for group in outputs for line in group)))
-    border = "+" + "+".join("-" * (width + 2) for width in widths) + "+"
-
-    def row(*values):
-        cells = [value + " " * (width - _console_width(value)) for value, width in zip(values, widths)]
-        return "| " + " | ".join(cells) + " |"
-
-    lines = [border, row(*headings), border]
-    for (record, stamp), ref, labels in zip(analyses, refs, outputs):
-        ticket = record["details"].get("ticket_name")
-        label = _console_label(ticket, widths[1]) if isinstance(ticket, str) else ""
-        label = label or _console_label(record["name"], widths[1]) or "Unnamed analysis"
-        lines.extend(row(*cells) for cells in zip_longest(
-            [_recorded_text(stamp)], [label, ref], labels, fillvalue=""))
-        lines.append(border)
-    lines.append("Each output shows its latest linked revision for the exact analysis revision in that row.")
-    return lines
-
-
 def _console_scope(scope):
     if scope is None:
         return []
@@ -276,12 +224,16 @@ def _console_scope(scope):
 
 
 def project_overview(project):
+    from .chronology import timeline_summary
     info = project.state["project"]
     lines = ["BioDataLedger for — " + (_console_label(info["name"]) or "Unnamed project")]
     purpose = _console_label(info["purpose"] or "", 160)
     if purpose:
         lines.append(purpose)
-    lines += ["", "Recent analyses", *_analysis_table(project), "",
+    flow = timeline_summary(project.timeline(view="analyses", order="oldest", limit=4)).splitlines()[1:]
+    if flow[-1] != "Next cursor: none":
+        flow[-1] = "Next cursor: more"
+    lines += ["", "Analyses (oldest first) | UTC", *flow, "",
               "Project folder", "  " + _console_path(str(project.root)),
               "", "Current input selections"]
     for purpose in project._purposes[:3]:

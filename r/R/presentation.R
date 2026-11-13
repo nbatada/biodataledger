@@ -87,60 +87,6 @@
   c(unlist(lines, use.names = FALSE), if (report$omitted) sprintf("  +%d more figures", report$omitted))
 }
 
-.analysis_output_labels <- function(state, graph, rec, width) {
-  latest <- attr(state, "record_index")$latest
-  exact <- .make_ref(state, rec)
-  edges <- c(.result_adjacent(graph, exact, "downstream"),
-             get0(.result_id(exact), graph$extra_forward, inherits = FALSE, ifnotfound = list()))
-  kinds <- c("produced_result", "transformation_context", "analytical_association")
-  edges <- .result_sort_edges(Filter(function(edge) edge$type %in% kinds, edges))
-  if (!length(edges)) return("None linked to this revision")
-  ids <- vapply(edges, function(edge) edge$to$id, character(1))
-  # Edges are ordered by target ID and then ascending target revision.
-  linked <- edges[!duplicated(ids, fromLast = TRUE)]
-  labels <- character()
-  for (edge in utils::head(linked, 2L)) {
-    ref <- edge$to
-    output <- .record(state, ref)
-    label <- .console_label(.output_title(output, .presentation_read(output)$descriptor), width)
-    labels <- c(labels, if (nzchar(label)) label else "Unnamed output")
-    current <- state$records[[get(ref$id, latest, inherits = FALSE)]]
-    flags <- c(if (output$revision != current$revision) "historical",
-               if (output$status != "active") output$status)
-    if (length(flags)) labels <- c(labels, paste0(.console_ref(ref), " (", paste(flags, collapse = ", "), ")"))
-  }
-  c(labels, if (length(linked) > 2L) sprintf("+%d more", length(linked) - 2L))
-}
-
-.analysis_table <- function(state, graph) {
-  rows <- .recent_records(state, "analysis")
-  analyses <- utils::head(rows$records, 4L)
-  if (!length(analyses)) return("  None recorded")
-  refs <- vapply(analyses, .console_ref, character(1))
-  outputs <- lapply(analyses, function(rec) .analysis_output_labels(state, graph, rec, 39L))
-  widths <- c(19L, max(34L, nchar(refs)), max(39L, stri_width(unlist(outputs, use.names = FALSE))))
-  border <- paste0("+", paste(strrep("-", widths + 2L), collapse = "+"), "+")
-  row <- function(values) {
-    cells <- paste0(values, strrep(" ", widths - stri_width(values)))
-    paste0("| ", paste(cells, collapse = " | "), " |")
-  }
-  lines <- c(border, row(c("Recorded (UTC)", "Ticket / analysis", "Recorded outputs")), border)
-  for (i in seq_along(analyses)) {
-    rec <- analyses[[i]]
-    ticket <- rec$details[["ticket_name"]]
-    label <- if (is.character(ticket) && length(ticket) == 1L) .console_label(ticket, widths[2L]) else ""
-    if (!nzchar(label)) label <- .console_label(rec$name, widths[2L])
-    if (!nzchar(label)) label <- "Unnamed analysis"
-    labels <- outputs[[i]]
-    n <- max(2L, length(labels))
-    dates <- c(.recorded_text(rows$stamps[[i]]), rep("", n - 1L))
-    names <- c(label, refs[[i]], rep("", n - 2L))
-    labels <- c(labels, rep("", n - length(labels)))
-    lines <- c(lines, vapply(seq_len(n), function(j) row(c(dates[[j]], names[[j]], labels[[j]])), character(1)), border)
-  }
-  c(lines, "Each output shows its latest linked revision for the exact analysis revision in that row.")
-}
-
 .console_scope <- function(scope) {
   fields <- character()
   labels <- c(condition_values = "Conditions", assignment_inclusion = "Assignment")
@@ -160,12 +106,14 @@
   fields
 }
 
-.project_overview <- function(root, state, graph) {
+.project_overview <- function(root, state, timeline) {
   info <- state$project
   name <- .console_label(info$name)
   purpose <- if (is.null(info$purpose)) "" else .console_label(info$purpose, 160L)
+  flow <- strsplit(.timeline_summary(timeline(view = "analyses", order = "oldest", limit = 4L)), "\n", fixed = TRUE)[[1L]][-1L]
+  if (!identical(flow[[length(flow)]], "Next cursor: none")) flow[[length(flow)]] <- "Next cursor: more"
   lines <- c(paste0("BioDataLedger for \u2014 ", if (nzchar(name)) name else "Unnamed project"),
-             if (nzchar(purpose)) purpose, "", "Recent analyses", .analysis_table(state, graph), "",
+             if (nzchar(purpose)) purpose, "", "Analyses (oldest first) | UTC", flow, "",
              "Project folder", paste0("  ", .console_path(root)), "", "Current input selections")
   purposes <- attr(state, "record_index")$summary$purposes
   for (purpose in utils::head(purposes, 3L)) {

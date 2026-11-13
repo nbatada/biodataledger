@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Show oldest-first analysis input/output chains in `print(p)` and the new
+  `timeline(view="analyses")` view in R and Python. Preserve exact intermediate
+  data revisions, recorded names, UTC timestamps and qualified run timing.
+  Reuse loaded metadata and bounded pages without payload reads or hashing.
+
 - Add a private, [read-only browser snapshot](docs/VIEWER.md) in R and Python.
   Search loaded records, follow exact revisions, and optionally include
   digest-verified previews of selected figures.

@@ -176,6 +176,22 @@ def _timeline_index(project, view):
                 parsed[stamp] = stamp if _timestamp(stamp) is not None else None
             stamp = parsed[stamp]
         else:
+            if view == "analyses":
+                if record["kind"] != "analysis":
+                    continue
+                has_receipt = "execution_receipt" in record["details"]
+                receipt = _validated_receipt(project, record) if has_receipt else None
+                # One latest receipt revision per run ID; ordinary revisions remain inspectable.
+                if has_receipt and project._latest_index[record["id"]] is not record:
+                    continue
+                timing = _timeline_receipt_timing(receipt)
+                stamp = (receipt["started_at_utc"] if receipt is not None and timing == "valid_interval"
+                         and not project.state["imported"] else record["created_at"] if not has_receipt else None)
+                if stamp not in parsed:
+                    parsed[stamp] = stamp if _timestamp(stamp) is not None else None
+                stamp = parsed[stamp]
+                slots.append((position, stamp, timing))
+                continue
             if (record["kind"] != "analysis" or project._latest_index[record["id"]] is not record
                     or "execution_receipt" not in record["details"]):
                 continue
@@ -189,6 +205,79 @@ def _timeline_index(project, view):
     unknown = [slot for slot in slots if slot[1] is None]
     return {order: sorted(known, key=lambda slot: slot[1], reverse=order == "newest") + unknown
             for order in ("oldest", "newest")}
+
+
+def _timeline_refs(project, refs, limit=10):
+    shown = [project._ref(project._record(ref)) if isinstance(ref, str) else ref for ref in refs[:limit]]
+    shown = [ref for ref in shown if len(canonical(ref)) <= 512]
+    return shown, len(refs) - len(shown)
+
+
+def _analysis_consumers(project, outputs):
+    consumers, mappings, remaining = [], [], 100
+    display_remaining = 10
+    cutoff = False
+    for output in outputs:
+        linked, truncated = [], False
+        if remaining == 0:
+            mappings.append({"output_ref": output, "analysis_refs": [], "analysis_refs_omitted": 0,
+                             "scan_truncated": True})
+            cutoff = True
+            continue
+        for edge in project._lineage.adjacent(output, "downstream", extended=True):
+            if remaining == 0:
+                truncated = True
+                cutoff = True
+                break
+            remaining -= 1
+            if edge["type"] == "input_to_analysis":
+                consumers.append(edge["to"])
+                linked.append(edge["to"])
+        shown, omitted = _timeline_refs(project, linked, display_remaining)
+        display_remaining -= len(shown)
+        mappings.append({"output_ref": output, "analysis_refs": shown, "analysis_refs_omitted": omitted,
+                         "scan_truncated": truncated})
+    unique = []
+    for ref in consumers:
+        if ref not in unique:
+            unique.append(ref)
+    flat, omitted = _timeline_refs(project, unique)
+    return flat, omitted, cutoff, mappings
+
+
+def _analysis_links(project, record, receipt, receipt_claim):
+    if receipt is not None:
+        return ([item["record_ref"] for item in receipt["outputs"] if item["status"] == "registered"], [], False)
+    if receipt_claim:
+        return [], [], False
+    produced, figures, scanned = [], [], 0
+    for edge in project._lineage.adjacent(project._ref(record), "downstream", extended=True):
+        scanned += 1
+        if scanned > 100:
+            break
+        if edge["type"] in ("produced_result", "transformation_context") and edge["basis"] == "declared":
+            produced.append(edge["to"])
+        elif edge["type"] == "analytical_association":
+            figures.append(edge["to"])
+    return produced, figures, scanned > 100
+
+
+def _timeline_item(project, ref):
+    from .presentation import _output_title, _read
+    from .related_work import _clip
+    record = project._record(ref)
+    _, descriptor = _read(record) if record["kind"] in ("data", "figure") else (None, None)
+    name, clipped = _clip(_output_title(record, descriptor), 192)
+    stamp = record["created_at"]
+    return {"ref": project._ref(record), "kind": record["kind"], "name": name, "name_clipped": clipped,
+            "record_status": record["status"],
+            "revision_status": "latest" if project._latest_index[record["id"]] is record else "historical",
+            "registration_at_utc": stamp if _timestamp(stamp) is not None else None}
+
+
+def _analysis_name(record):
+    ticket = record["details"].get("ticket_name")
+    return ticket if isinstance(ticket, str) and ticket else record["name"]
 
 
 def _timeline_row(project, view, slot):
@@ -209,9 +298,9 @@ def _timeline_row(project, view, slot):
     row = {"ref": project._ref(record), "kind": record["kind"], "time_utc": stamp,
            "evidence": evidence, "outcome": receipt["status"] if receipt is not None else None,
            "analysis_ref": analysis, "omitted_text_fields": []}
-    texts = {"name": record["name"], "registration_at_utc": record["created_at"]}
+    texts = {"name": _analysis_name(record) if view == "analyses" and record["kind"] == "analysis" else record["name"], "registration_at_utc": record["created_at"]}
     links = {"input_refs": record["inputs"]}
-    if view == "runs":
+    if view in ("runs", "analyses"):
         row.update(run_ref=None, template_ref=None, timing_status=timing)
         texts.update(started_at_utc=None, ended_at_utc=None)
         links["output_refs"] = None
@@ -219,6 +308,14 @@ def _timeline_row(project, view, slot):
             row.update(run_ref=receipt["run_ref"], template_ref=receipt["template_ref"])
             texts.update(started_at_utc=receipt["started_at_utc"], ended_at_utc=receipt["ended_at_utc"])
             links["output_refs"] = [item["record_ref"] for item in receipt["outputs"] if item["status"] == "registered"]
+    if view == "analyses":
+        row["record_status"] = record["status"]
+        row["revision_status"] = "latest" if project._latest_index[record["id"]] is record else "historical"
+        row["time_source"] = ("wrapper_start" if receipt is not None and row["time_utc"] == receipt["started_at_utc"]
+                              else "registration" if "execution_receipt" not in record["details"] else "unqualified")
+        outputs, figures, cutoff = _analysis_links(project, record, receipt, "execution_receipt" in record["details"])
+        links["output_refs"], links["associated_figure_refs"] = outputs, figures
+        row["output_scan_truncated"] = cutoff
     for field, value in texts.items():
         if value is not None and (len(value) > 256 or len(value.encode("utf-8")) > 256):
             row["omitted_text_fields"].append(field)
@@ -227,16 +324,25 @@ def _timeline_row(project, view, slot):
     for field, refs in links.items():
         shown = None
         if refs is not None:
-            shown = [project._ref(project._record(ref)) if isinstance(ref, str) else ref for ref in refs[:10]]
-            shown = [ref for ref in shown if len(canonical(ref)) <= 512]
+            shown, omitted = _timeline_refs(project, refs)
         row[field] = shown
-        row[field + "_omitted"] = len(refs) - len(shown) if shown is not None else 0
+        row[field + "_omitted"] = omitted if shown is not None else 0
+    if view == "analyses":
+        outputs = row["output_refs"] or []
+        row["output_items"] = [_timeline_item(project, ref) for ref in outputs]
+        row["input_items"] = [_timeline_item(project, ref) for ref in row["input_refs"] or []]
+        row["associated_figure_items"] = [_timeline_item(project, ref) for ref in row["associated_figure_refs"] or []]
+        data_outputs = [item["ref"] for item in row["output_items"] if item["kind"] == "data"]
+        consumers, omitted, cutoff, mappings = _analysis_consumers(project, data_outputs)
+        row["downstream_analysis_refs"], row["downstream_analysis_refs_omitted"] = consumers, omitted
+        row["downstream_scan_truncated"] = cutoff
+        row["output_consumers"] = mappings
     return row
 
 
 def timeline(project, view="registration", order="oldest", limit=10, cursor=None):
     """Read a globally ordered page from this loaded instance's metadata."""
-    require(isinstance(view, str) and view in ("registration", "runs"), "view must be registration or runs")
+    require(isinstance(view, str) and view in ("registration", "runs", "analyses"), "view must be registration, runs or analyses")
     require(isinstance(order, str) and order in ("oldest", "newest"), "order must be oldest or newest")
     require(type(limit) is int and 1 <= limit <= 20, "limit must be an integer from 1 to 20")
     state = project.state
@@ -269,7 +375,7 @@ def timeline(project, view="registration", order="oldest", limit=10, cursor=None
     report = {"report_version": "biodataledger-timeline/1", "view": view, "order": order, "timezone": "UTC",
               "registry_revision": state["state_revision"], "unsaved": project.unsaved,
               "imported_claim": "untrusted_imported_claim" if state["imported"] else None,
-              "total_rows": len(slots), "rows": rows, "relations": _relations(rows) if view == "runs" else [],
+              "total_rows": len(slots), "rows": rows, "relations": _relations(rows) if view in ("runs", "analyses") else [],
               "next_cursor": prefix + str(end) if end < len(slots) else None}
     require(len(canonical(report)) <= MAX_BYTES, "timeline report exceeds 64 KiB")
     return copy.deepcopy(report)
@@ -279,9 +385,67 @@ def _timeline_ref(ref):
     return f"{ref['id']}@{ref['revision']}"
 
 
+def _analysis_summary_lines(row):
+    from .presentation import _console_label
+
+    def stamp(value):
+        return value if _timestamp(value) is not None else "UNKNOWN"
+
+    def item_text(item):
+        label = _console_label(item["name"], 48)
+        if item["name_clipped"] and not label.endswith("..."):
+            label += "..."
+        flags = _analysis_flags(item)
+        return f"{_timeline_ref(item['ref'])} {label}{flags} [Registered {stamp(item['registration_at_utc'])}]"
+
+    lines = ["    Input " + item_text(item) for item in row["input_items"]]
+    if not lines:
+        lines.append("    Inputs " + ("unknown" if row["input_refs"] is None else "none recorded"))
+    by_ref = {_timeline_ref(item["ref"]): item for item in row["output_items"]}
+    producer = _timeline_ref(row["run_ref"] or row["ref"])
+    for mapping in row["output_consumers"]:
+        item = by_ref[_timeline_ref(mapping["output_ref"])]
+        target = ", ".join(map(_timeline_ref, mapping["analysis_refs"]))
+        if not target:
+            target = ("consumers omitted" if mapping["analysis_refs_omitted"] else
+                      "consumers unknown" if mapping["scan_truncated"] else "no recorded consumer")
+        if mapping["analysis_refs_omitted"]:
+            target += f" (+{mapping['analysis_refs_omitted']} consumers omitted)"
+        if mapping["scan_truncated"]:
+            target += " [scan incomplete]"
+        lines.append(f"    {producer} -> {item_text(item)} -> {target}")
+    for item in row["output_items"]:
+        if item["kind"] == "figure":
+            lines.append("    Receipt figure " + item_text(item))
+    for item in row["associated_figure_items"]:
+        lines.append("    Associated figure " + item_text(item))
+    if not row["output_items"] and not row["associated_figure_items"]:
+        lines.append("    Outputs unknown" if row["time_source"] == "unqualified" else "    No recorded outputs shown")
+    for field, label in (("input_refs", "inputs"), ("output_refs", "outputs"),
+                         ("associated_figure_refs", "associated figures")):
+        if row[field + "_omitted"]:
+            lines.append(f"    +{row[field + '_omitted']} {label} omitted")
+    if row["output_scan_truncated"] or row["downstream_scan_truncated"]:
+        lines.append("    Link scan truncated at 100 edges; additional links may be uninspected")
+    if row["run_ref"] is not None:
+        lines.append(f"    Run {producer} | Receipt {_timeline_ref(row['ref'])} | "
+                     f"Registered {stamp(row['registration_at_utc'])} | "
+                     f"Wrapper start {stamp(row['started_at_utc'])} | End {stamp(row['ended_at_utc'])}")
+    return lines
+
+
+def _analysis_flags(item):
+    flags = []
+    if item["revision_status"] == "historical":
+        flags.append("historical")
+    if item["record_status"] != "active":
+        flags.append(item["record_status"])
+    return " (" + ", ".join(flags) + ")" if flags else ""
+
+
 def timeline_summary(report):
-    runs = report["view"] == "runs"
-    heading = "Recorded runs by wrapper start" if runs else "Record revisions by registration time"
+    runs, analyses = report["view"] == "runs", report["view"] == "analyses"
+    heading = "Recorded runs by wrapper start" if runs else "Analyses and recorded data flow" if analyses else "Record revisions by registration time"
     lines = [f"{heading} (UTC, {report['order']} first)"]
     if report["imported_claim"]:
         lines.append("Imported metadata. Receipt claims are untrusted.")
@@ -292,12 +456,21 @@ def timeline_summary(report):
             lines.append("Time unknown or unqualified")
             unknown_heading = True
         name = canonical(row["name"]).decode("utf-8") if row["name"] is not None else "[name omitted]"
+        if analyses and row["name"] is not None:
+            from .presentation import _console_label
+            name = _console_label(row["name"], 72)
+        if analyses:
+            name += _analysis_flags(row)
         evidence = row["evidence"]
         status = row["outcome"] or ("execution UNKNOWN" if evidence == "unknown" else row["kind"])
-        line = f"[{number}] {stamp}  {_timeline_ref(row['ref'])}  {name}  {status}"
+        source = {"wrapper_start": "Run started", "registration": "Registered", "unqualified": "Time unqualified"}.get(row.get("time_source"), "")
+        line = f"[{number}] {stamp}" + (f" ({source})" if source else "") + f"  {_timeline_ref(row['ref'])}  {name}  {status}"
         if row["outcome"]:
             line += f" ({evidence.replace('_', ' ')})"
         lines.append(line)
+        if analyses:
+            lines.extend(_analysis_summary_lines(row))
+            continue
         if runs:
             if row["run_ref"] is not None:
                 lines.append(f"    Run {_timeline_ref(row['run_ref'])} | Template {_timeline_ref(row['template_ref'])}")
@@ -315,12 +488,15 @@ def timeline_summary(report):
             linked = ", ".join(map(_timeline_ref, refs)) or "none shown"
             omitted = row[field + "_omitted"]
             lines.append(f"    {label} {linked}" + (f" ({omitted} omitted)" if omitted else ""))
-    if runs:
+    if runs or analyses:
         relations = [f"{pair['left']}-{pair['right']} {pair['relation'].replace('_', ' ')}"
                      for pair in report["relations"] if pair["relation"] in ("overlap", "tied", "tied_boundary")]
         if relations:
             lines.append("Overlaps or ties on this page: " + ", ".join(relations))
-        lines.append("Wrapper intervals are partial evidence. Unrecorded execution remains unknown.")
+        if analyses:
+            lines.append("Registration is not execution; arrows show recorded dependencies, not verified consumption.")
+        else:
+            lines.append("Wrapper intervals are partial evidence. Unrecorded execution remains unknown.")
     else:
         lines.append("Registration times describe record revisions. Equal times share the same displayed time.")
     lines.append(f"Next cursor: {report['next_cursor'] or 'none'}")

@@ -352,16 +352,13 @@ class DesignTests(unittest.TestCase):
         self.p.save()
         overview = repr(self.p)
         table = overview.split("Project folder")[0]
-        labels = ("Corrected label", "Cell counts — vérifié", "Prior day", "Legacy date unknown")
+        labels = ("Earlier analysis label", "Prior day", "Corrected label", "Cell counts — vérifié")
         self.assertEqual(sorted(labels, key=table.index), list(labels))
-        for expected in ("Recorded (UTC)", "Recorded outputs", "2025-01-03 12:00:00", "Unknown", "ANA-001@2",
-                         "None linked to this revision", "counts.csv", "Historical caption", "FIG-002@2 (historical)",
-                         "Declared transformation", "Latest caption", "Retired figure", "FIG-004@2 (inactive)",
-                         "+1 more"):
+        for expected in ("Analyses (oldest first)", "Associated figure", "Prior revision figure",
+                         "Declared transformation", "2025-01-03T12:00:00Z", "Next cursor:",
+                         "ANA-001@1", "ANA-001@2", "Old caption", "Historical caption", "(historical)"):
             self.assertIn(expected, table)
-        for excluded in ("ANA-001@1", "Earlier analysis label", "Omitted legacy", "Prior revision figure",
-                         "Old caption", "Standalone figure", "Internal analysis name"):
-            self.assertNotIn(excluded, table)
+        self.assertNotIn("Standalone figure", table)
         native = json.loads(r_design("overview", self.root))
         self.assertEqual(overview.replace("p.help()", "p$help()"), "\n".join(native["overview"]))
 
@@ -373,11 +370,12 @@ class DesignTests(unittest.TestCase):
         self.p.save()
         overview = repr(self.p)
         table = overview.split("Project folder")[0]
-        newest = ("Latest label", "Batch analysis 4", "Batch analysis 3", "Batch analysis 2")
-        self.assertEqual(sorted(newest, key=table.index), list(newest))
-        self.assertIn("ANA-001@3", table)
-        for omitted in ("Batch analysis 1", "Corrected label", "Cell counts", "Prior day", "Legacy date unknown"):
-            self.assertNotIn(omitted, table)
+        self.assertIn("Analyses (oldest first)", table)
+        self.assertIn("Next cursor:", table)
+        # Later registrations do not displace the beginning of the oldest-first page.
+        self.assertIn('Earlier analysis label', table)
+        self.assertIn('Corrected label', table)
+        self.assertNotIn('Batch analysis 4', table)
         native = json.loads(r_design("overview", self.root))
         self.assertEqual(overview.replace("p.help()", "p$help()"), "\n".join(native["overview"]))
 
@@ -459,7 +457,7 @@ class DesignTests(unittest.TestCase):
         self.p.set_context({"purpose": "  "})
         empty = self.p.recent_figures(structured=True)
         self.assertEqual(empty, {"items": [], "total": 0, "omitted": 0})
-        self.assertEqual(repr(self.p).count("None recorded"), 3)
+        self.assertEqual(repr(self.p).count("None recorded"), 2)
         self.assertNotIn("Purpose", repr(self.p))
         with patch("biodataledger.core.now", return_value="2020-01-01T00:00:00Z"):
             self.p.register_analysis("漢字" * 70 + "\tTruncated", None)
@@ -475,8 +473,8 @@ class DesignTests(unittest.TestCase):
         newest = ("FIG-001@2", "FIG-021@1", "FIG-020@1")
         self.assertEqual(sorted(newest, key=output.getvalue().index), list(newest))
         self.assertNotIn("FIG-019@1", output.getvalue())
-        self.assertIn("漢字漢字", repr(self.p))
-        self.assertIn("...", repr(self.p))
+        self.assertIn("[name omitted]", repr(self.p))
+        self.assertIn("[name omitted]", repr(self.p))
         self.assertNotIn("\t", repr(self.p))
         maximum = self.p.recent_figures(20, structured=True)
         self.assertEqual(len(maximum["items"]), 20)

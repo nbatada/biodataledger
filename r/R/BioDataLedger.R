@@ -1696,7 +1696,7 @@ ProjectBundle <- local({
         timeline_cache$generation <- generation
         timeline_cache$snapshot <- .uuid()
       }
-      .timeline_page(state, dirty, timeline_cache, view, order, limit, cursor)
+      .timeline_page(state, result_graph, dirty, timeline_cache, view, order, limit, cursor)
     }
     self$timeline_summary <- function(view = "registration", order = "oldest", limit = 10L, cursor = NULL) .timeline_summary(self$timeline(view, order, limit, cursor))
     self$help <- function() {
@@ -1727,7 +1727,7 @@ ProjectBundle <- local({
     self$preview_export <- function(mode, include = list(), exclude = NULL, redact = NULL) .preview_export(root, state, dirty, mode, include, exclude, redact)
     self$export_zip <- function(plan, path) .export_zip(root, state, dirty, plan, path)
     structure(self, class = "ProjectBundle",
-              overview = function() .project_overview(root, state, result_graph))
+              overview = function() .project_overview(root, state, self$timeline))
   }
   import_zip <- function(path, project_dir) .import_zip(path, project_dir, open)
   list(create = create, open = open, import_zip = import_zip)

@@ -177,7 +177,7 @@ timestamps remain unknown, with no rounding or time zone conversion. Equal times
 use the exact ID and numeric revision to make paging stable. A tie breaker carries
 no timing evidence. Run `relations` retain the interval comparisons above for
 rows on the same page. The original `execution_history()` order and selectors
-remain available. The project inspection card is unchanged.
+remain available. The technical `summary_text()` card is unchanged.
 
 `timeline()` returns a `biodataledger-timeline/1` report. `rows` carry an exact `ref`,
 name, record kind, qualified ordering time (`time_utc`), original registration
@@ -196,3 +196,46 @@ restarting from the first page. A cursor is a local continuation marker.
 The first request for a view qualifies and sorts the loaded metadata across the
 whole view. Later pages reuse that in-memory order until the loaded state changes.
 The timeline reads no payload files and saves no state.
+
+## Analysis inputs and outputs (development)
+
+`timeline(view="analyses")` adds a chronological input/output view. The default
+order is oldest first. Ordinary analyses use their exact revision's registration
+time; validated local terminal runs use their recorded wrapper start. Each row
+labels its time source. Imported, open, blocked, malformed or otherwise unqualified
+run times remain unknown and sort last. Ordering mixed registration/run events
+does not establish a complete execution sequence. Dates and times are UTC.
+
+Every ordinary analysis revision remains inspectable. A receipt-bearing analysis
+identity contributes its latest receipt row, as in the runs view. Normal analysis
+registrations and later executions are separate records, not duplicate proof of
+execution. Use `view="registration"` for every DATA, ANA, FIG, DEC and DES revision.
+
+Input/output links use exact revisions and recorded names. Each displayed artifact
+retains its own registration timestamp. The semantic filename convention and
+caller-declared generation day remain unchanged. A later metadata correction,
+current-input selection or data revision does not substitute a newer input/output.
+For a valid run, outputs come from its validated receipt and refer to its exact
+started run revision, even when the displayed receipt is the terminal revision.
+Ordinary analysis rows use recorded producer links. Figures linked by analytical
+association are labeled separately from produced DATA.
+
+The view shows how an exact produced DATA revision is referenced by a later
+analysis: `ANA-001@1 -> DATA-002@1 -> ANA-002@1`. Branches and multiple inputs
+retain their individual links. These arrows describe recorded dependencies, not
+verified file consumption. Missing links remain unknown; they do not establish
+that an analysis has no outputs or that a result was never used.
+
+Rows, input/output lists, consumer lookups and text are bounded. Each page uses
+the existing 1–20 row limit and 64 KiB report cap. Link lists show at most ten
+exact refs and each bounded adjacency lookup inspects at most 100 edges. Omitted
+links or incomplete scans are explicit; narrow the query or use exact getters
+and focused graph inspection for more detail. An oversized row cannot silently
+drop required identity: it rejects with guidance to inspect the exact record.
+
+`print(p)` starts with a compact oldest-first page of this view, followed by the
+project folder, current selections and latest figure. Use
+`timeline_summary(view="analyses")` for a larger text page and the structured
+`timeline(view="analyses")` with `next_cursor` for continuation. No browser or
+Graphviz is needed. Inspection reuses the loaded registry and dependency index,
+with no scientific payload reads, hashing, saves or persisted-format changes.

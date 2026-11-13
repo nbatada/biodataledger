@@ -184,6 +184,22 @@
     timing <- rep(NA_character_, length(stamps))
   } else {
     latest <- attr(state, "record_index")$latest
+    if (view == "analyses") {
+      positions <- positions[vapply(positions, function(i) {
+        rec <- records[[i]]
+        rec$kind == "analysis" && (!("execution_receipt" %in% names(rec$details)) || get(rec$id, latest) == i)
+      }, logical(1))]
+      stamps <- character(length(positions)); timing <- character(length(positions))
+      for (i in seq_along(positions)) {
+        rec <- records[[positions[[i]]]]; has_receipt <- "execution_receipt" %in% names(rec$details)
+        receipt <- if (!has_receipt) NULL else .timeline_receipt(state, rec)
+        timing[[i]] <- .timeline_receipt_timing(receipt)
+        stamps[[i]] <- if (!has_receipt) rec$created_at else if (!is.null(receipt) && timing[[i]] == "valid_interval" && !isTRUE(state$imported)) receipt$started_at_utc else ""
+      }
+      unique_stamps <- unique(stamps)
+      valid <- vapply(unique_stamps, .timeline_timestamp, logical(1))
+      stamps[!valid[match(stamps, unique_stamps)]] <- ""
+    } else {
     positions <- positions[vapply(positions, function(i) {
       rec <- records[[i]]
       rec$kind == "analysis" && get(rec$id, latest) == i && "execution_receipt" %in% names(rec$details)
@@ -196,6 +212,7 @@
       timing[[i]] <- .timeline_receipt_timing(receipt)
       if (timing[[i]] == "valid_interval" && !isTRUE(state$imported)) stamps[[i]] <- receipt$started_at_utc
     }
+    }
   }
   ids <- vapply(positions, function(i) records[[i]]$id, character(1))
   revisions <- vapply(positions, function(i) records[[i]]$revision, numeric(1))
@@ -204,7 +221,70 @@
   list(positions = positions, stamps = stamps, timing = timing, oldest = oldest, newest = newest)
 }
 
-.timeline_row <- function(state, view, index, slot) {
+.timeline_refs <- function(state, refs, limit = 10L) {
+  shown <- lapply(utils::head(refs, limit), function(ref) if (is.character(ref)) .ref(state, ref) else ref)
+  shown <- Filter(function(ref) nchar(.json(ref), type = "bytes") <= 512L, shown)
+  list(refs = .arr(shown), omitted = length(refs) - length(shown))
+}
+.analysis_edges <- function(graph, ref, limit) {
+  id <- .result_id(ref)
+  primary <- get0(id, graph$forward, inherits = FALSE, ifnotfound = list())
+  extra <- get0(id, graph$extra_forward, inherits = FALSE, ifnotfound = list())
+  # Both cached lists are sorted; only these prefixes can enter the merged prefix.
+  if (!length(extra)) return(utils::head(primary, limit))
+  if (!length(primary)) return(utils::head(extra, limit))
+  utils::head(.result_sort_edges(c(utils::head(primary, limit), utils::head(extra, limit))), limit)
+}
+.analysis_links <- function(state, graph, record, receipt, receipt_claim) {
+  if (!is.null(receipt)) return(list(outputs = lapply(Filter(function(item) identical(item$status, "registered"), receipt$outputs), `[[`, "record_ref"), figures = list(), truncated = FALSE))
+  if (receipt_claim) return(list(outputs = list(), figures = list(), truncated = FALSE))
+  outputs <- list(); figures <- list(); scanned <- 0L
+  for (edge in .analysis_edges(graph, .make_ref(state, record), 101L)) {
+    scanned <- scanned + 1L; if (scanned > 100L) break
+    if (edge$type %in% c("produced_result", "transformation_context") && identical(edge$basis, "declared")) outputs[[length(outputs)+1L]] <- edge$to
+    else if (identical(edge$type, "analytical_association")) figures[[length(figures)+1L]] <- edge$to
+  }
+  list(outputs = outputs, figures = figures, truncated = scanned > 100L)
+}
+.analysis_consumers <- function(state, graph, outputs) {
+  found <- list(); mappings <- list(); remaining <- 100L; cutoff <- FALSE
+  display_remaining <- 10L
+  for (output in outputs) {
+    if (remaining == 0L) {
+      mappings[[length(mappings)+1L]] <- .obj(output_ref = output, analysis_refs = list(),
+        analysis_refs_omitted = 0L, scan_truncated = TRUE)
+      cutoff <- TRUE
+      next
+    }
+    edges <- .analysis_edges(graph, output, remaining + 1L)
+    inspected <- utils::head(edges, remaining)
+    truncated <- length(edges) > length(inspected)
+    cutoff <- cutoff || truncated
+    remaining <- remaining - length(inspected)
+    linked <- list()
+    for (edge in inspected) {
+      if (identical(edge$type, "input_to_analysis")) { found[[length(found)+1L]] <- edge$to; linked[[length(linked)+1L]] <- edge$to }
+    }
+    refs <- .timeline_refs(state, linked, display_remaining)
+    display_remaining <- display_remaining - length(refs$refs)
+    mappings[[length(mappings)+1L]] <- .obj(output_ref = output, analysis_refs = refs$refs, analysis_refs_omitted = refs$omitted, scan_truncated = truncated)
+  }
+  keys <- vapply(found, .result_id, character(1)); found <- found[!duplicated(keys)]
+  refs <- .timeline_refs(state, found); refs$scan_truncated <- cutoff; refs$mappings <- mappings; refs
+}
+.timeline_item <- function(state, ref) {
+  rec <- .record(state, ref)
+  descriptor <- if (rec$kind %in% c("data", "figure")) .presentation_read(rec)$descriptor else NULL
+  name <- .related_clip(.output_title(rec, descriptor), 192L)
+  latest <- attr(state, "record_index")$latest
+  .obj(ref = .make_ref(state, rec), kind = rec$kind, name = name$value, name_clipped = name$clipped,
+       record_status = rec$status,
+       revision_status = if (state$records[[get(rec$id, latest)]]$revision == rec$revision) "latest" else "historical",
+       registration_at_utc = if (.timeline_timestamp(rec$created_at)) rec$created_at else NULL)
+}
+.analysis_name <- function(record) { ticket <- record$details$ticket_name; if (is.character(ticket) && length(ticket) == 1L && !is.na(ticket) && nzchar(ticket)) ticket else record$name }
+
+.timeline_row <- function(state, graph, view, index, slot) {
   record <- state$records[[index$positions[[slot]]]]
   stamp <- index$stamps[[slot]]
   timing <- index$timing[[slot]]
@@ -217,14 +297,22 @@
   analysis <- if (is.character(record$analysis)) .ref(state, record$analysis) else record$analysis
   row <- .obj(ref = .make_ref(state, record), kind = record$kind, time_utc = if (nzchar(stamp)) stamp else NULL,
               evidence = evidence, outcome = receipt$status, analysis_ref = analysis, omitted_text_fields = list())
-  texts <- .obj(name = record$name, registration_at_utc = record$created_at)
+  texts <- .obj(name = if (view == "analyses" && record$kind == "analysis") .analysis_name(record) else record$name, registration_at_utc = record$created_at)
   links <- .obj(input_refs = record$inputs)
-  if (view == "runs") {
+  if (view %in% c("runs", "analyses")) {
     row[c("run_ref", "template_ref", "timing_status")] <- list(receipt$run_ref, receipt$template_ref, timing)
     texts[c("started_at_utc", "ended_at_utc")] <- list(receipt$started_at_utc, receipt$ended_at_utc)
     links["output_refs"] <- list(if (!is.null(receipt)) {
       .arr(lapply(Filter(function(item) identical(item$status, "registered"), receipt$outputs), `[[`, "record_ref"))
     } else NULL)
+  }
+  if (view == "analyses") {
+    row$record_status <- record$status
+    latest <- attr(state, "record_index")$latest
+    row$revision_status <- if (state$records[[get(record$id, latest)]]$revision == record$revision) "latest" else "historical"
+    row$time_source <- if (!is.null(receipt) && identical(row$time_utc, receipt$started_at_utc)) "wrapper_start" else if (!"execution_receipt" %in% names(record$details)) "registration" else "unqualified"
+    linked <- .analysis_links(state, graph, record, receipt, "execution_receipt" %in% names(record$details))
+    links$output_refs <- linked$outputs; links$associated_figure_refs <- linked$figures; row$output_scan_truncated <- linked$truncated
   }
   for (field in names(texts)) {
     value <- texts[[field]]
@@ -238,17 +326,25 @@
     refs <- links[[field]]
     shown <- NULL
     if (!is.null(refs)) {
-      slice <- lapply(refs[seq_len(min(length(refs), 10L))], function(ref) if (is.character(ref)) .ref(state, ref) else ref)
-      shown <- .arr(Filter(function(ref) nchar(.json(ref), type = "bytes") <= 512L, slice))
+      bounded <- .timeline_refs(state, refs); shown <- bounded$refs
     }
     row[field] <- list(shown)
-    row[[paste0(field, "_omitted")]] <- length(refs) - length(shown)
+    row[[paste0(field, "_omitted")]] <- if (is.null(refs)) 0L else bounded$omitted
+  }
+  if (view == "analyses") {
+    outputs <- if (is.null(row$output_refs)) list() else row$output_refs
+    row$output_items <- lapply(outputs, function(ref) .timeline_item(state, ref))
+    row$input_items <- lapply(if (is.null(row$input_refs)) list() else row$input_refs, function(ref) .timeline_item(state, ref))
+    row$associated_figure_items <- lapply(if (is.null(row$associated_figure_refs)) list() else row$associated_figure_refs, function(ref) .timeline_item(state, ref))
+    data_outputs <- lapply(Filter(function(item) identical(item$kind, "data"), row$output_items), `[[`, "ref")
+    consumers <- .analysis_consumers(state, graph, data_outputs)
+    row$downstream_analysis_refs <- consumers$refs; row$downstream_analysis_refs_omitted <- consumers$omitted; row$downstream_scan_truncated <- consumers$scan_truncated; row$output_consumers <- consumers$mappings
   }
   row
 }
 
-.timeline_page <- function(state, dirty, cache, view, order, limit, cursor) {
-  if (!is.character(view) || length(view) != 1L || !view %in% c("registration", "runs")) .fail("view must be registration or runs")
+.timeline_page <- function(state, graph, dirty, cache, view, order, limit, cursor) {
+  if (!is.character(view) || length(view) != 1L || !view %in% c("registration", "runs", "analyses")) .fail("view must be registration, runs or analyses")
   if (!is.character(order) || length(order) != 1L || !order %in% c("oldest", "newest")) .fail("order must be oldest or newest")
   if (!.is_int(limit, TRUE) || limit > 20L) .fail("limit must be an integer from 1 to 20")
   prefix <- paste0(cache$snapshot, ":", view, ":", order, ":")
@@ -268,7 +364,7 @@
   if (!is.null(cursor) && (offset <= 0L || offset >= total)) .fail("invalid timeline cursor offset")
   rows <- list(); used <- 0L
   for (slot in slots[offset + seq_len(min(limit, total - offset))]) {
-    row <- .timeline_row(state, view, index, slot)
+    row <- .timeline_row(state, graph, view, index, slot)
     size <- nchar(.json(row), type = "bytes") + 1L
     # Leave room for report metadata and up to 190 pairwise relations.
     if (used + size > .chronology_max_bytes - 12288L) {
@@ -282,7 +378,7 @@
   report <- .obj(report_version = "biodataledger-timeline/1", view = view, order = order, timezone = "UTC",
                  registry_revision = state$state_revision, unsaved = dirty,
                  imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL,
-                 total_rows = total, rows = .arr(rows), relations = if (view == "runs") .chronology_relations(rows) else list(),
+                 total_rows = total, rows = .arr(rows), relations = if (view %in% c("runs", "analyses")) .chronology_relations(rows) else list(),
                  next_cursor = if (end < total) paste0(prefix, sprintf("%.0f", end)) else NULL)
   if (nchar(.json(report), type = "bytes") > .chronology_max_bytes) .fail("timeline report exceeds 64 KiB")
   report
@@ -290,9 +386,56 @@
 
 .timeline_ref <- function(ref) paste0(ref$id, "@", sprintf("%.0f", ref$revision))
 
+.analysis_flags <- function(item) {
+  flags <- c(if (identical(item$revision_status, "historical")) "historical",
+             if (!identical(item$record_status, "active")) item$record_status)
+  if (length(flags)) paste0(" (", paste(flags, collapse = ", "), ")") else ""
+}
+
+.analysis_summary_lines <- function(row) {
+  stamp <- function(value) if (!is.null(value) && .timeline_timestamp(value)) value else "UNKNOWN"
+  item_text <- function(item) {
+    label <- .console_label(item$name, 48L)
+    if (isTRUE(item$name_clipped) && !endsWith(label, "...")) label <- paste0(label, "...")
+    paste0(.timeline_ref(item$ref), " ", label, .analysis_flags(item), " [Registered ", stamp(item$registration_at_utc), "]")
+  }
+  lines <- vapply(row$input_items, function(item) paste0("    Input ", item_text(item)), character(1))
+  if (!length(lines)) lines <- paste0("    Inputs ", if (is.null(row$input_refs)) "unknown" else "none recorded")
+  producer <- .timeline_ref(if (is.null(row$run_ref)) row$ref else row$run_ref)
+  for (mapping in row$output_consumers) {
+    item <- Filter(function(x) identical(.timeline_ref(x$ref), .timeline_ref(mapping$output_ref)), row$output_items)[[1L]]
+    target <- paste(vapply(mapping$analysis_refs, .timeline_ref, character(1)), collapse = ", ")
+    if (!nzchar(target)) target <- if (mapping$analysis_refs_omitted > 0L) "consumers omitted" else if (isTRUE(mapping$scan_truncated)) "consumers unknown" else "no recorded consumer"
+    if (mapping$analysis_refs_omitted > 0L) target <- paste0(target, " (+", mapping$analysis_refs_omitted, " consumers omitted)")
+    if (isTRUE(mapping$scan_truncated)) target <- paste0(target, " [scan incomplete]")
+    lines <- c(lines, paste0("    ", producer, " -> ", item_text(item), " -> ", target))
+  }
+  for (item in row$output_items) if (identical(item$kind, "figure")) {
+    lines <- c(lines, paste0("    Receipt figure ", item_text(item)))
+  }
+  for (item in row$associated_figure_items) lines <- c(lines, paste0("    Associated figure ", item_text(item)))
+  if (!length(row$output_items) && !length(row$associated_figure_items)) {
+    lines <- c(lines, if (identical(row$time_source, "unqualified")) "    Outputs unknown" else "    No recorded outputs shown")
+  }
+  labels <- c(input_refs = "inputs", output_refs = "outputs", associated_figure_refs = "associated figures")
+  for (field in names(labels)) {
+    omitted <- row[[paste0(field, "_omitted")]]
+    if (omitted > 0L) lines <- c(lines, paste0("    +", omitted, " ", labels[[field]], " omitted"))
+  }
+  if (isTRUE(row$output_scan_truncated) || isTRUE(row$downstream_scan_truncated)) {
+    lines <- c(lines, "    Link scan truncated at 100 edges; additional links may be uninspected")
+  }
+  if (!is.null(row$run_ref)) {
+    lines <- c(lines, paste0("    Run ", producer, " | Receipt ", .timeline_ref(row$ref),
+      " | Registered ", stamp(row$registration_at_utc), " | Wrapper start ", stamp(row$started_at_utc),
+      " | End ", stamp(row$ended_at_utc)))
+  }
+  lines
+}
+
 .timeline_summary <- function(report) {
-  runs <- report$view == "runs"
-  heading <- if (runs) "Recorded runs by wrapper start" else "Record revisions by registration time"
+  runs <- report$view == "runs"; analyses <- report$view == "analyses"
+  heading <- if (runs) "Recorded runs by wrapper start" else if (analyses) "Analyses and recorded data flow" else "Record revisions by registration time"
   lines <- paste0(heading, " (UTC, ", report$order, " first)")
   if (!is.null(report$imported_claim)) lines <- c(lines, "Imported metadata. Receipt claims are untrusted.")
   unknown_heading <- FALSE
@@ -304,10 +447,17 @@
       unknown_heading <- TRUE
     }
     name <- if (is.null(row$name)) "[name omitted]" else .json(row$name)
+    if (analyses && !is.null(row$name)) name <- .console_label(row$name, 72L)
+    if (analyses) name <- paste0(name, .analysis_flags(row))
     status <- if (!is.null(row$outcome)) row$outcome else if (identical(row$evidence, "unknown")) "execution UNKNOWN" else row$kind
-    line <- paste0("[", number, "] ", stamp, "  ", .timeline_ref(row$ref), "  ", name, "  ", status)
+    source <- if (identical(row$time_source, "wrapper_start")) "Run started" else if (identical(row$time_source, "registration")) "Registered" else if (identical(row$time_source, "unqualified")) "Time unqualified" else ""
+    line <- paste0("[", number, "] ", stamp, if (nzchar(source)) paste0(" (", source, ")") else "", "  ", .timeline_ref(row$ref), "  ", name, "  ", status)
     if (!is.null(row$outcome)) line <- paste0(line, " (", gsub("_", " ", row$evidence), ")")
     lines <- c(lines, line)
+    if (analyses) {
+      lines <- c(lines, .analysis_summary_lines(row))
+      next
+    }
     if (runs) {
       if (!is.null(row$run_ref)) lines <- c(lines, paste0("    Run ", .timeline_ref(row$run_ref),
                                                         " | Template ", .timeline_ref(row$template_ref)))
@@ -326,11 +476,12 @@
       lines <- c(lines, paste0("    ", label, " ", linked, if (omitted > 0L) paste0(" (", omitted, " omitted)") else ""))
     }
   }
-  if (runs) {
+  if (runs || analyses) {
     qualified <- Filter(function(pair) pair$relation %in% c("overlap", "tied", "tied_boundary"), report$relations)
     relations <- vapply(qualified, function(pair) paste0(pair$left, "-", pair$right, " ", gsub("_", " ", pair$relation)), character(1))
     if (length(relations)) lines <- c(lines, paste0("Overlaps or ties on this page: ", paste(relations, collapse = ", ")))
-    lines <- c(lines, "Wrapper intervals are partial evidence. Unrecorded execution remains unknown.")
+    lines <- c(lines, if (analyses) "Registration is not execution; arrows show recorded dependencies, not verified consumption."
+             else "Wrapper intervals are partial evidence. Unrecorded execution remains unknown.")
   } else {
     lines <- c(lines, "Registration times describe record revisions. Equal times share the same displayed time.")
   }
