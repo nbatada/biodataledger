@@ -26,6 +26,10 @@ jobs:
       - uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05
         with:
           r-version: '4.5.3'
+      - name: Install XQuartz for R SVG tests
+        run: brew install --cask xquartz
+      - name: Headless R SVG smoke test
+        run: Rscript -e '(function() { path <- tempfile(fileext = ".svg"); on.exit(unlink(path), add = TRUE); grDevices::svg(path); plot.new(); grDevices::dev.off(); stopifnot(file.info(path)$size > 0) })()'
       - name: Create local R library
         run: mkdir -p "$R_LIBS_USER"
       - name: Install R dependencies and optional test dependencies

@@ -63,7 +63,9 @@ function names and output file paths cannot be injected through settings. Python
 arguments after `renderer` are keyword-only. An optional exact `analysis` reference
 provides inherited declared analytical context.
 
-Formats are `png`, `pdf` and `svg`. Width and height are positive inches, at most
+Formats are `png`, `pdf` and `svg`. R SVG export needs its native Cairo device;
+see the [macOS graphics prerequisite](PLOTTING_R.md#svg-graphics-on-macos).
+Width and height are positive inches, at most
 100; dpi is positive and at most 2400. The combined size is limited to 100 million
 pixels. Images are written below `.nb_project_bundle/outputs/render-*` without
 overwriting previous output. Invalid input, rendering failure or staging failure

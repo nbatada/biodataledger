@@ -24,6 +24,16 @@ Replace the example path with your actual project library. Start a fresh R
 session if BioDataLedger was already loaded; changing a library path does not
 replace the package already in memory.
 
+### SVG graphics on macOS
+
+`grDevices::svg()` is the device used by guarded SVG export. It needs a working
+Cairo backend. macOS R builds that link Cairo to XQuartz need the XQuartz system
+libraries installed; missing `libXrender` or `libSM` errors indicate that dependency.
+See [R for macOS](https://cran.r-project.org/bin/macosx/) and the
+[Homebrew XQuartz installation](https://formulae.brew.sh/cask/xquartz).
+This requirement applies to that graphics device, not core registry operations.
+CI installs XQuartz and checks an actual SVG write before running the renderer tests.
+
 ```r
 library(BioDataLedger)
 coordinates <- data.frame(sample = c("s1", "s2", "s3", "s4"),
