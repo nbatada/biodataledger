@@ -16,6 +16,21 @@ Use the [current BioDataLedger API reference](../API.md) for Python and R signat
 - Save once after a related registration batch or a completed critical input, design or decision change. [Save and confirm](../API.md#save_and_confirm) commits all pending edits. Use a returned `persisted` receipt with `registry_written` true to report a new durable write. Report any files left behind by failed registration, including which records remain unregistered or staged.
 - On a stale write, preserve pending edits and saved files. Open a separate fresh handle and reconcile deliberately. A clean save does not check freshness. Reopen a clean handle when another writer's updates are needed.
 
+## Projects requiring approved figure renderers
+
+Source builds with the [approved renderer guard](../RENDERER_GUARD.md) expose
+`figure_policy()`. If it returns `approved_renderers_v1`, retain figures with
+`render_figure(renderer=..., data=..., plot_args=..., analysis=...)`. The package
+renders and stages the figure itself; save at the normal batch checkpoint.
+
+Do not work around `APPROVED_RENDERER_REQUIRED` by copying an image, changing its
+metadata, using an older client or editing the registry. Use an approved renderer
+and supported settings. If the intended figure is unsupported, report the missing
+capability. Native edits remain available for exploration, but edited plots and
+arbitrary callbacks are not accepted by the guarded retention route. Check the
+saved bytes explicitly with `resolve_figure(..., verify="sha256")` when needed.
+The policy does not establish data truth, scientific acceptance or visual quality.
+
 ## Share or resume
 
 For a saved-project handoff, use the [resume procedure and agent prompt](../RESUMING.md).

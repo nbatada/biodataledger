@@ -92,6 +92,9 @@
               "type": "null"
             }
           ]
+        },
+        "figure_policy": {
+          "const": "approved_renderers_v1"
         }
       }
     },
@@ -367,7 +370,12 @@
           ]
         },
         "details": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "renderer_receipt": {
+              "$ref": "#/$defs/renderer_receipt"
+            }
+          }
         },
         "status": {
           "enum": [
@@ -526,6 +534,109 @@
                     "pattern": "^\\.nb_project_bundle/outputs/"
                   }
                 }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "details": {
+                "required": [
+                  "renderer_receipt"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "figure"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              },
+              "details": {
+                "required": [
+                  "format"
+                ],
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "renderer_receipt": {
+                          "properties": {
+                            "export_settings": {
+                              "properties": {
+                                "format": {
+                                  "const": "png"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "format": {
+                          "const": "png"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "renderer_receipt": {
+                          "properties": {
+                            "export_settings": {
+                              "properties": {
+                                "format": {
+                                  "const": "pdf"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "format": {
+                          "const": "pdf"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "renderer_receipt": {
+                          "properties": {
+                            "export_settings": {
+                              "properties": {
+                                "format": {
+                                  "const": "svg"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "then": {
+                      "properties": {
+                        "format": {
+                          "const": "svg"
+                        }
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
@@ -911,9 +1022,164 @@
           ]
         }
       }
+    },
+    "renderer_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "renderer",
+        "backend",
+        "package_version",
+        "rendered_at",
+        "output_sha256",
+        "implementation_sha256",
+        "plot_args",
+        "panels",
+        "verification",
+        "scientific_acceptance",
+        "export_settings"
+      ],
+      "properties": {
+        "version": {
+          "const": "biodataledger-renderer/1"
+        },
+        "renderer": {
+          "enum": [
+            "pca",
+            "umap_split",
+            "violin_qc",
+            "group_comparison",
+            "heatmap",
+            "volcano",
+            "ma",
+            "compose"
+          ]
+        },
+        "backend": {
+          "enum": [
+            "matplotlib",
+            "ggplot2"
+          ]
+        },
+        "package_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rendered_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+        },
+        "output_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "implementation_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "plot_args": {
+          "type": "object"
+        },
+        "panels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "renderer",
+              "plot_args"
+            ],
+            "properties": {
+              "renderer": {
+                "enum": [
+                  "pca",
+                  "violin_qc",
+                  "group_comparison",
+                  "heatmap",
+                  "volcano",
+                  "ma"
+                ]
+              },
+              "plot_args": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "verification": {
+          "const": "local_render_observed"
+        },
+        "scientific_acceptance": {
+          "const": "not_assessed"
+        },
+        "export_settings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "format",
+            "width",
+            "height",
+            "units",
+            "dpi"
+          ],
+          "properties": {
+            "format": {
+              "enum": [
+                "png",
+                "pdf",
+                "svg"
+              ]
+            },
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 100
+            },
+            "height": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 100
+            },
+            "units": {
+              "const": "in"
+            },
+            "dpi": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 2400
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "renderer": {
+                "const": "compose"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "panels": {
+                "minItems": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "panels": {
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
     }
   },
-  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation. Dataset scope and DATA design pins require schema 0.3.0. Clients validate reference kinds and canonical scope/report evidence; no implicit scientific verification. Schema 0.4.0 adds explicit input mode and captured figure preservation; context consistency is checked on new or revised analytical context, not legacy load.",
+  "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation. Dataset scope and DATA design pins require schema 0.3.0. Clients validate reference kinds and canonical scope/report evidence; no implicit scientific verification. Schema 0.4.0 adds explicit input mode and captured figure preservation; context consistency is checked on new or revised analytical context, not legacy load. Optional approved_renderers_v1 figure policy and reserved locally observed renderer receipts require schema 0.4.0; clients validate receipt output hash binding. No scientific acceptance or unrestricted-interpreter security boundary. Clients additionally check export_settings pixel-area bound and binding to FIG details.format.",
   "allOf": [
     {
       "if": {
@@ -1033,6 +1299,48 @@
                 }
               ]
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "project": {
+            "required": [
+              "figure_policy"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "schema_version": {
+            "const": "0.4.0"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "records": {
+            "contains": {
+              "properties": {
+                "details": {
+                  "required": [
+                    "renderer_receipt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "schema_version": {
+            "const": "0.4.0"
           }
         }
       }

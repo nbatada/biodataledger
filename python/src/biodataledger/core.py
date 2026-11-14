@@ -210,6 +210,8 @@ def validate_record(rec, version):
     if "scope" in rec:
         from .scope import normalize_scope
         require(normalize_scope(rec["scope"], require) == rec["scope"], "scope must use canonical fields")
+    from .renderer_guard import validate_receipt
+    validate_receipt(rec, version)
 
 
 def validate_links(rec, check_ref):
@@ -248,7 +250,10 @@ def validate_state(state):
     validate_values({key: value for key, value in state.items() if key != "records"})
     require(state["schema_version"] in (VERSION, DESIGN_VERSION, SCOPE_VERSION, CONTEXT_VERSION), "unsupported schema version")
     project = state["project"]
-    require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design"}, "invalid project fields")
+    require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design", "figure_policy"}, "invalid project fields")
+    if "figure_policy" in project:
+        require(project["figure_policy"] == "approved_renderers_v1" and state["schema_version"] == CONTEXT_VERSION,
+                "invalid figure_policy; approved_renderers_v1 requires schema 0.4.0")
     require(valid_uuid(project["id"]) and isinstance(project["name"], str) and project["name"], "invalid project identity")
     require(valid_uuid(state["last_transaction"]), "invalid transaction ID")
     require(type(state["state_revision"]) is int and state["state_revision"] >= 1, "invalid state revision")
@@ -592,6 +597,8 @@ class ProjectBundle:
         return entries
 
     def register_data(self, path, role, name=None, hash=False, **details):
+        from .renderer_guard import reserve
+        reserve(details)
         from .results import KEY as RESULT_KEY
         require(RESULT_KEY not in details, "use register_result to declare a result")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
@@ -613,6 +620,8 @@ class ProjectBundle:
 
     def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True,
                           design_ref=_DEFAULT, input_mode="separate", **details):
+        from .renderer_guard import reserve
+        reserve(details)
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
         require(not ({"comparison_plan", "comparison_assessment"} & set(details)), "comparison metadata is reserved")
@@ -628,6 +637,8 @@ class ProjectBundle:
 
     def _figure_record(self, path, type, analysis=None, name=None, inputs=None, code=None, method=None, params=None,
                         snapshot_code=True, design_ref=_DEFAULT, input_mode=_DEFAULT, figure_sources=_DEFAULT, **details):
+        from .renderer_guard import reserve
+        reserve(details)
         require(not ({"preservation", "artifact_role"} & set(details)), "reserved preservation metadata")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
@@ -654,7 +665,29 @@ class ProjectBundle:
         return rec
 
     def register_figure(self, path, type, *args, **context):
+        from .renderer_guard import refuse_direct
+        refuse_direct(self)
         return self._stage(self._figure_record(path, type, *args, **context), version=CONTEXT_VERSION)
+
+    def figure_policy(self):
+        """Return the staged project figure policy; absent means unrestricted."""
+        return self.state["project"].get("figure_policy", "unrestricted")
+
+    def require_approved_figures(self, reason):
+        """Stage enable-only ordinary API enforcement; save explicitly to persist."""
+        from .renderer_guard import POLICY
+        require(isinstance(reason, str) and reason.strip(), "figure policy reason required")
+        if self.figure_policy() != POLICY:
+            self.state["project"]["figure_policy"] = POLICY
+            self.state["schema_version"] = CONTEXT_VERSION
+            self._event("require_approved_figures", reason=reason)
+        return POLICY
+
+    def render_figure(self, renderer, *, data=None, plot_args=None, panels=None, analysis=None,
+                      name=None, format="png", width=6, height=4, dpi=300):
+        from .renderer_guard import render_figure
+        return render_figure(self, renderer, data=data, plot_args=plot_args, panels=panels,
+                             analysis=analysis, name=name, format=format, width=width, height=height, dpi=dpi)
 
     def _select_design(self, ref):
         if ref is _DEFAULT:
@@ -727,6 +760,8 @@ class ProjectBundle:
 
     def save_figure(self, source, type=None, ref=None, **context):
         """Copy an already saved figure; never execute plotting or copy DATA."""
+        from .renderer_guard import refuse_direct
+        refuse_direct(self)
         require(not ({"preservation", "artifact_role", "source"} & set(context)), "reserved preservation metadata")
         source_locator = self._locator(source)
         source_path = self._resolve(source_locator)
@@ -1062,6 +1097,8 @@ class ProjectBundle:
         from .presentation import KEY as PRESENTATION_KEY, presentation_only_change
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
+        from .renderer_guard import guard_update as guard_renderer_update
+        guard_renderer_update(self, rec, changes)
         require(not ({"comparison_plan", "comparison_assessment"} & set(rec["details"])), "comparison revisions use dedicated writers")
         require(not ({"comparison_plan", "comparison_assessment"} & set(changes.get("details", {}))), "comparison metadata is reserved")
         require("execution_receipt" not in rec["details"], "execution runs are runner-managed")
@@ -1202,8 +1239,14 @@ class ProjectBundle:
         require(rec["locator"] is not None and rec["locator"]["kind"] != "project", "only external locator may be rebound")
         file = Path(path).expanduser().resolve()
         require(file.is_file(), "rebind target missing")
+        strict_figure = self.figure_policy() == "approved_renderers_v1" and rec["kind"] == "figure"
+        if strict_figure:
+            from .renderer_guard import MESSAGE
+            require(rec["sha256"] is not None and rec["size"] is not None
+                    and file.stat().st_size == rec["size"], MESSAGE + "; replacement needs matching recorded digest and size")
         if rec["sha256"]:
-            require(fingerprint(file) == rec["sha256"], "rebind digest mismatch")
+            require(fingerprint(file) == rec["sha256"],
+                    MESSAGE + "; replacement digest mismatch" if strict_figure else "rebind digest mismatch")
         self.state["bindings"][locator_key(rec["locator"])] = str(file)
         self._event("rebind_external", self._ref(rec), reason)
 

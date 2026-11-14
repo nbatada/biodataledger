@@ -207,6 +207,7 @@
 }
 .make_ref <- function(state, rec) .obj(project_id = state$project$id, id = rec$id, revision = rec$revision)
 .new_record <- function(state, kind, name, locator = NULL, role = NULL, type = NULL, sha256 = NULL, size = NULL, inputs = NULL, analysis = NULL, code = list(), method = NULL, params = NULL, details = .obj(), status = "active", foreign_refs = list(), design = NULL) {
+  .renderer_reserved(details)
   rec <- .obj(kind = kind, id = .next_id(state, kind), revision = 1L, name = name, created_at = .now(), locator = locator, role = role, type = type, sha256 = sha256, size = size, inputs = inputs, analysis = analysis, code = .arr(code), method = method, params = params, details = details, status = status, foreign_refs = .arr(foreign_refs))
   if (!is.null(design)) rec$design <- design
   rec
@@ -409,7 +410,9 @@
   if (!setequal(names(state), required) || !state$schema_version %in% c("0.1.0", "0.2.0", "0.3.0", "0.4.0")) .fail("Unsupported state schema")
   if (!.is_int(state$state_revision, TRUE) || !.is_uuid(state$last_transaction)) .fail("Invalid state revision or transaction")
   project_fields <- c("id","name","purpose","raw_dir","metadata","next_task","questions","authorities")
-  if (!.is_obj(state$project) || !setequal(names(state$project), project_fields) && !(state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0") && setequal(names(state$project), c(project_fields, "design")))) .fail("Invalid project fields")
+  optional_project_fields <- c(if (state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0")) "design", if (state$schema_version == "0.4.0") "figure_policy")
+  if (!.is_obj(state$project) || !all(project_fields %in% names(state$project)) || !all(names(state$project) %in% c(project_fields, optional_project_fields))) .fail("Invalid project fields")
+  if ("figure_policy" %in% names(state$project) && !identical(state$project$figure_policy, .renderer_policy)) .fail("Invalid figure_policy")
   if (!.is_uuid(state$project$id) || !is.character(state$project$name) || length(state$project$name) != 1L || !nzchar(state$project$name) || !.is_arr(state$project$questions) || !.is_arr(state$project$authorities)) .fail("Invalid project identity or arrays")
   for (field in c("purpose", "next_task")) if (!is.null(state$project[[field]]) && (!is.character(state$project[[field]]) || length(state$project[[field]]) != 1L)) .fail("Invalid project text")
   for (field in c("raw_dir", "metadata")) if (!is.null(state$project[[field]])) .validate_locator(state$project[[field]])
@@ -425,6 +428,7 @@
     if (state$schema_version == "0.4.0" && r$kind == "figure") optional_fields <- c(optional_fields, "preservation")
     if (!.is_obj(r) || !all(fields %in% names(r)) || !all(names(r) %in% c(fields, optional_fields)) || anyDuplicated(names(r)) || !grepl("^(DATA|ANA|FIG|DEC|DES)-[0-9]{3,}$", r$id) || !identical(kinds[[sub("-.*", "", r$id)]], r$kind) || !.is_int(r$revision, TRUE) || !r$status %in% c("active","superseded","inactive")) .fail("Invalid record")
     if (!is.character(r$name) || length(r$name) != 1L || !.is_obj(r$details) || !.is_arr(r$code) || !.is_arr(r$foreign_refs) || (!is.null(r$params) && !.is_obj(r$params)) || (!is.null(r$inputs) && !.is_arr(r$inputs))) .fail("Invalid record fields")
+    .renderer_validate(r)
     if (!nzchar(r$name) || !is.character(r$created_at) || length(r$created_at) != 1L) .fail("Record name and time required")
     for (field in c("role", "type", "method")) if (!is.null(r[[field]]) && (!is.character(r[[field]]) || length(r[[field]]) != 1L)) .fail("Invalid record text")
     if (r$kind %in% c("data", "figure") && is.null(r$locator)) .fail("File locator required")
@@ -650,6 +654,8 @@ ProjectBundle <- local({
       out
     }
     save_figure <- function(source, type = NULL, ref = NULL, ...) {
+      if (identical(figure_policy(), .renderer_policy)) .renderer_required()
+      .renderer_reserved(list(...))
       context <- list(...)
       if (any(c("preservation", "artifact_role") %in% names(context))) .fail("Reserved preservation metadata")
       loc <- .locator(root, source); path <- .resolve(root, state, loc)
@@ -728,7 +734,39 @@ ProjectBundle <- local({
       if (is.null(analysis)) {rec["design"] <- list(design); rec$input_mode <- input_mode}
       rec
     }
+    figure_policy <- function() if (is.null(state$project$figure_policy)) "unrestricted" else state$project$figure_policy
+    require_approved_figures <- function(reason) {
+      if (!.design_text(reason)) .fail("Reason required")
+      if (identical(figure_policy(), .renderer_policy)) return(invisible(NULL))
+      proposed <- state; proposed$schema_version <- "0.4.0"; proposed$project$figure_policy <- .renderer_policy
+      .validate(proposed)
+      state <<- .index_state(proposed); event("require_approved_figures", reason)
+      invisible(NULL)
+    }
+    render_figure <- function(renderer, data = NULL, plot_args = NULL, panels = NULL, analysis = NULL, name = NULL, format = "png", width = 6, height = 4, dpi = 300) {
+      if (!.design_text(format) || !format %in% c("png", "pdf", "svg")) .fail("format must be png, pdf or svg")
+      previous <- .copy(state); previous_code <- .copy(pending_code); previous_dirty <- dirty
+      parent <- .renderer_parent(root)
+      folder <- file.path(parent, paste0("render-", .uuid()))
+      base_existed <- dir.exists(dirname(folder)); complete <- FALSE; folder_created <- FALSE
+      on.exit(if (!complete) {
+        state <<- previous; pending_code <<- previous_code; dirty <<- previous_dirty
+        result_graph <<- .result_graph(state)
+        if (folder_created) unlink(folder, recursive = TRUE)
+        if (!base_existed && dir.exists(dirname(folder)) && !length(list.files(dirname(folder), all.files = TRUE, no.. = TRUE))) unlink(dirname(folder), recursive = TRUE)
+      }, add = TRUE)
+      if (!dir.exists(dirname(folder)) && !dir.create(dirname(folder), recursive = TRUE)) .fail("Cannot create render output directory")
+      if (!dir.create(folder)) .fail("Cannot exclusively create render output directory")
+      folder_created <- TRUE
+      path <- file.path(folder, paste0("figure.", format))
+      receipt <- .renderer_write(renderer, data, plot_args, panels, path, format, width, height, dpi)
+      rec <- figure_record(path = path, type = renderer, analysis = analysis, name = name)
+      rec$details$renderer_receipt <- receipt
+      out <- append_record(rec, "render_figure", capture_code(rec), version = "0.4.0")
+      complete <- TRUE; out
+    }
     register_figure <- function(...) {
+      if (identical(figure_policy(), .renderer_policy)) .renderer_required()
       rec <- figure_record(...)
       append_record(rec, "register_figure", capture_code(rec), version = "0.4.0")
     }
@@ -1200,6 +1238,16 @@ ProjectBundle <- local({
       allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
+      if ("details" %in% names(changes)) {
+        old_receipt <- rec$details$renderer_receipt
+        if ("renderer_receipt" %in% names(changes$details) || !is.null(old_receipt)) {
+          if (is.null(old_receipt) || !.result_equal(old_receipt, changes$details$renderer_receipt)) .fail("renderer_receipt is library-managed and immutable")
+        }
+      }
+      if (rec$kind == "figure" && identical(figure_policy(), .renderer_policy)) {
+        if (!all(names(changes) %in% c("name", "status", "details"))) .renderer_required()
+        if ("details" %in% names(changes) && !.presentation_only_change(rec, changes["details"])) .renderer_required()
+      }
       if ("execution_receipt" %in% names(rec$details)) .fail("Execution runs are runner-managed")
       if ("details" %in% names(changes) && "execution_receipt" %in% names(changes$details)) .fail("Execution receipt is runner-managed")
       if ("details" %in% names(changes) && .scientific_decision_key %in% names(changes$details)) .fail("Scientific decision metadata is writer-managed")
@@ -1459,6 +1507,8 @@ ProjectBundle <- local({
       if (is.null(rec$locator) || rec$locator$kind == "project") .fail("Reference is not external")
       if (!is.character(reason) || !nzchar(reason)) .fail("Rebind reason required")
       if (!file.exists(path) || dir.exists(path)) .fail("Rebinding requires an existing file")
+      if (rec$kind == "figure" && identical(figure_policy(), .renderer_policy) &&
+          (is.null(rec$sha256) || is.null(rec$size) || .hash(path) != rec$sha256 || file.info(path)$size != rec$size)) .renderer_required()
       if (!is.null(rec$sha256) && .hash(path) != rec$sha256) .fail("Rebinding digest mismatch")
       key <- paste0(rec$locator$kind, ":", rec$locator$value)
       state$bindings[[key]] <<- normalizePath(path, mustWork = TRUE)
@@ -1685,7 +1735,7 @@ ProjectBundle <- local({
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
-    self <- list(run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     viewer_generation <- function() list(state$state_revision, state$last_transaction, length(state$records), length(state$history), dirty)
     self$view <- function(path = NULL, open_browser = TRUE, limit = 5000L, preview_refs = NULL)
       .export_view(root, state, result_graph, dirty, self$timeline, viewer_generation, path, open_browser, limit, preview_refs)

@@ -27,6 +27,9 @@ It is a project-helper pattern, not a migration instruction for existing helpers
 composition](docs/PLOTTING.md) provide `bdl.pl` in Python and `bdl_pl_*` in R.
 They use prepared tables and existing coordinates, including bulk RNA-seq results.
 These additions are not included in the published 0.17.0 tag.
+For projects that require these renderers, enable the optional
+[approved renderer guard](docs/RENDERER_GUARD.md). It rejects directly supplied
+images and renders retained figures internally from prepared data and settings.
 
 ## Install
 

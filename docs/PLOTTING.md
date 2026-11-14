@@ -61,10 +61,16 @@ parameters with the saved output. Existing `register_analysis`, `register_figure
 and `save` calls can record these relationships. No new registry format is needed.
 Native `savefig` or `ggsave` remains available for ordinary exports.
 
-These functions do not enforce their use by other code, authenticate the input
-data or mark a figure scientifically accepted. Editing the returned native object
-can change its meaning: retain the final customization code as well as the original
-renderer call. A declared renderer version is not independently verified execution.
+Direct plotting calls do not enforce their use by other code or authenticate data.
+Projects can opt into the [approved renderer guard](RENDERER_GUARD.md): BioDataLedger
+then rejects direct figure registration/copying and instead draws and registers
+figures internally through `render_figure`. The guarded route takes prepared data
+and supported settings, not an existing image, edited plot or arbitrary callback.
+This is an ordinary API safeguard, not a secure runtime or scientific approval.
+
+Outside that guarded route, editing a returned native object can change its meaning:
+retain the final customization code as well as the original renderer call. Existing
+historical figures do not acquire rendering evidence when the guard is enabled.
 
 Report a recurring figure problem with its small input example, call and expected
 behavior. A correction should become a focused regression case and a new reviewed

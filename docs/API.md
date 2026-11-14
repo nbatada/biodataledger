@@ -3,6 +3,11 @@
 Optional native plotting and composition are documented in the
 [plotting guide](PLOTTING.md). These are local, unreleased additions under
 `bdl.pl` (Python) and `bdl_pl_*` (R), separate from the registry methods below.
+The local, unreleased [approved renderer guard](RENDERER_GUARD.md) adds
+`require_approved_figures(reason)`, `figure_policy()` and `render_figure(...)`
+to native project handles. Opted-in projects reject direct figure registration
+and copying; the library performs rendering itself. Earlier clients cannot open
+guarded registries; unguarded projects retain their existing behavior.
 
 BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. The browser snapshot and analysis-focused timeline below are unreleased development additions. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 

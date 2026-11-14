@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add an opt-in approved-renderer project policy. `render_figure` invokes native
+  plotting internally, stages an output-bound rendering receipt and supports
+  declarative composition. Guarded projects reject direct figure registration,
+  copying and identity-changing corrections with actionable errors. Existing
+  unguarded projects are unchanged; older clients reject guarded registries.
+  The guard covers ordinary APIs, not unrestricted code or scientific validity.
+
 - Add optional native plotting namespaces `bdl.pl` and `bdl_pl_*` for prepared
   PCA/UMAP coordinates, QC distributions, group comparisons, heatmaps, volcano
   and MA plots, with panel composition. Return editable Matplotlib/ggplot objects
