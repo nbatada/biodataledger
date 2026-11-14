@@ -70,10 +70,25 @@ class ViewerTests(unittest.TestCase):
         library = os.environ.get("BDL_R_LIB")
         if not library or not shutil.which("Rscript"):
             self.skipTest("installed native R client required")
+        env = dict(os.environ)
+        env["R_LIBS_USER"] = os.pathsep.join(filter(None, (library, env.get("R_LIBS_USER", ""))))
         result = subprocess.run(["Rscript", "-e", source, str(self.root), *args],
-                                env={**os.environ, "R_LIBS_USER": library}, text=True, capture_output=True)
+                                env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
+
+    def test_native_r_child_prepends_selected_library_to_inherited_paths(self):
+        captured = []
+
+        def run(*args, **kwargs):
+            captured.append(kwargs["env"])
+            return subprocess.CompletedProcess(args[0], 0, "", "")
+
+        with patch.dict(os.environ, {"BDL_R_LIB": "/selected", "R_LIBS_USER": "/first:/second"}), \
+                patch("test_viewer.shutil.which", return_value="/usr/bin/Rscript"), \
+                patch("test_viewer.subprocess.run", side_effect=run):
+            self.run_r("invisible(NULL)")
+        self.assertEqual(captured[0]["R_LIBS_USER"], os.pathsep.join(("/selected", "/first", "/second")))
 
     def test_native_installed_payload_parity_and_r_default_path_persistence(self):
         preview_refs = ["FIG-001@2", "FIG-002@1", "FIG-003@1", "FIG-999@1"]
