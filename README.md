@@ -23,6 +23,11 @@ For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
 It is a project-helper pattern, not a migration instruction for existing helpers.
 
+**Optional plotting (local, unreleased):** [editable scientific plots and panel
+composition](docs/PLOTTING.md) provide `bdl.pl` in Python and `bdl_pl_*` in R.
+They use prepared tables and existing coordinates, including bulk RNA-seq results.
+These additions are not included in the published 0.17.0 tag.
+
 ## Install
 
 Version **0.17.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.

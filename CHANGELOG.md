@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add optional native plotting namespaces `bdl.pl` and `bdl_pl_*` for prepared
+  PCA/UMAP coordinates, QC distributions, group comparisons, heatmaps, volcano
+  and MA plots, with panel composition. Return editable Matplotlib/ggplot objects
+  without running normalization, embeddings or statistical models. See the
+  [plotting guide](docs/PLOTTING.md).
+
 - Show oldest-first analysis input/output chains in `print(p)` and the new
   `timeline(view="analyses")` view in R and Python. Preserve exact intermediate
   data revisions, recorded names, UTC timestamps and qualified run timing.

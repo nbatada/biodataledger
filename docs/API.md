@@ -1,5 +1,9 @@
 # BioDataLedger API reference
 
+Optional native plotting and composition are documented in the
+[plotting guide](PLOTTING.md). These are local, unreleased additions under
+`bdl.pl` (Python) and `bdl_pl_*` (R), separate from the registry methods below.
+
 BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. The browser snapshot and analysis-focused timeline below are unreleased development additions. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 
 ## Open and inspect a project
