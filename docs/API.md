@@ -1,5 +1,10 @@
 # BioDataLedger API reference
 
+The optional, local/unreleased [R session helper](R_SESSION.md) exposes
+`bdl_session_start`, `bdl_session_attach` and `bdl_session_recover` separately from
+`ProjectBundle`. It manages current in-memory objects in a designated R process;
+it does not change the registry schema or provide an interpreter transport.
+
 Optional native plotting and composition are documented in the
 [plotting guide](PLOTTING.md). These are local, unreleased additions under
 `bdl.pl` (Python) and `bdl_pl_*` (R), separate from the registry methods below.

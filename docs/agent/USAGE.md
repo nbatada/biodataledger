@@ -9,6 +9,27 @@ Use the [current BioDataLedger API reference](../API.md) for Python and R signat
 - Before loading the selected input, use [strict resolution](../API.md#resolve_data) with `verify="sha256"`. Report missing baselines, mismatches, or unmet scope requirements. Keep the original input selector and return mapping when updating an older helper. See [updating a project](../UPDATING.md).
 - Use the project's native loader. For new authorized work, the [retained input workflow](../RETAINED_INPUTS.md) pairs the loaded object with its exact source view. Apply that pattern when useful without retrofitting a nearly complete project solely for bookkeeping.
 
+## Reuse a designated R session
+
+If the scientist designated a live R session using the optional
+[session helper](../R_SESSION.md), run ordinary analysis code in that process
+and use `bdl_session_attach(project_dir)`. Do not replace a failed attachment
+with a new `Rscript` process, call `start` automatically, or recover another live
+owner. Report `USE_LIVE_R_SESSION` and use an executor connected to the designated
+console. This package does not supply that execution connection.
+
+Use `load_once` for the selected exact DATA reference and `get_data` for subsequent
+work. Keep one canonical slot for each working dataset; use `replace_data` with
+the expected generation and an explicit validation function to advance it.
+Prepare small plotting tables from the current object instead of retaining whole
+dataset clones for figure edits. Metadata generation is local session state, not
+a scientific dataset revision. Source references remain origins after modification.
+Native R aliases and internal copying remain possible outside this managed route.
+If the metadata handle becomes stale, use the documented explicit `refresh_project`
+procedure and retain its returned previous handle when pending edits exist. It
+checks cached source identities and refreshes metadata without reloading datasets;
+do not silently discard or automatically reconcile another writer's changes.
+
 ## Retain work and confirm the save
 
 - For an analysis already intended to be retained, stage its declaration with exact DATA inputs and known method, parameters, design and code before writing outputs. Inspect decisions separately. Use `code=` for script snapshots. Register saved files against the exact analysis and record figure rendering inputs separately when known.

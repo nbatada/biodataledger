@@ -28,6 +28,11 @@ conflicts surface early. Unknown context stays unknown; verify any context your
 task requires. Use `code=` for the script snapshot; it does not need a separate
 DATA record. Stage results after saving the actual files.
 
+The standalone examples below intentionally use disposable synthetic projects.
+For ongoing work in a designated Positron R session, use the optional
+[managed session helper](R_SESSION.md) to retain and retrieve the existing object;
+do not start a fresh `Rscript` process merely to repeat an interactive step.
+
 Save either block as a script. Run the Python script with `python workflow.py`
 or the R script with `Rscript workflow.R`, using the installed package. Each uses
 disposable synthetic files and simulates a recorded purpose choice and decision.

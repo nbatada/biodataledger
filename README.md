@@ -31,6 +31,10 @@ For projects that require these renderers, enable the optional
 [approved renderer guard](docs/RENDERER_GUARD.md). It rejects directly supplied
 images and renders retained figures internally from prepared data and settings.
 
+**R session reuse (local, unreleased):** the optional [managed R session helper](docs/R_SESSION.md)
+keeps one current object per dataset slot, reuses loaded data and rejects attachment
+from another R process. It does not create a connection to Positron or restart a session.
+
 ## Install
 
 Version **0.17.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.

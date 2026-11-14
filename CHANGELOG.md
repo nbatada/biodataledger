@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add an optional R session helper with explicit process ownership, load-once
+  retrieval, generation-checked replacement and deliberate release/recovery.
+  Keep native data in the designated R process, separate from registry metadata.
+  No automatic runtime connection, data serialization or global-object cleanup.
+
 - Add an opt-in approved-renderer project policy. `render_figure` invokes native
   plotting internally, stages an output-bound rendering receipt and supports
   declarative composition. Guarded projects reject direct figure registration,
