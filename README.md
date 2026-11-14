@@ -1,17 +1,36 @@
 # BioDataLedger
 
-**Resume your analysis without reconstructing its history.**
+**Trace retained results across agent sessions and colleague handoffs.**
 
 BioDataLedger helps you find retained figures and data and trace them to the
 exact inputs, code and parameters you recorded. It works in R and Python with
 your existing files, so you can recover those links when you reopen a project
-or hand it to a colleague.
+or hand it to a colleague. Keep using your existing scripts, notebooks, Git
+repository and native data files; no AI service is required.
 
 ![Without BioDataLedger, the source of a saved CD8 figure is unclear. With BioDataLedger, an exact figure lookup retrieves its recorded input, analysis code and parameters.](docs/assets/biodataledger-provenance-gemini-v1.jpg)
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
 [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
+
+## What it adds to an agent-assisted workflow
+
+An agent can read your scripts and a project manifest. BioDataLedger adds a native
+R/Python API for exact saved revisions, linked inputs and code, selected current
+inputs, and explicit integrity checks. A fresh agent can query those records
+without relying on the previous conversation or inferring provenance from names.
+
+- **Find:** retrieve retained figures and data by topic, type or exact reference.
+- **Trace:** inspect the recorded input revisions, code snapshots and parameters.
+- **Check and share:** detect changed bytes against a captured hash, refuse stale
+  saves, and preview selected files before a colleague handoff.
+
+Record results worth keeping and save meaningful batches; exploration needs no
+registration. The records still require accurate capture and updates. For a small
+project, well-maintained scripts and a manifest may be enough. We have not measured
+net time savings against that workflow. Registration does not prove that declared
+code used declared inputs, establish scientific validity, or recreate an environment.
 
 **Resume** a saved registry without guessing what an interrupted analysis did:
 [procedure and agent prompt](docs/RESUMING.md). **Upgrade** a live project while
@@ -23,7 +42,7 @@ For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
 It is a project-helper pattern, not a migration instruction for existing helpers.
 
-**Optional plotting (local, unreleased):** [editable scientific plots and panel
+**Optional plotting (0.18.0 candidate, unreleased):** [editable scientific plots and panel
 composition](docs/PLOTTING.md) provide `bdl.pl` in Python and `bdl_pl_*` in R.
 They use prepared tables and existing coordinates, including bulk RNA-seq results.
 These additions are not included in the published 0.17.0 tag.
@@ -31,13 +50,20 @@ For projects that require these renderers, enable the optional
 [approved renderer guard](docs/RENDERER_GUARD.md). It rejects directly supplied
 images and renders retained figures internally from prepared data and settings.
 
-**R session reuse (local, unreleased):** the optional [managed R session helper](docs/R_SESSION.md)
+**R session reuse (0.18.0 candidate, unreleased):** the optional [managed R session helper](docs/R_SESSION.md)
 keeps one current object per dataset slot, reuses loaded data and rejects attachment
 from another R process. It does not create a connection to Positron or restart a session.
 
 ## Install
 
-Version **0.17.0** · MIT license · Tested on **macOS**. Install Python, R, or both. No AI service is required.
+**Local release candidate: 0.18.0 (unpublished).** It includes the analysis timeline,
+optional plotting and renderer guard, browser snapshot, and managed R session helper.
+Install it from the reviewed local source checkout; no `v0.18.0` tag is published.
+See [candidate upgrade instructions](docs/UPDATING.md#local-0180-candidate).
+
+**Published version: 0.17.0** · MIT license · Tested on **macOS**.
+The GitHub commands below install that published version, not the local candidate.
+Install Python, R, or both.
 
 Version 0.17.0 adds a project overview, a quick help menu, and a lookup for recent
 figure paths in R and Python. The [API reference](docs/API.md) covers both clients.
@@ -73,13 +99,17 @@ python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.17.0
 Use an isolated Python environment as needed. For an immutable installation, replace
 `v0.17.0` with the release's full commit SHA in either installation command.
 
-**Source checkout — repository examples or a source install**
+**Published source checkout — version 0.17.0**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
 git checkout v0.17.0
 ```
+
+For the **0.18.0 candidate**, use the reviewed local checkout instead of the
+published checkout above. The following source-install commands install the
+version in your selected checkout. Keep existing live analysis environments intact.
 
 **Python 3.9 or newer**
 
@@ -440,12 +470,16 @@ Older projects remain readable. Saving experimental design requires clients ≥0
 
 ## Tests
 
-After installing both clients:
+From the **0.18.0 candidate checkout**, install both clients and the optional
+plotting dependencies required by the full test suite. Core use does not require
+them; the suite also tests core imports with Python plotting dependencies blocked.
 
 ```sh
+.venv/bin/python -m pip install './python[plotting]'
+Rscript -e 'install.packages(c("ggplot2", "patchwork", "SeuratObject"), repos="https://cloud.r-project.org")'
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.17.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.18.0.tar.gz
 ```
 
 ## Confirm a saved change

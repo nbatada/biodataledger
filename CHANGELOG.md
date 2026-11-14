@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.18.0 — unreleased local candidate
+
+- Qualify the complete native test suite by installing its optional plotting
+  dependencies in CI, while retaining a separate core-only Python boundary check.
+  Plotting remains optional for ordinary package use.
 
 - Add an optional R session helper with explicit process ownership, load-once
   retrieval, generation-checked replacement and deliberate release/recovery.

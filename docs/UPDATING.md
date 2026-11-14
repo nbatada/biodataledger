@@ -1,4 +1,8 @@
-# Update an existing project to 0.17.0
+# Safely update an existing project
+
+The local **0.18.0 candidate is unpublished**. Use its reviewed source checkout
+as described below; do not request a nonexistent v0.18.0 tag. The detailed GitHub
+examples on this page target the published **v0.17.0** release.
 
 Version 0.17.0 adds a project overview and inspection helpers. Use `print(p)`
 for the overview, `summary_text()` for the technical card, and `status()` for
@@ -48,6 +52,38 @@ then reopen and compare exact saved refs needed for the task. Do not auto-save,
 convert Seurat/AnnData, replace live handles, or change input selection. Follow
 the detailed procedure below for safeguards, synthetic checks and reporting.
 ```
+
+## Local 0.18.0 candidate
+
+Apply the same live-session and saved-state safeguards above. Record the reviewed
+local checkout's full commit and verify its package version is 0.18.0. Install into
+a new library/environment, preserving the current one. These commands assume
+compatible dependencies and Python build tools are already available.
+
+R, in a fresh process:
+
+```r
+candidate_source <- "/absolute/path/to/reviewed/biodataledger/r"
+new_library <- "/absolute/path/to/new-biodataledger-0.18.0-library"
+stopifnot(!dir.exists(new_library))
+dir.create(new_library, recursive = TRUE)
+install.packages(candidate_source, repos = NULL, type = "source", lib = new_library)
+library(BioDataLedger, lib.loc = new_library)
+stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == "0.18.0")
+```
+
+Python, with an unused destination and the chosen compatible interpreter:
+
+```sh
+python3 -m venv --system-site-packages /absolute/path/to/new-biodataledger-0.18.0-env
+/absolute/path/to/new-biodataledger-0.18.0-env/bin/python -m pip install --no-deps --no-build-isolation /absolute/path/to/reviewed/biodataledger/python
+/absolute/path/to/new-biodataledger-0.18.0-env/bin/python -c 'import biodataledger; assert biodataledger.__version__ == "0.18.0"; print(biodataledger.__file__)'
+```
+
+The Python environment reuses installed dependencies rather than isolating them.
+Plotting dependencies are optional; see the [plotting guide](PLOTTING.md).
+Test with disposable synthetic files and compare saved project references before
+resuming. An installation does not update the existing live session.
 
 ## Detailed agent procedure
 

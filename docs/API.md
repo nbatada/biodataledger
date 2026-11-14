@@ -14,7 +14,7 @@ to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger 0.17.0 API for Python (`biodataledger`) and R (`BioDataLedger`). Linked feature contracts specify nested inputs and reports. The browser snapshot and analysis-focused timeline below are unreleased development additions. Earlier `API_0.*.md` files describe their named versions. [Release source at v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
+BioDataLedger 0.18.0 local candidate API for Python (`biodataledger`) and R (`BioDataLedger`). This candidate is unreleased and has no tag; use a reviewed source checkout when testing it. Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Published 0.17.0 source](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 
 ## Open and inspect a project
 

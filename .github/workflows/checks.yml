@@ -28,17 +28,21 @@ jobs:
           r-version: '4.5.3'
       - name: Create local R library
         run: mkdir -p "$R_LIBS_USER"
-      - name: Install R dependencies and optional adapter test dependency
-        run: Rscript -e 'install.packages(c("jsonlite","digest","zip","uuid","stringi","SeuratObject"), repos="https://cloud.r-project.org")'
-      - name: Install both native clients
+      - name: Install R dependencies and optional test dependencies
+        run: Rscript -e 'install.packages(c("jsonlite","digest","zip","uuid","stringi","SeuratObject","ggplot2","patchwork"), repos="https://cloud.r-project.org")'
+      - name: Install core Python client and native R client
         run: |
           python -m pip install ./python
           mkdir -p .r-library
           R CMD INSTALL -l "$PWD/.r-library" r
+      - name: Core-only Python boundary
+        run: python -m unittest discover -s tests -p 'test_plotting.py' -k core_without_optional_dependencies -v
+      - name: Install Python plotting test extra
+        run: python -m pip install './python[plotting]'
       - name: Installed-package and README tests
         run: BDL_R_LIB="$PWD/.r-library" python -m unittest discover -s tests -p 'test_*.py' -v
       - name: R package check
         run: |
           R CMD build r
-          R CMD check --no-manual BioDataLedger_0.17.0.tar.gz
+          R CMD check --no-manual BioDataLedger_0.18.0.tar.gz
           grep -q "^Status: OK" BioDataLedger.Rcheck/00check.log

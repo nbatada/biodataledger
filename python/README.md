@@ -17,13 +17,20 @@ Use an isolated Python environment as needed. For an immutable installation,
 replace `v0.17.0` with the release's full commit SHA. For an existing project or live
 session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/UPDATING.md).
 
-Use `print(p)` to see up to four recent analyses and their recorded output
-names, the project folder, current input choices, and the latest figure's file
-and folder paths. Call `p.help()` for common commands or `p.recent_figures()`
-for more figure paths. These views use loaded metadata and leave file
-availability unchecked. Use `p.status()` for structured technical metadata or
-`p.summary_text()` for the technical card. See the
-[full API reference](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/API.md).
+## 0.18.0 local candidate
+
+The current source tree identifies itself as 0.18.0, an unreleased local candidate.
+It has no release tag or published installation route. Use the stable 0.17.0 commands
+above unless you are intentionally testing a reviewed source checkout.
+
+In the 0.18.0 candidate, use `print(p)` to see up to four oldest-first analysis
+input/output chains, the project folder, current input choices, and the latest
+figure's file and folder paths. Call `p.help()` for common commands or
+`p.recent_figures()` for more figure paths. These views use loaded metadata and
+leave file availability unchecked. Use `p.status()` for structured technical
+metadata or `p.summary_text()` for the technical card. The
+[published 0.17.0 API reference](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/API.md)
+does not describe candidate-only additions.
 
 Presentation DOT shows exact revisions, optional source colors, and notes for
 recorded questions and plotting code. The [synthetic lineage demo](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/LINEAGE_DEMO.md)
