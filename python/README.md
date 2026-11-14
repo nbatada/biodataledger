@@ -4,36 +4,33 @@ A lightweight local scientific project registry for finding retained figures and
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Install 0.17.0
+## Install source version 0.18.0
 
 Requires Python 3.9 or newer. The package has no Python runtime dependencies.
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.17.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@main#subdirectory=python"
 python3 -c 'import biodataledger; print(biodataledger.__version__)'
 ```
 
 Use an isolated Python environment as needed. For an immutable installation,
-replace `v0.17.0` with the release's full commit SHA. For an existing project or live
-session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/UPDATING.md).
+resolve `main` and replace it with the full commit SHA. For an existing project or live
+session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/main/docs/UPDATING.md).
 
-## 0.18.0 local candidate
+The current source is 0.18.0 on `main`. The latest tagged release remains v0.17.0;
+no v0.18.0 tag or PyPI release is provided. Pin the source commit for reuse.
 
-The current source tree identifies itself as 0.18.0, an unreleased local candidate.
-It has no release tag or published installation route. Use the stable 0.17.0 commands
-above unless you are intentionally testing a reviewed source checkout.
-
-In the 0.18.0 candidate, use `print(p)` to see up to four oldest-first analysis
+Use `print(p)` to see up to four oldest-first analysis
 input/output chains, the project folder, current input choices, and the latest
 figure's file and folder paths. Call `p.help()` for common commands or
 `p.recent_figures()` for more figure paths. These views use loaded metadata and
 leave file availability unchecked. Use `p.status()` for structured technical
 metadata or `p.summary_text()` for the technical card. The
-[published 0.17.0 API reference](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/API.md)
-does not describe candidate-only additions.
+[current API reference](https://github.com/nbatada/biodataledger/blob/main/docs/API.md)
+lists the supported features and their limits.
 
 Presentation DOT shows exact revisions, optional source colors, and notes for
-recorded questions and plotting code. The [synthetic lineage demo](https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/LINEAGE_DEMO.md)
+recorded questions and plotting code. The [synthetic lineage demo](https://github.com/nbatada/biodataledger/blob/main/docs/LINEAGE_DEMO.md)
 generates a sample-count plot and recovers its exact recorded sources.
 BioDataLedger also supports graph export as DOT or structured data, exact
 input and design references, retained-result lineage, optional

@@ -1,6 +1,6 @@
 # Reusable scientific plots
 
-Local, unreleased addition. These functions are not in the published 0.17.0 tag.
+Available in source version 0.18.0 on `main`; absent from the v0.17.0 tag.
 
 BioDataLedger's optional plotting module draws from prepared tables and existing
 coordinates. Use it without opening a ledger. It returns native objects so you can
@@ -74,7 +74,7 @@ historical figures do not acquire rendering evidence when the guard is enabled.
 
 Report a recurring figure problem with its small input example, call and expected
 behavior. A correction should become a focused regression case and a new reviewed
-code revision. Pin the tested package commit while these additions are unreleased;
+code revision. Pin the tested package commit for reuse;
 do not silently update an active project. Keep the old code and dependencies when
 you need to reproduce an earlier figure.
 

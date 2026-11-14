@@ -1,6 +1,6 @@
 # Retain figures through approved native renderers
 
-Local, unreleased addition. Use a source build containing this API in both languages;
+Available in source version 0.18.0. Use matching source builds in both languages;
 the published 0.17.0 tag does not contain it. Follow the source-install instructions
 in the [Python](PLOTTING_PYTHON.md) or [R](PLOTTING_R.md) plotting guide and start a
 fresh session before enabling the policy in a project.

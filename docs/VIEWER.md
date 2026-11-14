@@ -1,8 +1,7 @@
 # Browse a local project snapshot
 
 Use the browser snapshot to find a retained figure, see its recorded input and
-plotting code, and copy a path. The viewer is available in the development
-checkout. It uses the loaded R or Python project handle.
+plotting code, and copy a path. The viewer is available in source version 0.18.0. It uses the loaded R or Python project handle.
 
 ```python
 p.view()

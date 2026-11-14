@@ -1,6 +1,6 @@
-# Optional Python plotting (unreleased)
+# Optional Python plotting
 
-From a source checkout containing this unreleased module, install it into your
+From the 0.18.0 source checkout on `main`, install plotting into your
 chosen environment with `python -m pip install './python[plotting]'`. Pin the
 tested Git commit for reuse; the published 0.17.0 tag does not contain this module.
 Core registry imports do not load NumPy, pandas or Matplotlib. Access plotting

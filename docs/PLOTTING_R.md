@@ -1,6 +1,6 @@
 # Optional R plotting
 
-These local, unreleased helpers render prepared tables and matrices as editable
+These optional helpers in source version 0.18.0 render prepared tables and matrices as editable
 `ggplot` objects. Install `ggplot2` separately; composition also needs `patchwork`.
 Neither package is required for the core BioDataLedger registry. There is no
 Seurat, CellStyle or analysis-runtime dependency.

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.18.0 — unreleased local candidate
+## 0.18.0 — source update, 2026-11-14
 
 - Qualify the complete native test suite by installing its optional plotting
   dependencies in CI, while retaining a separate core-only Python boundary check.

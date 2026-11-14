@@ -1,20 +1,43 @@
 # BioDataLedger API reference
 
-The optional, local/unreleased [R session helper](R_SESSION.md) exposes
+The optional [R session helper](R_SESSION.md) exposes
 `bdl_session_start`, `bdl_session_attach` and `bdl_session_recover` separately from
 `ProjectBundle`. It manages current in-memory objects in a designated R process;
 it does not change the registry schema or provide an interpreter transport.
 
 Optional native plotting and composition are documented in the
-[plotting guide](PLOTTING.md). These are local, unreleased additions under
+[plotting guide](PLOTTING.md). These optional functions are available under
 `bdl.pl` (Python) and `bdl_pl_*` (R), separate from the registry methods below.
-The local, unreleased [approved renderer guard](RENDERER_GUARD.md) adds
+The optional [approved renderer guard](RENDERER_GUARD.md) adds
 `require_approved_figures(reason)`, `figure_policy()` and `render_figure(...)`
 to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger 0.18.0 local candidate API for Python (`biodataledger`) and R (`BioDataLedger`). This candidate is unreleased and has no tag; use a reviewed source checkout when testing it. Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md` files describe their named versions. [Published 0.17.0 source](https://github.com/nbatada/biodataledger/tree/v0.17.0).
+BioDataLedger **0.18.0 source version** API for Python (`biodataledger`) and R
+(`BioDataLedger`) on `main`. Pin a reviewed commit when installing; no
+`v0.18.0` tag is provided. The latest tagged release
+remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
+Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md`
+files describe their named versions.
+
+## Problems this API addresses
+
+The function index below remains the complete navigation surface. This map points
+from common project problems to the relevant API sections and guides without
+repeating their signatures.
+
+| Project problem | Capability and starting point |
+| --- | --- |
+| A result loses its exact input, code, method, parameter, or figure revision. | Register immutable revisioned DATA/ANA/FIG records and retrieve their exact links: [register and revise records](#register-files-and-revise-records), [exact records and code](#retrieve-exact-records-and-code), and [retained inputs and outputs](RETAINED_INPUTS.md). Registration records declarations; it does not prove execution or scientific validity. |
+| A requested input is ambiguous, missing, in the wrong scope, or has changed on disk. | Select one exact DATA revision and explicitly verify it with [input resolution and checks](#explicit-verification), [scope](#set_data_scope), and the [object-check contract](api/OBJECT_CHECK_V1.md). `check_object` is **R only**; neither resolver nor object check proves actual downstream input consumption. |
+| Derived tables, embeddings, and figures cannot be traced back to their analysis. | Retain typed results and figure context with [register_result](#register_result), [register_figure](#register_figure), [related work](#related_work), and [dependencies](#dependencies). See the [lineage demo](LINEAGE_DEMO.md). |
+| Design choices, protocols, decisions, or comparison evidence are scattered outside the project. | Record typed [design](#experimental-design), [decisions, protocols, execution, and comparisons](#decisions-protocols-execution-and-comparisons), and inspect their exact revisions. Recorded approval and comparison evidence remain qualified declarations, not authenticated scientific acceptance. |
+| Analysis order, bounded wrapper activity, or comparison outcome must be inspectable later. | Use [graphs and chronology](#graphs-and-chronology), optional [run_analysis](#run_analysis), and [comparison reports](#get_comparison). `run_analysis` records a bounded wrapper receipt; it does not reproduce a workflow, authenticate consumed inputs, or validate biology. |
+| A save conflict, handover, or external-path change risks losing registry context. | Use [save, share, and recover](#save-share-and-recover) with the [live-project update guide](UPDATING.md). Stale writers require deliberate reconciliation; ZIP metadata is not recovery of unavailable external scientific files. |
+| A scientist needs a local, read-only project overview rather than raw registry JSON. | Generate the optional local [viewer snapshot](#view); see [VIEWER.md](VIEWER.md). It reflects the loaded handle and bounded recorded metadata, not a refreshed registry or file-integrity audit by default. |
+| Prepared values need native plots, or a project must restrict retained figures to fixed renderers. | Use the optional [plotting guide](PLOTTING.md) and opt-in [renderer guard](RENDERER_GUARD.md). Plotting does not fit analyses or establish scientific suitability; the guard is not a secure runtime or scientific approval. |
+| One designated R process should reuse a loaded native object. | Use the optional, **R-only** [R session helper](R_SESSION.md). It manages one live process and does not start or transport an interpreter, serialize objects, or prove object/source equality after modification. |
 
 ## Open and inspect a project
 

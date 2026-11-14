@@ -1,13 +1,11 @@
 # Safely update an existing project
 
-The local **0.18.0 candidate is unpublished**. Use its reviewed source checkout
-as described below; do not request a nonexistent v0.18.0 tag. The detailed GitHub
-examples on this page target the published **v0.17.0** release.
-
-Version 0.17.0 adds a project overview and inspection helpers. Use `print(p)`
-for the overview, `summary_text()` for the technical card, and `status()` for
-structured metadata. See the [API reference](API.md) for native R and Python
-commands.
+The **0.18.0 source version is on `main`**. Resolve the branch to a full commit
+before installation; the latest existing release tag is v0.17.0. No v0.18.0 tag
+is provided. Version 0.18.0 includes analysis input/output timelines, optional
+plotting and renderer guards, a browser snapshot, and managed R session reuse.
+See the [feature guide](../README.md#features-and-the-problems-they-solve) and
+[API reference](API.md).
 
 Reopen your saved project with its existing registry schema, `.nb_project_bundle`
 paths, code snapshots, exact references and ZIP format. Keep the previous
@@ -53,21 +51,21 @@ convert Seurat/AnnData, replace live handles, or change input selection. Follow
 the detailed procedure below for safeguards, synthetic checks and reporting.
 ```
 
-## Local 0.18.0 candidate
+## Source checkout installation
 
 Apply the same live-session and saved-state safeguards above. Record the reviewed
-local checkout's full commit and verify its package version is 0.18.0. Install into
+checkout's full commit and verify its package version is 0.18.0. Install into
 a new library/environment, preserving the current one. These commands assume
 compatible dependencies and Python build tools are already available.
 
 R, in a fresh process:
 
 ```r
-candidate_source <- "/absolute/path/to/reviewed/biodataledger/r"
+package_source <- "/absolute/path/to/reviewed/biodataledger/r"
 new_library <- "/absolute/path/to/new-biodataledger-0.18.0-library"
 stopifnot(!dir.exists(new_library))
 dir.create(new_library, recursive = TRUE)
-install.packages(candidate_source, repos = NULL, type = "source", lib = new_library)
+install.packages(package_source, repos = NULL, type = "source", lib = new_library)
 library(BioDataLedger, lib.loc = new_library)
 stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == "0.18.0")
 ```
@@ -92,7 +90,7 @@ package installation and synthetic checks, while keeping scientific save decisio
 with the owner.
 
 ```text
-Safely upgrade this existing BioDataLedger project to GitHub tag v0.17.0 from
+Safely upgrade this existing BioDataLedger project to source version 0.18.0 on main from
 https://github.com/nbatada/biodataledger. Preserve the project and live analysis.
 Use existing dependencies. Do not change the registry format or scientific choices.
 
@@ -126,7 +124,7 @@ Use existing dependencies. Do not change the registry format or scientific choic
    files by default; record their locations and existing captured digests instead.
    Retain the old package environment/library and record how to launch it again.
 
-4. Resolve v0.17.0 to its full Git commit and record it. Install that pinned version
+4. Resolve main to its full Git commit and record it. Install that pinned version
    into a NEW R library or Python environment, preserving the old installation and
    dependency versions. Use the existing compatible interpreter and dependencies;
    do not upgrade dependencies or create a project workflow/migration utility.
@@ -135,7 +133,7 @@ Use existing dependencies. Do not change the registry format or scientific choic
    the environment. An environment that can reuse existing compatible dependencies
    is sufficient; no new scientific software stack is needed.
 
-5. In fresh R/Python processes, verify loaded version 0.17.0 and package path against
+5. In fresh R/Python processes, verify loaded version 0.18.0 and package path against
    the new installation and pinned source commit. Test create/register/save/reopen
    with disposable synthetic files only. Verify the inspection card/status reports
    package version, registry revision and unsaved state, and save_and_confirm gives
@@ -163,26 +161,26 @@ Use existing dependencies. Do not change the registry format or scientific choic
 
 Set an unused destination and keep the previous library/environment. These are
 installation commands, not commands to paste into an unresolved live session.
-Replace the tag with its verified full commit SHA for an immutable source pin.
+Replace main with its verified full commit SHA for an immutable source pin.
 
 R, in a fresh process with existing dependencies available:
 
 ```r
-new_library <- "/absolute/path/to/new-biodataledger-0.17.0-library"
+new_library <- "/absolute/path/to/new-biodataledger-0.18.0-library"
 stopifnot(!dir.exists(new_library))
 dir.create(new_library, recursive = TRUE)
-remotes::install_github("nbatada/biodataledger", subdir = "r", ref = "v0.17.0",
+remotes::install_github("nbatada/biodataledger", subdir = "r", ref = "main",
                         lib = new_library, upgrade = "never", dependencies = FALSE)
 library(BioDataLedger, lib.loc = new_library)
-stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == "0.17.0")
+stopifnot(as.character(getNamespaceVersion("BioDataLedger")) == "0.18.0")
 ```
 
 Python, using the chosen compatible interpreter with setuptools/wheel available:
 
 ```sh
-python3 -m venv --system-site-packages /absolute/path/to/new-biodataledger-0.17.0-env
-/absolute/path/to/new-biodataledger-0.17.0-env/bin/python -m pip install --no-deps --no-build-isolation "git+https://github.com/nbatada/biodataledger.git@v0.17.0#subdirectory=python"
-/absolute/path/to/new-biodataledger-0.17.0-env/bin/python -c 'import biodataledger; print(biodataledger.__version__, biodataledger.__file__)'
+python3 -m venv --system-site-packages /absolute/path/to/new-biodataledger-0.18.0-env
+/absolute/path/to/new-biodataledger-0.18.0-env/bin/python -m pip install --no-deps --no-build-isolation "git+https://github.com/nbatada/biodataledger.git@main#subdirectory=python"
+/absolute/path/to/new-biodataledger-0.18.0-env/bin/python -c 'import biodataledger; print(biodataledger.__version__, biodataledger.__file__)'
 ```
 
 Choose a destination that does not already exist. `--system-site-packages` reuses

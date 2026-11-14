@@ -278,7 +278,7 @@ def project_help(project):
         "",
         "Use your project's exact references and recorded purposes.",
         "Registration dates describe registry entries. See recorded runs for wrapper execution evidence.",
-        "Full API                 https://github.com/nbatada/biodataledger/blob/v0.17.0/docs/API.md",
+        "Full API                 https://github.com/nbatada/biodataledger/blob/main/docs/API.md",
     ])
 
 

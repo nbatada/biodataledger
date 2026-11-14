@@ -1,6 +1,6 @@
 # Reuse an object in one live R session
 
-This helper is an **unreleased local source-checkout addition**. The published
+This helper is available in **source version 0.18.0 on main**. The published
 `v0.17.0` release-tag installation does not include it. Install the reviewed
 checkout containing this helper into your chosen R library using the
 [source-install instructions](../README.md#install); keep that checkout rather

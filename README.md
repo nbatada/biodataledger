@@ -12,7 +12,7 @@ repository and native data files; no AI service is required.
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
+[Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
 ## What it adds to an agent-assisted workflow
 
@@ -21,10 +21,26 @@ R/Python API for exact saved revisions, linked inputs and code, selected current
 inputs, and explicit integrity checks. A fresh agent can query those records
 without relying on the previous conversation or inferring provenance from names.
 
-- **Find:** retrieve retained figures and data by topic, type or exact reference.
-- **Trace:** inspect the recorded input revisions, code snapshots and parameters.
-- **Check and share:** detect changed bytes against a captured hash, refuse stale
-  saves, and preview selected files before a colleague handoff.
+## Features and the problems they solve
+
+| Problem | BioDataLedger feature | Start here |
+| --- | --- | --- |
+| A fresh agent cannot find the retained result | Search saved data/figures by topic or type, inspect recent outputs, and browse a local snapshot | [Find outputs](docs/API.md#find-and-search), [viewer](docs/VIEWER.md) |
+| Similar filenames hide which input was selected | Exact DATA revisions and current-for-purpose selections; explicit hash/scope checks detect mismatches against recorded requirements | [Resolve inputs](docs/API.md#resolve_data), [retain loaded inputs](docs/RETAINED_INPUTS.md) |
+| A figure has lost its connection to data and code | Retain analysis inputs, code snapshots, parameters and figure/result links | [Record provenance](#record-data-analyses-and-figures), [retrieve exact records](docs/API.md#retrieve-exact-records-and-code) |
+| Previous work is repeated because its relationships are unclear | Find related retained work and follow bounded upstream/downstream dependency links | [Related work](docs/API.md#related_work), [graphs](docs/API.md#graphs-and-chronology) |
+| Design choices and scientific decisions get lost in chat | Version experimental design and record decisions, ordered protocols and comparison evidence | [Design](docs/API.md#experimental-design), [decisions and protocols](docs/API.md#decisions-protocols-execution-and-comparisons) |
+| Registration order is confused with execution | Inspect analysis input/output chains and qualified execution history; optionally capture a native call's boundary checks | [Timeline](docs/API.md#timeline), [execution receipts](docs/API.md#run_analysis) |
+| Independent agents overwrite each other's saved metadata | Explicit batch saves and stale-writer rejection preserve pending edits for deliberate reconciliation | [Save and confirm](docs/API.md#save_and_confirm) |
+| A colleague receives files without usable provenance | Preview metadata and explicitly selected payloads, exchange R/Python ZIPs, and recover declared files | [Sharing](docs/SHARING.md), [recovery](docs/RECOVERY.md) |
+| Every plot starts from another custom wrapper | Optional native PCA/UMAP, QC, group, heatmap, volcano and MA renderers, with composition from prepared values | [Plotting](docs/PLOTTING.md) |
+| A project needs retained figures made through its chosen renderer route | Opt-in guard renders and registers figures internally and records an output-bound receipt | [Renderer guard](docs/RENDERER_GUARD.md) |
+| Agents repeatedly reload the same R object in new processes | Optional managed R session reuses current objects within one designated live process | [R session reuse](docs/R_SESSION.md) |
+
+These features expose recorded evidence, not inferred scientific truth. A hash
+match identifies checked bytes; a run receipt does not prove input consumption.
+Sharing selected payloads still includes the whole registry metadata and history.
+The R session helper requires an existing connection to the live R process.
 
 Record results worth keeping and save meaningful batches; exploration needs no
 registration. The records still require accurate capture and updates. For a small
@@ -42,39 +58,24 @@ For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
 It is a project-helper pattern, not a migration instruction for existing helpers.
 
-**Optional plotting (0.18.0 candidate, unreleased):** [editable scientific plots and panel
-composition](docs/PLOTTING.md) provide `bdl.pl` in Python and `bdl_pl_*` in R.
-They use prepared tables and existing coordinates, including bulk RNA-seq results.
-These additions are not included in the published 0.17.0 tag.
-For projects that require these renderers, enable the optional
-[approved renderer guard](docs/RENDERER_GUARD.md). It rejects directly supplied
-images and renders retained figures internally from prepared data and settings.
-
-**R session reuse (0.18.0 candidate, unreleased):** the optional [managed R session helper](docs/R_SESSION.md)
-keeps one current object per dataset slot, reuses loaded data and rejects attachment
-from another R process. It does not create a connection to Positron or restart a session.
-
 ## Install
 
-**Local release candidate: 0.18.0 (unpublished).** It includes the analysis timeline,
+**Source version 0.18.0 on `main`** · MIT license · Tested on **macOS**.
+Install Python, R, or both. This source update includes the analysis timeline,
 optional plotting and renderer guard, browser snapshot, and managed R session helper.
-Install it from the reviewed local source checkout; no `v0.18.0` tag is published.
-See [candidate upgrade instructions](docs/UPDATING.md#local-0180-candidate).
+The latest tagged release remains **v0.17.0**; no v0.18.0 tag or package-registry
+release is provided. See the [changelog](CHANGELOG.md) and [API reference](docs/API.md).
 
-**Published version: 0.17.0** · MIT license · Tested on **macOS**.
-The GitHub commands below install that published version, not the local candidate.
-Install Python, R, or both.
-
-Version 0.17.0 adds a project overview, a quick help menu, and a lookup for recent
-figure paths in R and Python. The [API reference](docs/API.md) covers both clients.
-See the [changelog](CHANGELOG.md).
+The commands below install `main`. For an immutable installation, resolve `main`
+to its full Git commit and use that SHA in place of `main`. Record the commit
+alongside the package version when sharing an analysis.
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
-**R — install the tested version from GitHub**
+**R — install the current source from GitHub**
 
-Run this in R to install version 0.17.0 from its release tag:
+Run this in a suitable R environment to install the current source:
 
 ```r
 if (!requireNamespace("remotes", quietly = TRUE))
@@ -83,33 +84,32 @@ if (!requireNamespace("remotes", quietly = TRUE))
 remotes::install_github(
   "nbatada/biodataledger",
   subdir = "r",
-  ref = "v0.17.0",
+  ref = "main",
   upgrade = "never"
 )
 ```
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install version 0.17.0 directly from GitHub**
+**Python — install the current source from GitHub**
 
 ```sh
-python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@v0.17.0#subdirectory=python"
+python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@main#subdirectory=python"
 ```
 
 Use an isolated Python environment as needed. For an immutable installation, replace
-`v0.17.0` with the release's full commit SHA in either installation command.
+`main` with the full commit SHA in either installation command.
 
-**Published source checkout — version 0.17.0**
+**Source checkout — examples or local installation**
 
 ```sh
 git clone https://github.com/nbatada/biodataledger.git
 cd biodataledger
-git checkout v0.17.0
+git checkout main
 ```
 
-For the **0.18.0 candidate**, use the reviewed local checkout instead of the
-published checkout above. The following source-install commands install the
-version in your selected checkout. Keep existing live analysis environments intact.
+The following source-install commands install the version in your selected
+checkout. Keep existing live analysis environments intact.
 
 **Python 3.9 or newer**
 
@@ -470,7 +470,7 @@ Older projects remain readable. Saving experimental design requires clients ≥0
 
 ## Tests
 
-From the **0.18.0 candidate checkout**, install both clients and the optional
+From the **0.18.0 source checkout**, install both clients and the optional
 plotting dependencies required by the full test suite. Core use does not require
 them; the suite also tests core imports with Python plotting dependencies blocked.
 
