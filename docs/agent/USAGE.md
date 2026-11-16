@@ -18,6 +18,17 @@ with a new `Rscript` process, call `start` automatically, or recover another liv
 owner. Report `USE_LIVE_R_SESSION` and use an executor connected to the designated
 console. This package does not supply that execution connection.
 
+In that console, keep `session` as the one master and use `session$project()` as
+the canonical metadata handle. Do not repeatedly call `ProjectBundle$open()`;
+each call creates another metadata handle and can become stale. Object names can
+be aliases, and native R copy-on-modify or arbitrary code can still create copies.
+The helper cannot enforce permissions or guarantee a single Variables-pane entry.
+Never serialize `session` or save a workspace containing it with `saveRDS`,
+`save`, or `save.image`; checkpoint retained scientific outputs explicitly and
+save approved ledger edits separately through `session$project()$save()`.
+Use `ProjectBundle$open()` only for an explicit independent metadata inspection
+or a bounded Rscript batch, not as a managed-session per-turn shortcut.
+
 Use `load_once` for the selected exact DATA reference and `get_data` for subsequent
 work. Keep one canonical slot for each working dataset; use `replace_data` with
 the expected generation and an explicit validation function to advance it.
@@ -29,6 +40,24 @@ If the metadata handle becomes stale, use the documented explicit `refresh_proje
 procedure and retain its returned previous handle when pending edits exist. It
 checks cached source identities and refreshes metadata without reloading datasets;
 do not silently discard or automatically reconcile another writer's changes.
+
+For an Rscript agent, use one bounded process for a complete related batch. Open
+the project once, make authorized changes, save once, then exit. Separate Rscript
+processes cannot reuse the Positron object's RAM. If a live session owns the
+project, do not fall back to a new owner or reload: report `USE_LIVE_R_SESSION`
+and route work to the owner. The synthetic command
+`Rscript examples/session_R.R --synthetic-batch` is disposable-only and shows
+the process boundary; it is not a live-session connection or a scientific run.
+It closes only after its explicit successful save and otherwise retains its
+disposable directory for inspection, including the owner marker if ownership
+was started; it never recovers or replaces an owner.
+
+Managed reuse also works in a supported long-lived terminal R process or kernel;
+Positron is not required. The agent must already be able to execute code in that
+same owner process. `bdl_session_attach()` is not an interprocess connection or
+a package-provided R server, kernel manager, or command bridge. When that route
+is unavailable, use a bounded whole-analysis Rscript batch, not one Rscript per
+prompt.
 
 ## Retain work and confirm the save
 

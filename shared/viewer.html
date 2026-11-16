@@ -90,6 +90,12 @@ caption { text-align: left; padding-block: .4rem; }
 th, td { text-align: left; vertical-align: top; padding: .45rem .55rem; border-bottom: 1px solid var(--border); }
 th { background: var(--sidebar); font-weight: 600; }
 th:first-child { width: 60%; }
+table.analysis-log th:first-child { width: 14%; }
+table.analysis-log th:nth-child(2) { width: 22%; }
+table.analysis-log th:nth-child(3), table.analysis-log th:nth-child(4) { width: 22%; }
+table.analysis-log th:nth-child(5) { width: 20%; }
+.analysis-log-group { margin-top: 1.25rem; }
+.analysis-log-path { display: block; font: .85rem/1.35 ui-monospace, monospace; margin-top: .25rem; }
 tr.selected { background: var(--selection); }
 .record-link { text-align: left; color: var(--link); background: transparent; }
 td .record-link { padding: .15rem .3rem; border-color: transparent; }
@@ -127,6 +133,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     <button type="button" data-mode="overview">Overview</button>
     <button type="button" data-mode="records">Records</button>
     <button type="button" data-mode="timeline">Timeline</button>
+    <button type="button" data-mode="analysis-log">Analysis log</button>
   </nav>
   <noscript><p class="warning">Enable JavaScript to read this snapshot.</p></noscript>
 </header>
@@ -203,6 +210,20 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     else item.textContent = String(display);
   }
 
+  async function copyText(value, shown, feedback) {
+    try {
+      await navigator.clipboard.writeText(value);
+      feedback.textContent = "Copied.";
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(shown);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      feedback.textContent = "Text selected. Use your browser’s Copy command.";
+    }
+  }
+
   function copyValue(parent, label, value, fallback) {
     add(parent, "h4", label);
     if (value === null || value === undefined) {
@@ -213,19 +234,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     const controls = add(parent, "div", undefined, "controls");
     const feedback = add(controls, "span", "", "quiet");
     feedback.setAttribute("role", "status");
-    const copy = button(controls, "Copy " + label.toLowerCase(), async () => {
-      try {
-        await navigator.clipboard.writeText(value);
-        feedback.textContent = "Copied.";
-      } catch {
-        const range = document.createRange();
-        range.selectNodeContents(shown);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        feedback.textContent = "Text selected. Use your browser’s Copy command.";
-      }
-    });
+    const copy = button(controls, "Copy " + label.toLowerCase(), () => copyText(value, shown, feedback));
     controls.prepend(copy);
   }
 
@@ -249,7 +258,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
   const purposes = list(snapshot.current);
   const previews = snapshot.previews || {};
   const state = {query: "", kind: "", topic: "", history: false, page: 0,
-    timeline: "registration", timelinePage: 0, selected: null, back: []};
+    timeline: "registration", timelinePage: 0, analysisLogPage: 0, analysisGrouping: "day", selected: null, back: []};
   const PAGE_SIZE = 25;
   const displayName = record => record.info?.presentation?.title || record.name || "[Name omitted]";
   const searchIndex = new Map(records.map(record => {
@@ -266,7 +275,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
   byId("purpose").textContent = snapshot.project.purpose || "";
   byId("purpose").hidden = !snapshot.project.purpose;
   byId("snapshot").textContent = "Read-only snapshot · Captured " +
-    (snapshot.captured_at_utc || "at an unknown time") + " · Registry revision " +
+    (localDate(snapshot.captured_at_utc) || "at an unknown time") + " · Registry revision " +
     (snapshot.registry_revision ?? "unknown");
   const coverage = snapshot.coverage;
   byId("coverage").textContent = coverage.included_records + " of " + coverage.total_records +
@@ -554,7 +563,12 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
       (record.is_latest ? "Latest revision" : "Historical revision") + " · " + words(record.status), "badge");
     const identity = add(inspector, "dl");
     if (record.name && record.name !== displayName(record)) field(identity, "Registered name", record.name);
-    field(identity, "Registered (UTC)", record.recorded_at, "Unknown or unqualified");
+    field(identity, "Registered (local time)", localDate(record.recorded_at), "Unknown or unqualified");
+    if (record.recorded_at) {
+      const timestamp = add(inspector, "details");
+      add(timestamp, "summary", "Original timestamp");
+      add(timestamp, "p", record.recorded_at + " (UTC)", "quiet");
+    }
     copyValue(inspector, "Exact reference", record.key);
     if (record.omission) {
       add(inspector, "p", "Record details omitted. " + record.omission + ".", "warning");
@@ -792,6 +806,168 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     });
   }
 
+  function localDate(value) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.valueOf())) return null;
+    const parts = new Intl.DateTimeFormat("en-US", {hour: "numeric", minute: "2-digit", hour12: true,
+      month: "short", day: "numeric", year: "numeric"}).formatToParts(date);
+    const values = Object.fromEntries(parts.filter(part => part.type !== "literal").map(part => [part.type, part.value]));
+    return values.hour + "." + values.minute + values.dayPeriod.toLowerCase() + ", " + values.month + " " + values.day + ", " + values.year;
+  }
+
+  const localKey = date => date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
+
+  function groupDate(value, mode) {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.valueOf())) return {key: "unknown", label: "Unknown or unqualified date"};
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    if (mode === "month") return {key: day.getFullYear() + "-" + day.getMonth(), label: new Intl.DateTimeFormat(undefined, {month: "long", year: "numeric"}).format(day)};
+    if (mode === "week") {
+      const monday = new Date(day); monday.setDate(day.getDate() - ((day.getDay() + 6) % 7));
+      return {key: localKey(monday), label: "Week of " + new Intl.DateTimeFormat(undefined, {month: "short", day: "numeric", year: "numeric"}).format(monday)};
+    }
+    return {key: localKey(day), label: new Intl.DateTimeFormat(undefined, {weekday: "long", month: "short", day: "numeric", year: "numeric"}).format(day)};
+  }
+
+  function logRecordLink(parent, ref, name, selected = false) {
+    const key = keyFor(ref), record = byKey.get(key);
+    const label = name || record?.name || record?.info?.presentation?.title;
+    if (!label) return add(parent, "span", "Unavailable in this snapshot", "quiet");
+    if (!record) {
+      add(parent, "span", label);
+      return add(parent, "span", "Outside this snapshot", "secondary quiet");
+    }
+    const link = button(parent, label, () => selectRecord(key), "record-link");
+    if (selected) link.setAttribute("aria-current", "true");
+    return link;
+  }
+
+  function logItems(parent, items, fallback, paths = false) {
+    const values = list(items);
+    if (!values.length) {
+      add(parent, "span", fallback, "quiet");
+      return;
+    }
+    const group = add(parent, "ul");
+    for (const item of values) {
+      const line = add(group, "li");
+      logRecordLink(line, item.ref, item.name);
+      const qualifier = item.category ? [item.category, item.authority].filter(Boolean).join(" · ") :
+        item.revision_status === "historical" ? "Historical" : words(item.record_status);
+      add(line, "span", qualifier, "secondary quiet");
+      if (list(item.omitted_text_fields).length) add(line, "span", "Recorded label shortened.", "secondary quiet");
+      const record = byKey.get(keyFor(item.ref));
+      if (paths && item.path) {
+        const path = add(line, "span", item.path, "analysis-log-path");
+        const controls = add(line, "span", undefined, "controls");
+        const feedback = add(controls, "span", "", "quiet"); feedback.setAttribute("role", "status");
+        const copy = button(controls, "Copy path", () => copyText(item.path, path, feedback), "secondary quiet");
+        copy.title = "Copy recorded path";
+      }
+      if (paths && item.path_omitted) add(line, "span", "Recorded path omitted for size.", "secondary quiet");
+      if (paths && item.kind === "figure" && record) button(line, "Open figure details", () => selectRecord(record.key), "secondary quiet");
+    }
+  }
+
+  function analysisLogRows(parent, page) {
+    const body = table(parent, "Recorded analysis chronology · newest activity first", [
+      "Date", "Analysis", "Recorded inputs", "Retained outputs", "Status/evidence"
+    ]);
+    body.parentElement.classList.add("analysis-log");
+    list(page.rows).forEach(row => {
+      const tr = add(body, "tr");
+      const key = keyFor(row.ref);
+      tr.dataset.key = key;
+      tr.classList.toggle("selected", state.selected === key);
+      const date = add(tr, "td");
+      field(add(date, "dl"), row.time_source === "wrapper_start" ? "Recorded wrapper start" :
+        row.time_source === "registration" ? "Registered" : "Date", localDate(row.time_utc),
+        row.time_source === "unqualified" ? "Unknown or unqualified" : "Unknown");
+      if (row.time_source === "registration") add(date, "span", "Registration time; not execution evidence.", "secondary quiet");
+      if (row.time_source === "unqualified") add(date, "span", "Receipt time is not qualified.", "secondary quiet");
+
+      const analysis = add(tr, "td");
+      logRecordLink(analysis, row.ref, timelineValue(row, "name"), state.selected === key);
+      add(analysis, "span", words(row.revision_status) + " · " + words(row.record_status), "secondary quiet");
+      if (row.run_ref) add(analysis, "span", "Recorded wrapper run; exact reference is in details.", "secondary quiet");
+
+      const inputs = add(tr, "td");
+      logItems(inputs, row.input_items, row.input_refs === null ? "Inputs unknown" : "No recorded inputs", true);
+      if (row.input_refs_omitted) add(inputs, "span", row.input_refs_omitted + " input links omitted.", "secondary quiet");
+      const descriptors = list(row.metadata_descriptors);
+      if (descriptors.length) {
+        add(inputs, "span", "Linked metadata descriptors", "secondary quiet");
+        logItems(inputs, descriptors, "No descriptors");
+      }
+      if (row.metadata_descriptor_scan_truncated) add(inputs, "span",
+        "Metadata descriptor scan incomplete.", "secondary quiet");
+
+      const outputs = add(tr, "td");
+      logItems(outputs, row.output_items,
+        row.time_source === "unqualified" ? "Outputs unknown" : "No retained outputs shown", true);
+      if (row.output_refs_omitted) add(outputs, "span", row.output_refs_omitted + " output links omitted.", "secondary quiet");
+      if (row.output_scan_truncated) add(outputs, "span", "Output scan incomplete.", "secondary quiet");
+      const figures = list(row.associated_figure_items);
+      if (figures.length) {
+        add(outputs, "span", "Associated figures (not observed outputs)", "secondary quiet");
+        logItems(outputs, figures, "None", true);
+      }
+      if (row.associated_figure_refs_omitted) add(outputs, "span",
+        row.associated_figure_refs_omitted + " associated figure links omitted.", "secondary quiet");
+
+      const evidence = add(tr, "td");
+      const values = add(evidence, "dl");
+      field(values, "Receipt evidence", words(row.evidence));
+      if (row.outcome) field(values, "Outcome", words(row.outcome));
+      field(values, "Timing", words(row.timing_status));
+      if (snapshot.imported || row.evidence === "untrusted_imported") add(evidence, "span",
+        "Imported receipt claim is untrusted.", "secondary quiet");
+      add(evidence, "span", "Registration, wrapper receipt, and scientific acceptance are distinct.", "secondary quiet");
+    });
+  }
+
+  function showAnalysisLog() {
+    add(main, "h2", "Analysis log");
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
+    add(main, "p", "Newest recorded activity first, in " + timezone + ". Exact references remain in the details pane. Associated figures are separate from retained outputs.", "quiet");
+    const controls = add(main, "div", undefined, "controls");
+    for (const [mode, label] of [["day", "Day"], ["week", "Week"], ["month", "Month"], ["none", "Ungrouped"]]) {
+      const control = button(controls, label, () => { state.analysisGrouping = mode; state.analysisLogPage = 0; showMode("analysis-log"); });
+      control.setAttribute("aria-pressed", String(mode === state.analysisGrouping));
+    }
+    const timeline = snapshot.timelines?.analyses;
+    const rows = list(timeline?.pages).flatMap(page => list(page.rows)).sort((left, right) => {
+      const a = Date.parse(left.time_utc || ""), b = Date.parse(right.time_utc || "");
+      if (Number.isNaN(a)) return Number.isNaN(b) ? 0 : 1;
+      return Number.isNaN(b) ? -1 : b - a;
+    });
+    if (timeline?.omitted) add(main, "p", timeline.omitted + " analysis-log rows are outside this partial capture.", "warning");
+    if (!rows.length) {
+      add(main, "p", "No analysis rows included.", "quiet");
+      return;
+    }
+    const groups = [];
+    for (const row of rows) {
+      const date = state.analysisGrouping === "none" ? {key: "all", label: "Captured analyses"} : groupDate(row.time_utc, state.analysisGrouping);
+      const last = groups[groups.length - 1];
+      if (!last || last.key !== date.key) groups.push({key: date.key, label: date.label, rows: [row]});
+      else last.rows.push(row);
+    }
+    const GROUPS_PER_PAGE = 8, start = state.analysisLogPage * GROUPS_PER_PAGE;
+    for (const group of groups.slice(start, start + GROUPS_PER_PAGE)) {
+      const section = add(main, "section", undefined, "analysis-log-group");
+      add(section, "h3", group.label);
+      analysisLogRows(section, {rows: group.rows});
+    }
+    const pages = Math.ceil(groups.length / GROUPS_PER_PAGE);
+    if (pages > 1) pager(main, "Group page " + (state.analysisLogPage + 1) + " of " + pages,
+      state.analysisLogPage, pages, (pageNumber, direction) => {
+        state.analysisLogPage = pageNumber;
+        showMode("analysis-log");
+        focusPager(direction);
+      });
+  }
+
   function showTimeline() {
     add(main, "h2", "Timeline");
     const controls = add(main, "div", undefined, "controls");
@@ -847,6 +1023,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     main.replaceChildren();
     if (mode === "records") updateResults = showRecords();
     else if (mode === "timeline") showTimeline();
+    else if (mode === "analysis-log") showAnalysisLog();
     else recentOverview();
   }
 

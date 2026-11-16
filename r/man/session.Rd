@@ -33,8 +33,15 @@ attaches in that same process; attach does not connect to Positron or another
 interpreter. Other processes, forked handles and serialized copies reject with
 \code{USE_LIVE_R_SESSION}. The scientist or agent must already be able to execute
 in the owner's R console. Support currently follows the package's macOS write
-boundary. This is an unreleased local source-checkout addition; install the
-reviewed checkout containing it rather than the published release tag.
+boundary. Use a reviewed package installation containing this helper; installing
+a package does not update a namespace already loaded in a live R process.
+
+Use \code{session$project()} for the canonical ledger handle in a managed session.
+Repeated ordinary \code{ProjectBundle$open()} calls create independent metadata
+handles. The helper cannot prevent arbitrary R aliases or copy-on-modify; do not
+serialize the session handle or a workspace containing it. A separate
+\code{Rscript} launch cannot reuse another process's memory. Use one process for
+a complete batch, or an existing executor connected to the designated live owner.
 
 The handle exposes these methods:
 \describe{

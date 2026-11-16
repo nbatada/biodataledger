@@ -22,6 +22,22 @@ revision, even if a newer revision is current. The timeline shows registration
 dates and recorded wrapper runs in separate views, with their original evidence
 qualifications.
 
+The **Analysis log** is a five-column, newest-first view of recorded analysis
+history: date, analysis, recorded inputs, retained outputs, and status/evidence.
+An ordinary analysis uses its registration time, not an execution claim. A
+qualified receipt uses its recorded wrapper-start time; missing or invalid
+receipt timing remains unqualified. Exact links preserve historical revisions.
+Associated figures are labelled separately: they are not observed generated
+outputs. Directly linked metadata descriptors are shown as links only; the
+snapshot does not read their table payloads. Registration, wrapper evidence,
+and scientific acceptance remain distinct.
+
+Dates render in the browser's local timezone. Group by day (default), week,
+month, or leave rows ungrouped; unknown or unqualified dates remain last.
+The log favors human-readable registered names and paths. Open a row's details
+to inspect or copy its exact revision; a link outside the captured record cards
+is marked unavailable rather than replaced by an ID.
+
 ## What the snapshot captures
 
 The page shows the loaded registry revision, capture time, and unsaved changes
@@ -37,8 +53,9 @@ The default limit is 5,000 exact revisions. Use `limit` from 1 to 5,000 for a
 smaller capture. Cards above 16 KiB keep their identity and indicate omitted
 details. Project fields above 4 KiB, current-purpose entries beyond a 64 KiB
 budget, and records beyond a 16 MiB metadata budget are reported as omissions.
-The timeline captures up to the smaller of `limit` and 1,000 rows per view, in
-oldest-first pages with page-local timing relations. A reference outside the
+The timeline captures up to the smaller of `limit` and 1,000 rows in oldest-first
+pages; the Analysis log captures the newest rows first. Both retain page-local timing relations. The optional Analysis log
+is reduced first if needed to retain the snapshot's metadata-size bound. A reference outside the
 capture is identified by its exact revision. Use the native
 [`get_info()`](API.md#get_info) or [`timeline()`](API.md#timeline) to inspect
 more metadata.

@@ -142,6 +142,94 @@ class ViewerTests(unittest.TestCase):
             clipped = self.project.view("clipped.html", open_browser=False)
         self.assertTrue(clipped["coverage"]["byte_limit_hit"])
 
+    def test_analysis_log_capture_has_exact_links_and_no_payload_reads(self):
+        registry = self.root / ".nb_project_bundle/project.json"
+        original = registry.read_bytes()
+        original_open = Path.open
+
+        def deny_registered_payloads(path, *args, **kwargs):
+            if path in (registry, self.root / "input.csv", self.root / "plot code.py", self.root / "figure panel.png"):
+                raise AssertionError("analysis log must not read payloads")
+            return original_open(path, *args, **kwargs)
+
+        with patch.object(Path, "open", deny_registered_payloads):
+            report = self.project.view("analysis-log.html", open_browser=False)
+        _, snapshot = read_snapshot(report["path"])
+        rows = snapshot["timelines"]["analyses"]["pages"][0]["rows"]
+        row = next(item for item in rows if item["ref"] == self.ana)
+        self.assertEqual(row["time_source"], "registration")
+        self.assertEqual(row["input_items"][0]["ref"], self.old)
+        self.assertEqual(row["input_items"][0]["path"], str(self.root / "input.csv"))
+        self.assertEqual(row["associated_figure_items"][0]["ref"],
+                         {**self.figure, "revision": 1})
+        self.assertEqual(row["associated_figure_items"][0]["revision_status"], "historical")
+        self.assertEqual(row["output_items"], [])
+        self.assertEqual(row["metadata_descriptors"], [])
+        self.assertEqual(registry.read_bytes(), original)
+
+    def test_analysis_log_uses_incremental_capture_budget(self):
+        for index in range(30):
+            self.project.register_analysis("Synthetic bounded log %02d" % index, [self.new], method="fixture", params={})
+        with patch("biodataledger.viewer._ANALYSIS_LOG_BYTES", 1200):
+            report = self.project.view("bounded-log.html", open_browser=False)
+        _, snapshot = read_snapshot(report["path"])
+        timeline = snapshot["timelines"]["analyses"]
+        self.assertGreater(timeline["omitted"], 0)
+        self.assertLess(sum(len(page["rows"]) for page in timeline["pages"]), 30)
+
+    def test_analysis_log_bounds_metadata_descriptor_text_and_scan(self):
+        metadata = self.root / "metadata.csv"
+        metadata.write_text("sample,group\nS1,synthetic\n")
+        descriptors = [self.project.register_metadata(
+            "metadata.csv", "sample_preparation", ["sample"], authority="é" * 300,
+            reason="Synthetic viewer bound", name="名" * 200) for _ in range(11)]
+        bound = self.project.bind_metadata(self.ana, descriptors, "Synthetic descriptor scan")
+        self.project.save()
+        payloads = [Path(self.project.get_data(ref).path) for ref in descriptors]
+        for path in payloads:
+            self.assertTrue(path.is_file())
+            path.unlink()
+        # Missing table bytes must not affect either client's descriptor export.
+        report = self.project.view("metadata-descriptors.html", open_browser=False)
+        _, snapshot = read_snapshot(report["path"])
+        row = next(item for page in snapshot["timelines"]["analyses"]["pages"] for item in page["rows"]
+                   if item["ref"] == bound)
+        self.assertEqual(len(row["metadata_descriptors"]), 10)
+        self.assertTrue(row["metadata_descriptor_scan_truncated"])
+        item = row["metadata_descriptors"][0]
+        self.assertLessEqual(len(item["name"].encode("utf-8")), 256)
+        self.assertLessEqual(len(item["authority"].encode("utf-8")), 256)
+        self.assertIn("name", item["omitted_text_fields"])
+        self.assertIn("authority", item["omitted_text_fields"])
+        r_path = self.run_r("""
+            a <- commandArgs(TRUE)
+            p <- BioDataLedger::ProjectBundle$open(a[[1L]])
+            report <- p$view("metadata-descriptors-r.html", open_browser = FALSE)
+            cat(report$path)
+        """)
+        _, r_snapshot = read_snapshot(r_path)
+        self.assertEqual(snapshot["timelines"]["analyses"], r_snapshot["timelines"]["analyses"])
+
+    @unittest.skipUnless(shutil.which("node"), "Node is required for deterministic viewer date checks")
+    def test_analysis_log_local_date_grouping(self):
+        source = (Path(__file__).parents[1] / "shared" / "viewer.html").read_text()
+        script = "function localDate" + source.split("function localDate", 1)[1].split("function logRecordLink", 1)[0]
+        check = """
+            const fs = require('fs');
+            eval(fs.readFileSync(0, 'utf8'));
+            const late = new Date('2026-01-01T07:59:00Z');
+            const dst = new Date('2026-03-08T10:30:00Z');
+            const result = {late: localDate(late.toISOString()), day: groupDate(late.toISOString(), 'day'),
+              week: groupDate(late.toISOString(), 'week'), month: groupDate(late.toISOString(), 'month'),
+              dst: groupDate(dst.toISOString(), 'day'), unknown: groupDate(null, 'day')};
+            if (result.late !== '11.59pm, Dec 31, 2025' || result.day.key !== '2025-12-31' ||
+                result.week.key !== '2025-12-29' || result.month.label !== 'December 2025' ||
+                result.dst.key !== '2026-03-08' || result.unknown.key !== 'unknown') process.exit(1);
+        """
+        result = subprocess.run(["node", "-e", check], input=script, text=True, capture_output=True,
+                                env={**os.environ, "TZ": "America/Los_Angeles"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_metadata_only_and_opt_in_preview_results(self):
         source = self.root / "figure panel.png"
         data = self.root / "input.csv"

@@ -39,6 +39,43 @@ metadata <- session$load_once("analysis", "DATA-001@1", readRDS)
 current_data <- session$get_data("analysis")
 ```
 
+## Keep one master in a live console
+
+Use one named session handle as the master for the designated project. Start it
+once, then have all routine code attach and obtain the canonical metadata handle
+through `session$project()`:
+
+```r
+# Run once in the scientist's designated live console.
+session <- bdl_session_start("/absolute/project/path")
+
+# Routine code in that same R process.
+session <- bdl_session_attach("/absolute/project/path")
+project <- session$project()
+```
+
+Do not repeatedly call `ProjectBundle$open()` in that console. Each call creates
+an independent metadata handle. It does not load the registered scientific data,
+but it can appear as another BioDataLedger object and can become stale after a
+different handle saves. Use `refresh_project()` only for the documented external
+metadata-update case. Use `ProjectBundle$open()` only for an explicit independent
+metadata inspection or a bounded noninteractive batch, not as a repeated
+per-turn substitute for `session$project()`.
+
+R names may be aliases, not physical copies. Conversely, modifying an ordinary
+value-semantic alias can create a copy, and a caller that retains an old alias
+keeps it reachable after `replace_data()` or `release_data()`. The helper cannot
+prohibit those native R behaviors, enforce permissions in an unrestricted R
+process, or guarantee that the Variables pane contains only one name. Avoid
+placing whole `get_data()` results in multiple long-lived globals; inspect slots
+with `info()` and retain only deliberately needed working objects.
+
+Never use `saveRDS(session, ...)`, `save(session, ...)`, or `save.image()` to
+checkpoint a live session handle or workspace. They can serialize captured state,
+but a restored handle cannot operate as the owner. Save retained scientific
+outputs through their own explicit native workflow. Save approved ledger edits
+with `session$project()$save()`; these are separate actions.
+
 Do not fall back to `start()` or `recover()` when an agent cannot attach. In the
 owning process, repeated start or attach returns the same handle and the same
 opened `ProjectBundle`. Another process receives `USE_LIVE_R_SESSION` with the
@@ -53,6 +90,38 @@ metadata; `info()` reports the owner and all loaded slots. A second slot for the
 same logical DATA ID is refused, including a different revision. A different
 exact source in an occupied slot is refused. Different DATA IDs are distinct;
 the helper does not infer biological equivalence from paths or file hashes.
+
+## Bounded Rscript batches
+
+An ordinary `Rscript` process cannot reuse RAM from Positron or from a previous
+Rscript run. For related noninteractive work, use one bounded batch process:
+open its project once, do the authorized work, save approved registry edits once,
+and exit. If a live session owns the project, `bdl_session_start()` in another
+process refuses with `USE_LIVE_R_SESSION`; do not catch that error by recovering,
+reloading the data, or creating a replacement owner. Route the work to the live
+console or use a separate project process only after the owner has deliberately
+closed.
+
+Positron is not required for managed reuse. A supported long-lived R kernel or
+terminal R process can own the session if the agent already has a way to send
+code into that same process. `bdl_session_attach()` verifies and returns a
+handle only in the owner; it is not a connection, R server, kernel manager, or
+command bridge. Separate Rscript calls cannot attach across that boundary. Use a
+bounded batch only for a deliberate whole analysis run, not for each prompt.
+
+The synthetic batch in [the example](../examples/session_R.R) runs only with an
+explicit mode:
+
+```sh
+Rscript examples/session_R.R --synthetic-batch
+```
+
+It creates a disposable project and does not access user data. It demonstrates
+one owner, one `load_once()` call for a complete batch, an explicit ledger save,
+and a clean close on success. On failure it deliberately retains its disposable directory for inspection. If
+ownership was started, its owner marker remains; it does not recover, delete,
+or replace an owner.
+It does not demonstrate connection to a live console or scientific checkpointing.
 
 ## Replace or release deliberately
 

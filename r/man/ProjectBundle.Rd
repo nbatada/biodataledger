@@ -40,6 +40,14 @@ record revisions. An explicit list of up to 10 exact FIG refs enables bounded,
 digest-verified previews. The snapshot can contain private metadata and image
 bytes. Export leaves the registry and pending edits as they are. Writes are
 supported on tested local macOS filesystems.
+
+The Analysis log shows recorded analysis names, input and output filenames and
+paths, with exact references available in provenance details. It captures newest
+activity first and offers day, week (Monday start), and month grouping in the
+viewing browser's local time zone. Registration time remains distinct from
+recorded execution time; unknown times and omitted rows remain explicit.
+Associated figures are not automatically observed execution outputs. File paths
+are metadata, not an availability check. Figure previews remain opt-in.
 }
 
 \section{Chronological analysis inputs and outputs}{

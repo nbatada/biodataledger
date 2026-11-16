@@ -4,21 +4,95 @@
 .viewer_bytes <- function(x) nchar(.viewer_json(x), type = "bytes")
 .viewer_base64 <- function(x) gsub("\n", "", jsonlite::base64_enc(x), fixed = TRUE)
 .viewer_key <- function(ref) paste0(ref$project_id, "/", ref$id, "@", sprintf("%.0f", ref$revision))
+.viewer_analysis_log_bytes <- 2L * 1024L * 1024L
+.viewer_descriptor_text_bytes <- 256L
+.viewer_descriptor_refs <- 20L
+.viewer_log_path_bytes <- 4096L
 
-.viewer_timeline <- function(timeline, view, remaining) {
-  pages <- list(); cursor <- NULL; included <- 0L
+.viewer_clip_descriptor_text <- function(value) {
+  if (!is.character(value) || length(value) != 1L || is.na(value)) return(.obj(value = NULL, clipped = TRUE))
+  raw <- charToRaw(enc2utf8(value))
+  if (length(raw) <= .viewer_descriptor_text_bytes) return(.obj(value = value, clipped = FALSE))
+  raw <- raw[seq_len(.viewer_descriptor_text_bytes)]
+  text <- rawToChar(raw)
+  while (length(raw) && !stringi::stri_enc_isutf8(text)) { raw <- raw[-length(raw)]; text <- rawToChar(raw) }
+  .obj(value = text, clipped = TRUE)
+}
+
+.viewer_metadata_descriptors <- function(state, refs) {
+  items <- list(); seen <- character(); inspected <- 0L; truncated <- FALSE
+  for (source_ref in refs) {
+    source <- .record(state, source_ref)
+    candidates <- if (.metadata_key %in% names(source$details)) list(.make_ref(state, source)) else list()
+    binding <- source$details[[.metadata_binding_key]]
+    consume <- function(ref) {
+      if (inspected == .viewer_descriptor_refs) { truncated <<- TRUE; return(FALSE) }
+      inspected <<- inspected + 1L
+      key <- .viewer_key(ref)
+      if (key %in% seen) return(TRUE)
+      seen <<- c(seen, key)
+      record <- .record(state, ref); descriptor <- record$details[[.metadata_key]]
+      if (!is.list(descriptor)) return(TRUE)
+      if (length(items) == 10L) { truncated <<- TRUE; return(FALSE) }
+      name <- .viewer_clip_descriptor_text(record$name); category <- .viewer_clip_descriptor_text(descriptor$category)
+      authority <- .viewer_clip_descriptor_text(descriptor$authority)
+      items[[length(items) + 1L]] <<- .obj(ref = .make_ref(state, record), name = name$value,
+        category = category$value, authority = authority$value,
+        omitted_text_fields = .arr(c(if (name$clipped) "name", if (category$clipped) "category", if (authority$clipped) "authority")))
+      TRUE
+    }
+    for (ref in candidates) if (!consume(ref)) break
+    if (!truncated && is.list(binding) && is.list(binding$refs)) for (i in seq_along(binding$refs)) if (!consume(binding$refs[[i]])) break
+    if (truncated) break
+  }
+  .obj(items = .arr(items), scan_truncated = truncated)
+}
+
+.viewer_analysis_log_paths <- function(root, state, row) {
+  for (field in c("input_items", "output_items", "associated_figure_items")) for (i in seq_along(row[[field]])) {
+    item <- row[[field]][[i]]; path <- .resolve(root, state, .record(state, item$ref)$locator, lexical = TRUE)
+    if (is.null(path)) item$path <- NULL else if (nchar(path, type = "bytes") > .viewer_log_path_bytes) {
+      item$path <- NULL; item$path_omitted <- TRUE
+    } else item$path <- path
+    row[[field]][[i]] <- item
+  }
+  row
+}
+
+.viewer_timeline <- function(root, state, timeline, view, remaining, order = "oldest") {
+  pages <- list(); cursor <- NULL; included <- 0L; total <- 0L; stopped <- FALSE; analysis_bytes <- 0L
+  analysis_budget <- min(.viewer_analysis_log_bytes, (16L * 1024L * 1024L) %/% 8L)
   repeat {
-    page <- timeline(view = view, order = "oldest", limit = min(remaining, 20L), cursor = cursor)
+    page <- timeline(view = view, order = order, limit = min(remaining, 20L), cursor = cursor)
     cursor <- page$next_cursor
     page$next_cursor <- NULL
     page$has_more <- !is.null(cursor)
+    total <- page$total_rows
+    if (identical(view, "analyses")) for (i in seq_along(page$rows)) {
+      row <- page$rows[[i]]
+      descriptors <- .viewer_metadata_descriptors(state, c(list(row$ref), if (is.null(row$input_refs)) list() else row$input_refs))
+      row$metadata_descriptors <- descriptors$items
+      row$metadata_descriptor_scan_truncated <- descriptors$scan_truncated
+      row <- .viewer_analysis_log_paths(root, state, row)
+      page$rows[[i]] <- row
+    }
+    if (identical(view, "analyses")) {
+      original_rows <- length(page$rows)
+      while (length(page$rows) && analysis_bytes + .viewer_bytes(page) > analysis_budget) {
+        page$rows[[length(page$rows)]] <- NULL
+        page$relations <- Filter(function(item) item$left <= length(page$rows) && item$right <= length(page$rows), page$relations)
+      }
+      if (!length(page$rows)) { stopped <- TRUE; break }
+      if (length(page$rows) != original_rows) { page$has_more <- TRUE; stopped <- TRUE }
+      analysis_bytes <- analysis_bytes + .viewer_bytes(page) + 1L
+    }
     pages[[length(pages) + 1L]] <- page
     count <- length(page$rows)
     included <- included + count
     remaining <- remaining - count
-    if (is.null(cursor) || remaining == 0L) break
+    if (is.null(cursor) || remaining == 0L || stopped) break
   }
-  .obj(pages = pages, omitted = pages[[1L]]$total_rows - included)
+  .obj(pages = pages, omitted = total - included)
 }
 
 .viewer_card <- function(root, state, graph, record, slot, latest) {
@@ -63,9 +137,14 @@
                                   omitted_project_fields = omitted_fields,
                                   omitted_current = length(state$current) - length(current)),
                   current = current, records = list(),
-                  timelines = .obj(registration = .viewer_timeline(timeline, "registration", min(limit, 1000L)),
-                                   runs = .viewer_timeline(timeline, "runs", min(limit, 1000L))),
+                  timelines = .obj(registration = .viewer_timeline(root, state, timeline, "registration", min(limit, 1000L)),
+                                   runs = .viewer_timeline(root, state, timeline, "runs", min(limit, 1000L)),
+                                   analyses = .viewer_timeline(root, state, timeline, "analyses", min(limit, 1000L), order = "newest")),
                   previews = .obj())
+  if (.viewer_bytes(payload) > 16L * 1024L * 1024L - 1024L) {
+    analyses <- payload$timelines$analyses
+    payload$timelines$analyses <- .obj(pages = list(), omitted = analyses$omitted + sum(vapply(analyses$pages, function(page) length(page$rows), integer(1))))
+  }
   used <- .viewer_bytes(payload)
   latest_index <- attr(state, "record_index")$latest
   latest <- vapply(seq_along(state$records), function(i) i == get(state$records[[i]]$id, latest_index), logical(1))

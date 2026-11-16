@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.1 — local development
+
+- Add an Analysis log to the offline HTML viewer using recorded analysis
+  chronology, exact input/output revisions and qualified timing evidence.
+- Clarify canonical managed R-session reuse and one-process batch workflows,
+  including the limits of aliases, independent handles and serialized sessions.
+- Keep the existing registry schema and historical references unchanged.
+
 ## 0.19.0 — local development
 
 - Batch R dependency-graph construction for ordinary and extended edges, so

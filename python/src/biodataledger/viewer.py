@@ -2,6 +2,7 @@
 import base64
 import hashlib
 from importlib.resources import files
+from itertools import chain
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,7 @@ import webbrowser
 
 from . import __version__
 from .core import BundleError, canonical, now, require, valid_uuid, validate_values
+from .metadata import BINDINGS_KEY, KEY as METADATA_KEY
 from .protocol import _timestamp
 
 
@@ -20,6 +22,10 @@ _METADATA_BYTES = 16 * 1024 * 1024
 _PREVIEW_BYTES = 2 * 1024 * 1024
 _PREVIEWS_BYTES = 8 * 1024 * 1024
 _HTML_BYTES = 32 * 1024 * 1024
+_ANALYSIS_LOG_BYTES = 2 * 1024 * 1024
+_DESCRIPTOR_TEXT_BYTES = 256
+_DESCRIPTOR_REFS = 20
+_LOG_PATH_BYTES = 4096
 
 
 def _key(ref):
@@ -32,19 +38,98 @@ def _generation(project):
             len(state["history"]), project.unsaved)
 
 
-def _timeline(project, view, remaining):
-    pages, cursor, included = [], None, 0
+def _clip_descriptor_text(value):
+    if not isinstance(value, str):
+        return None, True
+    raw = value.encode("utf-8")
+    if len(raw) <= _DESCRIPTOR_TEXT_BYTES:
+        return value, False
+    return raw[:_DESCRIPTOR_TEXT_BYTES].decode("utf-8", "ignore"), True
+
+
+def _metadata_descriptors(project, refs):
+    """Return direct descriptor links only; metadata files remain unread."""
+    items, seen, inspected, truncated = [], set(), 0, False
+    for source_ref in refs:
+        source = project._record(source_ref)
+        binding = source["details"].get(BINDINGS_KEY)
+        bound = binding.get("refs", []) if isinstance(binding, dict) else []
+        direct = [project._ref(source)] if METADATA_KEY in source["details"] else []
+        for ref in chain(direct, bound if isinstance(bound, list) else []):
+            if inspected == _DESCRIPTOR_REFS:
+                truncated = True
+                break
+            inspected += 1
+            key = _key(ref)
+            if key in seen:
+                continue
+            seen.add(key)
+            record = project._record(ref)
+            descriptor = record["details"].get(METADATA_KEY)
+            if not isinstance(descriptor, dict):
+                continue
+            if len(items) == 10:
+                truncated = True
+                break
+            name, name_clipped = _clip_descriptor_text(record["name"])
+            category, category_clipped = _clip_descriptor_text(descriptor.get("category"))
+            authority, authority_clipped = _clip_descriptor_text(descriptor.get("authority"))
+            items.append({"ref": project._ref(record), "name": name, "category": category,
+                          "authority": authority, "omitted_text_fields": [field for field, clipped in
+                          (("name", name_clipped), ("category", category_clipped), ("authority", authority_clipped)) if clipped]})
+        if truncated:
+            break
+    return items, truncated
+
+
+def _analysis_log_paths(project, row):
+    for field in ("input_items", "output_items", "associated_figure_items"):
+        for item in row.get(field, []):
+            path = project._resolve(project._record(item["ref"])["locator"], lexical=True)
+            if path is None:
+                item["path"] = None
+                continue
+            value = str(path)
+            if len(value.encode("utf-8")) > _LOG_PATH_BYTES:
+                item["path"] = None
+                item["path_omitted"] = True
+            else:
+                item["path"] = value
+
+
+def _timeline(project, view, remaining, order="oldest"):
+    pages, cursor, included, total_rows, stopped, analysis_bytes = [], None, 0, 0, False, 0
+    analysis_budget = min(_ANALYSIS_LOG_BYTES, _METADATA_BYTES // 8)
     while remaining:
-        page = project.timeline(view=view, order="oldest", limit=min(remaining, 20), cursor=cursor)
+        page = project.timeline(view=view, order=order, limit=min(remaining, 20), cursor=cursor)
         cursor = page.pop("next_cursor")
         page["has_more"] = cursor is not None
+        total_rows = page["total_rows"]
+        if view == "analyses":
+            for row in page["rows"]:
+                items, truncated = _metadata_descriptors(project, [row["ref"], *(row["input_refs"] or [])])
+                row["metadata_descriptors"] = items
+                row["metadata_descriptor_scan_truncated"] = truncated
+                _analysis_log_paths(project, row)
+            original_rows = len(page["rows"])
+            while page["rows"] and analysis_bytes + len(canonical(page)) > analysis_budget:
+                page["rows"].pop()
+                page["relations"] = [item for item in page["relations"]
+                                     if item["left"] <= len(page["rows"]) and item["right"] <= len(page["rows"])]
+            if not page["rows"]:
+                stopped = True
+                break
+            if len(page["rows"]) != original_rows:
+                page["has_more"] = True
+                stopped = True
+            analysis_bytes += len(canonical(page)) + 1
         pages.append(page)
         count = len(page["rows"])
         included += count
         remaining -= count
-        if cursor is None:
+        if cursor is None or stopped:
             break
-    return {"pages": pages, "omitted": pages[0]["total_rows"] - included}
+    return {"pages": pages, "omitted": total_rows - included}
 
 
 def _card(project, record, slot, latest):
@@ -86,8 +171,13 @@ def _metadata(project, limit):
     payload = {"report_version": "biodataledger-view/1", "package_version": __version__, "client": "Python",
                "captured_at_utc": now(), "project": project_info, "registry_revision": state["state_revision"],
                "unsaved": project.unsaved, "imported": state["imported"], "coverage": coverage, "current": current,
-               "records": [], "timelines": {view: _timeline(project, view, min(limit, 1000))
-                                            for view in ("registration", "runs")}, "previews": {}}
+               "records": [], "timelines": {view: _timeline(project, view, min(limit, 1000),
+                                                order="newest" if view == "analyses" else "oldest")
+                                            for view in ("registration", "runs", "analyses")}, "previews": {}}
+    if len(canonical(payload)) > _METADATA_BYTES - 1024:
+        analyses = payload["timelines"]["analyses"]
+        payload["timelines"]["analyses"] = {"pages": [], "omitted": analyses["omitted"] +
+                                               sum(len(page["rows"]) for page in analyses["pages"])}
     used = len(canonical(payload))
     # Later changes to coverage counters must also fit.
     for latest in (True, False):

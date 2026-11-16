@@ -199,7 +199,10 @@ R       p$view(path = NULL, open_browser = TRUE, limit = 5000, preview_refs = NU
 
 Write a private local HTML snapshot of the loaded project, including pending
 edits, bounded exact record cards, current-purpose refs, and qualified
-timeline pages. Supply a new path in an existing directory or omit it for a
+timeline pages. The offline viewer includes an Analysis log of recorded
+analysis chronology with exact input/output links and explicit receipt
+qualifications; associated figures remain distinct from observed outputs.
+Supply a new path in an existing directory or omit it for a
 private temporary file. Relative paths are project-relative. Pass
 `open_browser=False` or `FALSE` to skip the default-browser request. Default
 capture reads loaded metadata. An explicit list of up to 10 exact FIG refs
