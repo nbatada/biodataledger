@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.3 — local development
+
+- Add a selected-analysis Dependencies view using bounded recorded native graph
+  relationships, readable names and safe local file links/copy actions.
+- Preserve exact run and historical revisions, graph qualifiers and project schemas.
+
+
 ## 0.19.2 — local development
 
 - Add a searchable analysis-title/date contents list, exact-analysis jumps across

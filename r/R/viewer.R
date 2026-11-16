@@ -8,6 +8,8 @@
 .viewer_descriptor_text_bytes <- 256L
 .viewer_descriptor_refs <- 20L
 .viewer_log_path_bytes <- 4096L
+.viewer_dependency_depth <- 3L
+.viewer_dependency_nodes <- 20L
 
 .viewer_clip_descriptor_text <- function(value) {
   if (!is.character(value) || length(value) != 1L || is.na(value)) return(.obj(value = NULL, clipped = TRUE))
@@ -59,7 +61,37 @@
   row
 }
 
-.viewer_timeline <- function(root, state, timeline, view, remaining, order = "oldest") {
+.viewer_dependency_path <- function(root, state, node) {
+  path <- .resolve(root, state, .record(state, node$ref)$locator, lexical = TRUE)
+  if (is.null(path)) node["path"] <- list(NULL) else if (nchar(path, type = "bytes") > .viewer_log_path_bytes) {
+    node$path <- NULL; node$path_omitted <- TRUE
+  } else node$path <- path
+  node
+}
+
+.viewer_dependency_report <- function(root, state, graph, dirty, anchor, direction) {
+  report <- .export_graph(state, graph, dirty, anchor, direction, .viewer_dependency_depth,
+                          .viewer_dependency_nodes, "structured", NULL, 0L, "detailed", NULL)
+  report$nodes <- lapply(report$nodes, .viewer_dependency_path, root = root, state = state)
+  report[c("report_version", "ref", "direction", "depth", "limit", "coverage", "edge_scope",
+           "cycle_scope", "nodes", "edges", "truncation", "truncated", "cycle")]
+}
+
+.viewer_analysis_dependencies <- function(root, state, graph, dirty, row) {
+  receipt_run <- row$evidence %in% c("recorded", "untrusted_imported") && !is.null(row$run_ref)
+  anchor <- if (receipt_run) row$run_ref else row$ref
+  result <- .obj(selected_ref = row$ref, anchor_ref = anchor,
+                 anchor = if (identical(row$evidence, "recorded")) "producing_run" else if (receipt_run) "untrusted_imported_run" else "selected_analysis")
+  tryCatch({
+    result$upstream <- .viewer_dependency_report(root, state, graph, dirty, anchor, "upstream")
+    result$downstream <- .viewer_dependency_report(root, state, graph, dirty, anchor, "downstream")
+    result
+  }, error = function(e) .obj(selected_ref = row$ref, anchor_ref = anchor,
+                              anchor = if (identical(row$evidence, "recorded")) "producing_run" else if (receipt_run) "untrusted_imported_run" else "selected_analysis",
+                              limitation = "Dependency capture unavailable."))
+}
+
+.viewer_timeline <- function(root, state, graph, dirty, timeline, view, remaining, order = "oldest") {
   pages <- list(); cursor <- NULL; included <- 0L; total <- 0L; stopped <- FALSE; analysis_bytes <- 0L
   analysis_budget <- min(.viewer_analysis_log_bytes, (16L * 1024L * 1024L) %/% 8L)
   repeat {
@@ -74,6 +106,7 @@
       row$metadata_descriptors <- descriptors$items
       row$metadata_descriptor_scan_truncated <- descriptors$scan_truncated
       row <- .viewer_analysis_log_paths(root, state, row)
+      row$dependencies <- .viewer_analysis_dependencies(root, state, graph, dirty, row)
       page$rows[[i]] <- row
     }
     if (identical(view, "analyses")) {
@@ -137,9 +170,9 @@
                                   omitted_project_fields = omitted_fields,
                                   omitted_current = length(state$current) - length(current)),
                   current = current, records = list(),
-                  timelines = .obj(registration = .viewer_timeline(root, state, timeline, "registration", min(limit, 1000L)),
-                                   runs = .viewer_timeline(root, state, timeline, "runs", min(limit, 1000L)),
-                                   analyses = .viewer_timeline(root, state, timeline, "analyses", min(limit, 1000L), order = "newest")),
+                  timelines = .obj(registration = .viewer_timeline(root, state, graph, dirty, timeline, "registration", min(limit, 1000L)),
+                                   runs = .viewer_timeline(root, state, graph, dirty, timeline, "runs", min(limit, 1000L)),
+                                   analyses = .viewer_timeline(root, state, graph, dirty, timeline, "analyses", min(limit, 1000L), order = "newest")),
                   previews = .obj())
   if (.viewer_bytes(payload) > 16L * 1024L * 1024L - 1024L) {
     analyses <- payload$timelines$analyses

@@ -66,13 +66,13 @@ class ViewerTests(unittest.TestCase):
         self.root = Path(tmp.name).resolve()
         self.project, self.old, self.new, self.ana, self.figure = synthetic_project(self.root)
 
-    def run_r(self, source, *args):
+    def run_r(self, source, *args, root=None):
         library = os.environ.get("BDL_R_LIB")
         if not library or not shutil.which("Rscript"):
             self.skipTest("installed native R client required")
         env = dict(os.environ)
         env["R_LIBS_USER"] = os.pathsep.join(filter(None, (library, env.get("R_LIBS_USER", ""))))
-        result = subprocess.run(["Rscript", "-e", source, str(self.root), *args],
+        result = subprocess.run(["Rscript", "-e", source, str(root or self.root), *args],
                                 env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
@@ -167,6 +167,86 @@ class ViewerTests(unittest.TestCase):
         self.assertEqual(row["metadata_descriptors"], [])
         self.assertEqual(registry.read_bytes(), original)
 
+    def test_dependencies_capture_graphs_and_exact_producing_run(self):
+        output = self.root / "derived result.csv"
+        (self.root / "dependency-run.py").write_text(
+            "from pathlib import Path\n"
+            "def synthetic_run(inputs, params, seeds, outputs):\n"
+            "    Path(outputs[0]).write_text('sample,count\\nS1,1\\n')\n"
+        )
+        template = self.project.register_analysis("Make derived result", [self.new], code=["dependency-run.py"],
+                                                  method="fixture", params={})
+        receipt = self.project.run_analysis(template, "synthetic_run", [
+            {"path": str(output), "kind": "result"}
+        ], verify_inputs=False)
+        result_ref = receipt["outputs"][0]["record_ref"]
+        downstream = self.project.register_analysis("Summarise derived table", [result_ref],
+                                                    method="declared synthetic", params={})
+        (self.root / "downstream.csv").write_text("sample,summary\nS1,2\n")
+        downstream_result = self.project.register_result("downstream.csv", downstream)
+        self.project.save()
+        report = self.project.view("dependencies.html", open_browser=False)
+        _, snapshot = read_snapshot(report["path"])
+        rows = [row for page in snapshot["timelines"]["analyses"]["pages"] for row in page["rows"]]
+        row = next(item for item in rows if item["ref"] == receipt["receipt_ref"])
+        dependencies = row["dependencies"]
+        self.assertEqual(dependencies["selected_ref"], receipt["receipt_ref"])
+        self.assertEqual(dependencies["anchor_ref"], receipt["run_ref"])
+        self.assertEqual(dependencies["anchor"], "producing_run")
+        for direction in ("upstream", "downstream"):
+            graph = dependencies[direction]
+            self.assertEqual(graph["direction"], direction)
+            self.assertEqual(graph["depth"], 3)
+            self.assertEqual(graph["limit"], 20)
+            self.assertTrue(all(set(edge) >= {"from", "to", "type", "basis", "source_field"}
+                                for edge in graph["edges"]))
+            self.assertTrue(all("ref" in node and "unknown" in node for node in graph["nodes"]))
+        self.assertTrue(any(edge["from"] == receipt["run_ref"] and edge["to"] == result_ref
+                            for edge in dependencies["downstream"]["edges"]))
+        self.assertTrue(any(edge["from"] == result_ref and edge["to"] == downstream
+                            for edge in dependencies["downstream"]["edges"]))
+        self.assertTrue(any(edge["from"] == downstream and edge["to"] == downstream_result
+                            for edge in dependencies["downstream"]["edges"]))
+
+        archive = self.root / "dependency-context.zip"
+        self.project.export_zip(self.project.preview_export("context"), archive)
+        imported = ProjectBundle.import_zip(archive, self.root / "dependency-import")
+        imported_report = imported.view("dependencies-imported.html", open_browser=False)
+        _, imported_snapshot = read_snapshot(imported_report["path"])
+        imported_row = next(item for page in imported_snapshot["timelines"]["analyses"]["pages"] for item in page["rows"]
+                            if item["ref"] == receipt["receipt_ref"])
+        self.assertEqual(imported_row["evidence"], "untrusted_imported")
+        self.assertEqual(imported_row["dependencies"]["anchor"], "untrusted_imported_run")
+        self.assertEqual(imported_row["dependencies"]["anchor_ref"], receipt["run_ref"])
+        self.assertTrue(any(edge["from"] == receipt["run_ref"] and edge["to"] == result_ref
+                            for edge in imported_row["dependencies"]["downstream"]["edges"]))
+        self.assertTrue(any(edge["to"] == downstream_result
+                            for edge in imported_row["dependencies"]["downstream"]["edges"]))
+
+        imported_r_path = self.run_r("""
+            a <- commandArgs(TRUE)
+            p <- BioDataLedger::ProjectBundle$open(a[[1L]])
+            report <- p$view("dependencies-imported-r.html", open_browser = FALSE)
+            cat(report$path)
+        """, root=imported.root)
+        _, imported_r_snapshot = read_snapshot(imported_r_path)
+        imported_r_row = next(item for page in imported_r_snapshot["timelines"]["analyses"]["pages"] for item in page["rows"]
+                              if item["ref"] == receipt["receipt_ref"])
+        self.assertEqual(imported_row["dependencies"], imported_r_row["dependencies"])
+
+        r_path = self.run_r("""
+            a <- commandArgs(TRUE)
+            p <- BioDataLedger::ProjectBundle$open(a[[1L]])
+            report <- p$view("dependencies-r.html", open_browser = FALSE)
+            cat(report$path)
+        """)
+        _, r_snapshot = read_snapshot(r_path)
+        py_row = next(item for page in snapshot["timelines"]["analyses"]["pages"] for item in page["rows"]
+                      if item["ref"] == receipt["receipt_ref"])
+        r_row = next(item for page in r_snapshot["timelines"]["analyses"]["pages"] for item in page["rows"]
+                     if item["ref"] == receipt["receipt_ref"])
+        self.assertEqual(py_row["dependencies"], r_row["dependencies"])
+
     def test_analysis_log_uses_incremental_capture_budget(self):
         for index in range(30):
             self.project.register_analysis("Synthetic bounded log %02d" % index, [self.new], method="fixture", params={})
@@ -228,6 +308,57 @@ class ViewerTests(unittest.TestCase):
         """
         result = subprocess.run(["node", "-e", check], input=script, text=True, capture_output=True,
                                 env={**os.environ, "TZ": "America/Los_Angeles"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is required for deterministic file URL checks")
+    def test_viewer_safe_file_urls(self):
+        source = (Path(__file__).parents[1] / "shared" / "viewer.html").read_text()
+        script = "function safeFileURL" + source.split("function safeFileURL", 1)[1].split("function fileActions", 1)[0]
+        check = r"""
+            const assert = require('assert');
+            eval(require('fs').readFileSync(0, 'utf8'));
+            assert.equal(safeFileURL('/tmp/a%20\\ #?.csv'), 'file:///tmp/a%2520%5C%20%23%3F.csv');
+            assert.equal(safeFileURL('/tmp/é.csv'), 'file:///tmp/%C3%A9.csv');
+            const literal = '/tmp/a%20\\ #?é.csv';
+            assert.equal(decodeURIComponent(new URL(safeFileURL(literal)).pathname), literal);
+            for (const value of ['relative.csv', '//server/share.csv', 'https://example.test/x',
+                                 'javascript:alert(1)', 'data:text/plain,x', '/tmp/a\n.csv']) {
+              assert.equal(safeFileURL(value), null, value);
+            }
+        """
+        result = subprocess.run(["node", "-e", check], input=script, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which("node"), "Node is required for deterministic dependency navigation checks")
+    def test_dependency_return_restores_exact_analysis_page_and_focus(self):
+        source = (Path(__file__).parents[1] / "shared" / "viewer.html").read_text()
+        script = "function analysisLogGroups" + source.split("function analysisLogGroups", 1)[1].split("function showAnalysisLog", 1)[0]
+        check = r"""
+            const assert = require('assert');
+            const row = {ref: {project_id: 'p', id: 'ANA-009', revision: 1}, time_utc: '2026-11-01T12:00:00Z'};
+            const groups = Array.from({length: 9}, (_, index) => ({ref: {project_id: 'p', id: `ANA-${index + 101}`, revision: 1},
+              time_utc: `2026-11-${String(index + 1).padStart(2, '0')}T12:00:00Z`}));
+            groups[0] = row;
+            const snapshot = {timelines: {analyses: {pages: [{rows: groups}]}}};
+            const state = {analysisGrouping: 'day', analysisLogPage: 0, selected: null};
+            const ANALYSIS_GROUPS_PER_PAGE = 8;
+            const list = value => Array.isArray(value) ? value : [];
+            const keyFor = ref => ref.project_id + '/' + ref.id + '@' + ref.revision;
+            const groupDate = value => ({key: value.slice(0, 10), label: value.slice(0, 10)});
+            const byKey = new Map([[keyFor(row.ref), {}]]);
+            const shown = [];
+            const rowElement = {dataset: {key: keyFor(row.ref)}, scrollIntoView() { this.scrolled = true; }, focus() { this.focused = true; }};
+            const main = {querySelectorAll() { return [rowElement]; }};
+            const showMode = mode => shown.push(mode);
+            const selectRecord = key => { state.selected = key; };
+            eval(require('fs').readFileSync(0, 'utf8'));
+            returnToAnalysis(row);
+            assert.equal(state.analysisLogPage, 1);
+            assert.deepEqual(shown, ['analysis-log']);
+            assert.equal(state.selected, keyFor(row.ref));
+            assert(rowElement.scrolled && rowElement.focused);
+        """
+        result = subprocess.run(["node", "-e", check], input=script, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for deterministic viewer navigation checks")

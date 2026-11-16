@@ -614,6 +614,14 @@ Omit `ref` for an overview page or pass an exact ref for focused lineage. `direc
 
 For a name search, use `p.export_graph(format="structured", filters={"asset_type": "DATA", "query": "Toy counts"})` or the R call with `filters=list(asset_type="DATA", query="Toy counts")`. Inspect `truncation` and follow `next_offset` with the same filters and unchanged handle. To draw lineage, use `p.export_graph(figure_ref, style="presentation", lineage_roots=[data_ref])` or the R call with `lineage_roots=list(data_ref)`. This returns text. Save it as a DOT file and use an optional Graphviz installation for rendering. See [graph filters, bounds and diagram semantics](api/GRAPH_V1.md) and [the paired lineage demo](LINEAGE_DEMO.md).
 
+`view()` reuses the structured focused graph for the Analysis log's **Dependencies**
+action. It captures upstream and downstream reports at depth 3 with at most 20 nodes,
+keeps typed edge basis/source fields, and reports truncation and unknown evidence.
+For a recorded local wrapper receipt (or a structurally valid imported receipt claim)
+it anchors at that exact producing `run_ref`; imported evidence remains explicitly
+untrusted and it does not infer a newer receipt or execution. This is a bounded offline presentation,
+not another graph API or a claim of causality, observed file use, or scientific approval.
+
 ### timeline
 
 ```text

@@ -48,6 +48,14 @@ viewing browser's local time zone. Registration time remains distinct from
 recorded execution time; unknown times and omitted rows remain explicit.
 Associated figures are not automatically observed execution outputs. File paths
 are metadata, not an availability check. Figure previews remain opt-in.
+
+The selected-analysis Dependencies view reuses bounded native upstream and
+downstream graph reports. Names and safely encoded local file links expose
+recorded inputs and related results, with exact revisions and typed relationship
+qualifications retained. Qualified run receipts use their recorded producing-run
+reference rather than a substituted latest revision. File availability and
+integrity are unchecked; recorded graph relationships do not prove input
+consumption, successful reproduction, or scientific acceptance.
 }
 
 \section{Chronological analysis inputs and outputs}{

@@ -260,7 +260,8 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
   const purposes = list(snapshot.current);
   const previews = snapshot.previews || {};
   const state = {query: "", kind: "", topic: "", history: false, page: 0,
-    timeline: "registration", timelinePage: 0, analysisLogPage: 0, analysisGrouping: "day", selected: null, back: []};
+    timeline: "registration", timelinePage: 0, analysisLogPage: 0, analysisGrouping: "day", selected: null, back: [],
+    dependencyRow: null};
   const PAGE_SIZE = 25;
   const ANALYSIS_GROUPS_PER_PAGE = 8;
   const displayName = record => record.info?.presentation?.title || record.name || "[Name omitted]";
@@ -311,6 +312,31 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     add(link, "bdi", shortRef(ref));
     if (selected) link.setAttribute("aria-current", "true");
     return link;
+  }
+
+  function safeFileURL(path) {
+    if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || /[\0-\x1f\x7f]/.test(path)) return null;
+    try {
+      return "file://" + path.split("/").map(encodeURIComponent).join("/");
+    } catch {
+      return null;
+    }
+  }
+
+  function fileActions(parent, path) {
+    const shown = add(parent, "span", path, "analysis-log-path");
+    const controls = add(parent, "span", undefined, "controls");
+    const url = safeFileURL(path);
+    if (url) {
+      const open = add(controls, "a", "Open");
+      open.href = url;
+      open.target = "_blank";
+      open.rel = "noopener noreferrer";
+      open.title = "Open recorded local path";
+    }
+    const feedback = add(controls, "span", "", "quiet"); feedback.setAttribute("role", "status");
+    const copy = button(controls, "Copy path", () => copyText(path, shown, feedback), "secondary quiet");
+    copy.title = "Copy recorded path";
   }
 
   function selectRecord(key) {
@@ -589,6 +615,11 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
       for (const item of current) add(items, "li", item.purpose);
     }
     if (record.kind === "figure") renderPreview(inspector, record);
+    if (record.kind === "analysis") {
+      const analysisRow = analysisLogGroups().flatMap(group => group.rows)
+        .find(row => keyFor(row.ref) === keyFor(record.ref));
+      if (analysisRow) button(inspector, "Dependencies", () => openDependencies(analysisRow));
+    }
     const info = record.info;
     if (!info) return;
     if (info.presentation_status && info.presentation_status !== "not_applicable") {
@@ -861,11 +892,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
       if (list(item.omitted_text_fields).length) add(line, "span", "Recorded label shortened.", "secondary quiet");
       const record = byKey.get(keyFor(item.ref));
       if (paths && item.path) {
-        const path = add(line, "span", item.path, "analysis-log-path");
-        const controls = add(line, "span", undefined, "controls");
-        const feedback = add(controls, "span", "", "quiet"); feedback.setAttribute("role", "status");
-        const copy = button(controls, "Copy path", () => copyText(item.path, path, feedback), "secondary quiet");
-        copy.title = "Copy recorded path";
+        fileActions(line, item.path);
       }
       if (paths && item.path_omitted) add(line, "span", "Recorded path omitted for size.", "secondary quiet");
       if (paths && item.kind === "figure" && record) button(line, "Open figure details", () => selectRecord(record.key), "secondary quiet");
@@ -893,6 +920,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
       logRecordLink(analysis, row.ref, timelineValue(row, "name"), state.selected === key);
       add(analysis, "span", words(row.revision_status) + " · " + words(row.record_status), "secondary quiet");
       if (row.run_ref) add(analysis, "span", "Recorded wrapper run; exact reference is in details.", "secondary quiet");
+      button(analysis, "Dependencies", () => openDependencies(row), "secondary");
 
       const inputs = add(tr, "td");
       logItems(inputs, row.input_items, row.input_refs === null ? "Inputs unknown" : "No recorded inputs", true);
@@ -997,6 +1025,42 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     drawContents();
   }
 
+  function analysisLogGroups() {
+    const timeline = snapshot.timelines?.analyses;
+    const rows = list(timeline?.pages).flatMap(page => list(page.rows)).sort((left, right) => {
+      const a = Date.parse(left.time_utc || ""), b = Date.parse(right.time_utc || "");
+      if (Number.isNaN(a)) return Number.isNaN(b) ? 0 : 1;
+      return Number.isNaN(b) ? -1 : b - a;
+    });
+    const groups = [];
+    for (const row of rows) {
+      const date = state.analysisGrouping === "none" ? {key: "all", label: "Captured analyses"} : groupDate(row.time_utc, state.analysisGrouping);
+      const last = groups[groups.length - 1];
+      if (!last || last.key !== date.key) groups.push({key: date.key, label: date.label, rows: [row]});
+      else last.rows.push(row);
+    }
+    return groups;
+  }
+
+  function focusAnalysisRow(ref) {
+    const key = keyFor(ref);
+    const row = Array.from(main.querySelectorAll("tr[data-key]")).find(item => item.dataset.key === key);
+    if (row) {
+      row.tabIndex = -1;
+      row.scrollIntoView({block: "start"});
+      row.focus({preventScroll: true});
+    }
+  }
+
+  function returnToAnalysis(row) {
+    const groupIndex = analysisLogGroups().findIndex(group => group.rows.some(item => keyFor(item.ref) === keyFor(row.ref)));
+    if (groupIndex >= 0) state.analysisLogPage = Math.floor(groupIndex / ANALYSIS_GROUPS_PER_PAGE);
+    showMode("analysis-log");
+    const key = keyFor(row.ref);
+    if (byKey.has(key)) selectRecord(key);
+    focusAnalysisRow(row.ref);
+  }
+
   function showAnalysisLog() {
     add(main, "h2", "Analysis log");
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
@@ -1007,22 +1071,11 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
       control.setAttribute("aria-pressed", String(mode === state.analysisGrouping));
     }
     const timeline = snapshot.timelines?.analyses;
-    const rows = list(timeline?.pages).flatMap(page => list(page.rows)).sort((left, right) => {
-      const a = Date.parse(left.time_utc || ""), b = Date.parse(right.time_utc || "");
-      if (Number.isNaN(a)) return Number.isNaN(b) ? 0 : 1;
-      return Number.isNaN(b) ? -1 : b - a;
-    });
+    const groups = analysisLogGroups();
     if (timeline?.omitted) add(main, "p", timeline.omitted + " analysis-log rows are outside this partial capture.", "warning");
-    if (!rows.length) {
+    if (!groups.length) {
       add(main, "p", "No analysis rows included.", "quiet");
       return;
-    }
-    const groups = [];
-    for (const row of rows) {
-      const date = state.analysisGrouping === "none" ? {key: "all", label: "Captured analyses"} : groupDate(row.time_utc, state.analysisGrouping);
-      const last = groups[groups.length - 1];
-      if (!last || last.key !== date.key) groups.push({key: date.key, label: date.label, rows: [row]});
-      else last.rows.push(row);
     }
     analysisContents(groups);
     const start = state.analysisLogPage * ANALYSIS_GROUPS_PER_PAGE;
@@ -1040,6 +1093,96 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
         focusPager(direction);
       });
     button(main, "Back to contents ↑", analysisContentsTop);
+  }
+
+  function openDependencies(row) {
+    state.dependencyRow = row;
+    const key = keyFor(row.ref);
+    if (byKey.has(key)) selectRecord(key);
+    showMode("dependencies");
+  }
+
+  function dependencyLabel(report, ref) {
+    const node = list(report?.nodes).find(item => keyFor(item.ref) === keyFor(ref));
+    return node?.label || byKey.get(keyFor(ref))?.name || "Recorded item";
+  }
+
+  function dependencyLink(parent, report, ref) {
+    const node = list(report?.nodes).find(item => keyFor(item.ref) === keyFor(ref));
+    logRecordLink(parent, ref, dependencyLabel(report, ref));
+    if (node) add(parent, "span", "Version " + (node.ref?.revision ?? "unknown") + " · " +
+      words(node.revision_status) + " · " + words(node.record_status) +
+      (node.registration_at_utc ? " · registered " + (localDate(node.registration_at_utc) || "unknown date") : ""), "secondary quiet");
+    if (node?.label_truncated) add(parent, "span", "Name shortened for display.", "secondary quiet");
+    if (node?.path) fileActions(parent, node.path);
+    else if (node?.path_omitted) add(parent, "span", "Recorded path omitted for size.", "secondary quiet");
+  }
+
+  function dependencyRelations(parent, title, report) {
+    add(parent, "h3", title);
+    if (!report) {
+      add(parent, "p", "Not captured.", "quiet");
+      return;
+    }
+    const edges = list(report.edges);
+    if (!edges.length) add(parent, "p", "No recorded relationships in this bounded view.", "quiet");
+    else {
+      const rows = add(parent, "ul");
+      for (const edge of edges) {
+        const line = add(rows, "li");
+        dependencyLink(line, report, edge.from);
+        add(line, "span", " → ");
+        dependencyLink(line, report, edge.to);
+        add(line, "span", words(edge.type) + " · " + words(edge.basis), "secondary quiet");
+        const provenance = add(line, "details");
+        add(provenance, "summary", "Relationship provenance");
+        const values = add(provenance, "dl");
+        field(values, "Source field", edge.source_field);
+        field(values, "From exact reference", shortRef(edge.from));
+        field(values, "To exact reference", shortRef(edge.to));
+      }
+    }
+    if (report.truncated) add(parent, "p", "Bounded graph incomplete · " +
+      (list(report.truncation).map(words).join(", ") || "capture limit") + ".", "warning");
+    if (report.cycle && report.cycle !== "not_detected_in_view") add(parent, "p",
+      "Cycle qualification within shown navigation relationships · " + words(report.cycle) + "; not execution order.", "quiet");
+  }
+
+  function showDependencies() {
+    const row = state.dependencyRow;
+    if (!row) {
+      add(main, "h2", "Dependencies");
+      add(main, "p", "Choose an analysis in the Analysis log to inspect recorded relationships.", "quiet");
+      button(main, "Open analysis log", () => showMode("analysis-log"));
+      return;
+    }
+    const dependencies = row.dependencies;
+    add(main, "h2", "Dependencies");
+    add(main, "p", timelineValue(row, "name"), "lineage-focus");
+    const selected = add(main, "p");
+    add(selected, "span", "Selected analysis · ", "quiet");
+    logRecordLink(selected, row.ref, timelineValue(row, "name"));
+    if (dependencies?.limitation) add(main, "p", dependencies.limitation, "warning");
+    else if (!dependencies) add(main, "p", "Dependency capture unavailable in this snapshot.", "warning");
+    else {
+      const anchor = add(main, "p");
+      add(anchor, "span", dependencies.anchor === "producing_run" ?
+        "Anchored to the producing wrapper run recorded for this analysis · " : dependencies.anchor === "untrusted_imported_run" ?
+        "Anchored to the producing run from an untrusted imported receipt claim; not execution evidence · " :
+        "Anchored to the selected analysis; a qualifying local wrapper run was not used · ", "quiet");
+      logRecordLink(anchor, dependencies.anchor_ref, dependencyLabel(dependencies.upstream, dependencies.anchor_ref));
+      const direct = section(main, "Recorded inputs");
+      if (row.input_items?.length) logItems(direct, row.input_items, "No direct recorded inputs", true);
+      else add(direct, "p", row.input_refs === null ? "Inputs unknown." : "No direct recorded inputs.", "quiet");
+      dependencyRelations(main, "Recorded upstream relationships", dependencies.upstream);
+      dependencyRelations(main, "Recorded downstream relationships", dependencies.downstream);
+      add(main, "p", "Relationship labels are recorded registry links, not proof of file use, execution, causality, or scientific acceptance. Paths refer to the export computer; availability and integrity are unchecked.", "quiet");
+    }
+    button(main, "Return to analysis", () => returnToAnalysis(row));
+    button(main, "Back to contents ↑", () => {
+      showMode("analysis-log");
+      analysisContentsTop();
+    }, "secondary");
   }
 
   function showTimeline() {
@@ -1098,6 +1241,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     if (mode === "records") updateResults = showRecords();
     else if (mode === "timeline") showTimeline();
     else if (mode === "analysis-log") showAnalysisLog();
+    else if (mode === "dependencies") showDependencies();
     else recentOverview();
   }
 

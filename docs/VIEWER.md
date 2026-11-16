@@ -45,6 +45,22 @@ a jump switches the displayed group page when necessary and selects the exact
 analysis row. **Back to contents** appears after each group and at the bottom.
 Historical entries are labelled earlier revisions. Snapshot omissions still apply.
 
+Choose **Dependencies** beside an Analysis log row to inspect its bounded recorded
+upstream and downstream relationships. The view keeps the selected analysis separate
+from its graph anchor. When a qualifying local wrapper receipt is recorded, the graph
+uses that receipt's exact producing run; it does not substitute a newer receipt
+revision. A structurally valid imported receipt uses its recorded producing run too,
+but is labelled as an untrusted imported claim, not execution evidence. Otherwise it
+uses the selected analysis and says so. Relationship rows show
+their recorded type, basis and source field. They are registry links, not proof of
+file use, execution, causality, or scientific acceptance. Use **Return to analysis**
+or **Back to contents** to resume the log.
+
+The view captures depth three and at most 20 nodes in each direction. It reports graph
+limits, unresolved items and cycle qualifications. Direct declared inputs remain a
+separate list. Links whose record cards are outside the snapshot retain their readable
+recorded name and are marked outside the snapshot rather than silently replaced.
+
 ## What the snapshot captures
 
 The page shows the loaded registry revision, capture time, and unsaved changes
@@ -53,6 +69,12 @@ project first to see changes saved by another process. The export leaves the
 registry and pending edits as they are. Default paths are lexical local paths
 from the registry, with availability unchecked. The page includes code
 references and snapshot paths. It leaves code and registered data files unread.
+
+Analysis-log and Dependencies paths can be copied. A safe absolute local path may
+also have an **Open** `file:` link; paths are URL-encoded and never accept network,
+script, data, relative or control-character URLs. A missing or size-capped path leaves
+the recorded name and exact reference available. Paths refer to the computer that
+created the export; availability and integrity remain unchecked.
 
 Latest revisions appear first, followed by earlier revisions. Each group shows
 newer stored entries first. Stored order can differ from recorded time.

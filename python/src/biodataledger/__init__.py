@@ -1,7 +1,7 @@
 """A local project bookkeeper. Importing performs no project I/O."""
 from .core import ProjectBundle, BundleError
 
-__version__ = "0.19.2"
+__version__ = "0.19.3"
 __all__ = ["ProjectBundle", "BundleError"]
 
 

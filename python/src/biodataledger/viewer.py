@@ -26,6 +26,8 @@ _ANALYSIS_LOG_BYTES = 2 * 1024 * 1024
 _DESCRIPTOR_TEXT_BYTES = 256
 _DESCRIPTOR_REFS = 20
 _LOG_PATH_BYTES = 4096
+_DEPENDENCY_DEPTH = 3
+_DEPENDENCY_NODES = 20
 
 
 def _key(ref):
@@ -97,6 +99,44 @@ def _analysis_log_paths(project, row):
                 item["path"] = value
 
 
+def _dependency_path(project, node):
+    """Add an unchecked lexical path without reading the referenced artifact."""
+    path = project._resolve(project._record(node["ref"])["locator"], lexical=True)
+    if path is None:
+        node["path"] = None
+    elif len(str(path).encode("utf-8")) > _LOG_PATH_BYTES:
+        node["path"] = None
+        node["path_omitted"] = True
+    else:
+        node["path"] = str(path)
+
+
+def _dependency_report(project, anchor, direction):
+    report = project.export_graph(anchor, direction=direction, depth=_DEPENDENCY_DEPTH,
+                                  limit=_DEPENDENCY_NODES, format="structured")
+    nodes = report["nodes"]
+    for node in nodes:
+        _dependency_path(project, node)
+    # Keep the evidence required to interpret a focused graph, not repeated snapshot boilerplate.
+    return {key: report[key] for key in ("report_version", "ref", "direction", "depth", "limit", "coverage",
+                                         "edge_scope", "cycle_scope", "nodes", "edges", "truncation",
+                                         "truncated", "cycle")}
+
+
+def _analysis_dependencies(project, row):
+    receipt_run = row.get("evidence") in ("recorded", "untrusted_imported") and row.get("run_ref") is not None
+    anchor = row["run_ref"] if receipt_run else row["ref"]
+    result = {"selected_ref": row["ref"], "anchor_ref": anchor,
+              "anchor": "producing_run" if row.get("evidence") == "recorded" else
+              "untrusted_imported_run" if receipt_run else "selected_analysis"}
+    try:
+        result["upstream"] = _dependency_report(project, anchor, "upstream")
+        result["downstream"] = _dependency_report(project, anchor, "downstream")
+    except (BundleError, KeyError, TypeError, ValueError):
+        result["limitation"] = "Dependency capture unavailable."
+    return result
+
+
 def _timeline(project, view, remaining, order="oldest"):
     pages, cursor, included, total_rows, stopped, analysis_bytes = [], None, 0, 0, False, 0
     analysis_budget = min(_ANALYSIS_LOG_BYTES, _METADATA_BYTES // 8)
@@ -111,6 +151,7 @@ def _timeline(project, view, remaining, order="oldest"):
                 row["metadata_descriptors"] = items
                 row["metadata_descriptor_scan_truncated"] = truncated
                 _analysis_log_paths(project, row)
+                row["dependencies"] = _analysis_dependencies(project, row)
             original_rows = len(page["rows"])
             while page["rows"] and analysis_bytes + len(canonical(page)) > analysis_budget:
                 page["rows"].pop()
