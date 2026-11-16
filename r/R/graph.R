@@ -3,7 +3,7 @@
 .graph_edge_types <- c("input_to_analysis","produced_result","artifact_container","observation_authority",
                        "analytical_association","rendered_in_figure","revision_of","parent_data",
                        "clustering_context","transformation_context","input_to_figure","decision_concerns",
-                       "design_context","design_subject")
+                       "design_context","design_subject","metadata_table_link","metadata_binding")
 .graph_scan_limit <- 1000L
 .graph_edge_limit <- 100L
 .graph_byte_limit <- 131072L
@@ -31,7 +31,13 @@
       link(details[["membership"]],ref,"observation_authority","details.membership")
       link(rec$scope$transformation_ref,ref,"transformation_context","scope.transformation_ref")
     }
+    descriptor <- details[[.metadata_key]]
+    if (!is.null(descriptor)) for (metadata_link in descriptor$links)
+      link(metadata_link$ref,ref,"metadata_table_link","details.bl_metadata_table.links")
   }
+  bindings <- details[[.metadata_binding_key]]
+  if (!is.null(bindings)) for (metadata_ref in bindings$refs)
+    link(metadata_ref,ref,"metadata_binding","details.bl_metadata_bindings.refs")
   if (rec$kind=="figure" && is.null(rec$analysis)) for (source in rec$inputs)
     link(source,ref,"input_to_figure","inputs")
   issue <- NULL; count <- 0L

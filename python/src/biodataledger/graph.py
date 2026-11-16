@@ -39,6 +39,14 @@ def index_graph_record(project, rec, ref, result_valid, add):
         if not result_valid:
             link(details.get('membership'), ref, 'observation_authority', 'details.membership')
             link(rec.get('scope', {}).get('transformation_ref'), ref, 'transformation_context', 'scope.transformation_ref')
+        descriptor = details.get('bl_metadata_table')
+        if descriptor is not None:
+            for metadata_link in descriptor['links']:
+                link(metadata_link['ref'], ref, 'metadata_table_link', 'details.bl_metadata_table.links')
+    bindings = details.get('bl_metadata_bindings')
+    if bindings is not None:
+        for metadata_ref in bindings['refs']:
+            link(metadata_ref, ref, 'metadata_binding', 'details.bl_metadata_bindings.refs')
     if rec['kind'] == 'figure' and rec['analysis'] is None:
         for source in rec['inputs'] or []:
             link(source, ref, 'input_to_figure', 'inputs')

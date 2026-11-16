@@ -47,6 +47,8 @@ class MetadataInteropTests(unittest.TestCase):
             self.assertEqual(p.get_metadata(refs["samples"])["bl_rows"][0]["sample"], "001")
             self.assertEqual(p.check_metadata(refs["bound"])["bl_status"], "PASS")
             self.assertEqual(p.metadata_view(refs["bound"])["bl_categories"]["sample_preparation"][0]["bl_ref"], refs["samples"])
+            self.assertEqual(self.native("graph", root, json.dumps(refs["bound"])),
+                             p.export_graph(refs["bound"], depth=5, format="structured"))
             # A correction written in Python remains readable in R and never changes the old bound ref.
             latest = p.register_metadata("samples.csv", "sample_preparation", ["sample"], authority="Python",
                                          reason="another explicit correction", ref=refs["samples_revision"])

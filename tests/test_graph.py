@@ -11,6 +11,7 @@ from unittest.mock import patch
 from xml.etree import ElementTree
 
 from biodataledger import BundleError, ProjectBundle
+from biodataledger import metadata as metadata_module
 
 ROOT = Path(__file__).resolve().parents[1]
 CREATE_EXAMPLE = runpy.run_path(str(ROOT / 'examples/dependency_graph.py'))['create_example']
@@ -81,6 +82,64 @@ class GraphTests(unittest.TestCase):
         self.assertEqual(self.p.dependencies(self.fig, 'upstream', depth=3)['execution'], 'unknown')
         self.p.save()
         self.native_parity([{}, {'ref': self.fig, 'depth': 6}, {'ref': self.original, 'direction': 'downstream', 'depth': 6}])
+
+    def test_metadata_links_and_bindings_extend_only_graph_navigation(self):
+        samples_path = self.root / 'samples.csv'
+        samples_path.write_text('sample,patient\n001,P1\n', encoding='utf-8')
+        samples = self.p.register_metadata(samples_path, 'sample_preparation', ['sample'], authority='lab', reason='synthetic')
+        acquisition_path = self.root / 'acquisition.csv'
+        acquisition_path.write_text('library,sample\nL1,001\n', encoding='utf-8')
+        acquisition = self.p.register_metadata(
+            acquisition_path, 'acquisition', ['library'], authority='instrument', reason='synthetic',
+            links=[{'ref': samples, 'columns': ['sample'], 'target_columns': ['sample']}])
+        raw_path = self.root / 'metadata-raw.csv'
+        raw_path.write_text('x\n1\n', encoding='utf-8')
+        raw = self.p.register_data(raw_path, 'input', hash=True)
+        bound_data = self.p.bind_metadata(raw, [samples, acquisition], 'synthetic data binding')
+        analysis = self.p.register_analysis('metadata-aware analysis', [bound_data])
+        bound_analysis = self.p.bind_metadata(analysis, [acquisition], 'synthetic analysis binding')
+        revised_samples_path = self.root / 'samples-revised.csv'
+        revised_samples_path.write_text('sample,patient\n001,P2\n', encoding='utf-8')
+        revised_samples = self.p.register_metadata(revised_samples_path, 'sample_preparation', ['sample'], authority='lab', reason='correction', ref=samples)
+        revised_acquisition_path = self.root / 'acquisition-revised.csv'
+        revised_acquisition_path.write_text('library,sample\nL1,001\n', encoding='utf-8')
+        revised_acquisition = self.p.register_metadata(
+            revised_acquisition_path, 'acquisition', ['library'], authority='instrument', reason='correction', ref=acquisition,
+            links=[{'ref': samples, 'columns': ['sample'], 'target_columns': ['sample']}])
+        rebound_analysis = self.p.bind_metadata(bound_analysis, [revised_acquisition], 'synthetic binding correction')
+
+        legacy_before = self.p.dependencies(bound_analysis, 'upstream', depth=3)
+        self.p.save()
+        with patch.object(metadata_module, '_read', side_effect=AssertionError('unexpected metadata payload read during graph construction')):
+            self.p = ProjectBundle.open(self.root)
+        legacy = self.p.dependencies(bound_analysis, 'upstream', depth=3)
+        self.assertEqual(legacy, legacy_before)
+        with patch.object(Path, 'open', side_effect=AssertionError('unexpected metadata payload read')), \
+                patch.object(Path, 'stat', side_effect=AssertionError('unexpected metadata path probe')):
+            report = self.graph(ref=bound_analysis, depth=5)
+        observed = {(exact(edge['from']), exact(edge['to']), edge['type'], edge['basis'], edge['source_field'])
+                    for edge in report['edges']}
+        self.assertIn((exact(samples), exact(acquisition), 'metadata_table_link', 'declared',
+                       'details.bl_metadata_table.links'), observed)
+        self.assertIn((exact(acquisition), exact(bound_data), 'metadata_binding', 'declared',
+                       'details.bl_metadata_bindings.refs'), observed)
+        self.assertIn((exact(acquisition), exact(bound_analysis), 'metadata_binding', 'declared',
+                       'details.bl_metadata_bindings.refs'), observed)
+        self.assertNotIn(exact(revised_samples), {exact(node['ref']) for node in report['nodes']})
+        self.assertNotIn(exact(revised_acquisition), {exact(node['ref']) for node in report['nodes']})
+        self.assertNotIn(exact(rebound_analysis), {exact(node['ref']) for node in report['nodes']})
+        self.assertFalse(any(edge['type'].startswith('metadata_') for edge in legacy['edges']))
+        latest = self.graph(ref=rebound_analysis, depth=1)
+        self.assertIn((exact(revised_acquisition), exact(rebound_analysis), 'metadata_binding'),
+                      {(exact(e['from']), exact(e['to']), e['type']) for e in latest['edges']})
+        self.assertIn('depth', self.graph(ref=bound_analysis, depth=1)['truncation'])
+        self.assertIn('node_limit', self.graph(ref=bound_analysis, limit=1)['truncation'])
+        anchor = self.graph(filters={'anchor': acquisition})
+        self.assertTrue({exact(samples), exact(bound_data), exact(bound_analysis)} <= set(refs(anchor)))
+        self.native_parity([{'ref': bound_analysis, 'depth': 5},
+                            {'ref': rebound_analysis, 'depth': 1},
+                            {'ref': bound_analysis, 'limit': 1},
+                            {'filters': {'anchor': acquisition}}])
 
     def test_overview_filters_pages_and_revision_context(self):
         branch = self.p.register_analysis('Neutral name', [self.original], purpose='Synthetic CD8 subset')

@@ -14,6 +14,16 @@ Both formats describe the same bounded view. They require no Graphviz, file writ
 payload reads, availability checks, hashing, or execution. Export is on demand.
 Use the ordinary `dependencies()` method for its original, narrower edge contract.
 
+The extended graph also includes declared continuous-metadata relationships:
+`metadata_table_link` runs from the exact referenced metadata-table revision to
+the metadata table that declares its key link
+(`details.bl_metadata_table.links`); `metadata_binding` runs from an exact
+metadata-table revision to the exact bound DATA or ANA revision
+(`details.bl_metadata_bindings.refs`). Both have `basis="declared"`. They show
+recorded metadata provenance only: no table payload is read, and neither edge
+establishes computational consumption, execution, scientific acceptance, or
+table integrity. Standard `dependencies()` output remains unchanged.
+
 ## Presentation DOT
 
 `style="presentation"` produces a top to bottom diagram from the same bounded

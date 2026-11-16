@@ -18,4 +18,7 @@ if (action == "inspect") {
 } else if (action == "import_check") {
   p <- ProjectBundle$import_zip(args[[4L]], root); ref <- jsonlite::fromJSON(args[[5L]], simplifyVector=FALSE)
   json(list(view=p$metadata_view(ref), check=p$check_metadata(ref)))
+} else if (action == "graph") {
+  p <- ProjectBundle$open(root); ref <- jsonlite::fromJSON(args[[4L]], simplifyVector=FALSE)
+  json(p$export_graph(ref, depth=5L, format="structured"))
 } else stop("unknown action", call.=FALSE)

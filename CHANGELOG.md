@@ -9,6 +9,9 @@
   Metadata-enabled projects require clients supporting continuous metadata v1.
   Generated metadata uses `bl_`; original table columns and optional animal IDs
   remain unchanged, including records representing pooled samples.
+- Include declared metadata-table key links and pinned DATA/ANA metadata bindings
+  in the bounded extended provenance graph, retaining exact historical revisions
+  without reading metadata payloads. The legacy `dependencies()` contract is unchanged.
 - Fix R ZIP payload bindings when different source files share a filename,
   preserving each file's identity after archive-path sorting.
 
