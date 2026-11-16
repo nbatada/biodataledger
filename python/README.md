@@ -4,7 +4,14 @@ A lightweight local scientific project registry for finding retained figures and
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Install source version 0.18.0
+## Local 0.19.0 build
+
+The local 0.19.0 build adds continuous sample-to-analysis metadata: six categories,
+managed table snapshots, checked key relationships, pinned bindings and structural
+readiness reports. It is not yet in the published 0.18.0 main source. Use the reviewed
+local source/build for these methods; existing projects remain unchanged until adoption.
+
+## Install published source version 0.18.0
 
 Requires Python 3.9 or newer. The package has no Python runtime dependencies.
 

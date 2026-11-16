@@ -212,6 +212,8 @@ def validate_record(rec, version):
         require(normalize_scope(rec["scope"], require) == rec["scope"], "scope must use canonical fields")
     from .renderer_guard import validate_receipt
     validate_receipt(rec, version)
+    from .metadata import validate_record as validate_metadata_record
+    validate_metadata_record(rec, require)
 
 
 def validate_links(rec, check_ref):
@@ -242,6 +244,8 @@ def validate_links(rec, check_ref):
         report = scope["membership_evidence"]["report_ref"]
         if report is not None:
             check_ref(report, "data")
+    from .metadata import validate_links as validate_metadata_links
+    validate_metadata_links(rec, check_ref, require)
 
 
 def validate_state(state):
@@ -250,10 +254,13 @@ def validate_state(state):
     validate_values({key: value for key, value in state.items() if key != "records"})
     require(state["schema_version"] in (VERSION, DESIGN_VERSION, SCOPE_VERSION, CONTEXT_VERSION), "unsupported schema version")
     project = state["project"]
-    require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design", "figure_policy"}, "invalid project fields")
+    require(isinstance(project, dict) and PROJECT_KEYS <= set(project) <= PROJECT_KEYS | {"design", "figure_policy", "bl_metadata_policy"}, "invalid project fields")
     if "figure_policy" in project:
         require(project["figure_policy"] == "approved_renderers_v1" and state["schema_version"] == CONTEXT_VERSION,
                 "invalid figure_policy; approved_renderers_v1 requires schema 0.4.0")
+    if "bl_metadata_policy" in project:
+        require(project["bl_metadata_policy"] == "continuous_metadata_v1" and state["schema_version"] == CONTEXT_VERSION,
+                "invalid bl_metadata_policy; continuous_metadata_v1 requires schema 0.4.0")
     require(valid_uuid(project["id"]) and isinstance(project["name"], str) and project["name"], "invalid project identity")
     require(valid_uuid(state["last_transaction"]), "invalid transaction ID")
     require(type(state["state_revision"]) is int and state["state_revision"] >= 1, "invalid state revision")
@@ -280,6 +287,9 @@ def validate_state(state):
         key = ref_key(rec)
         require(key not in index, "duplicate record revision")
         index[key] = rec
+    if any("bl_metadata_table" in rec["details"] or "bl_metadata_bindings" in rec["details"] for rec in state["records"]):
+        require(project.get("bl_metadata_policy") == "continuous_metadata_v1" and state["schema_version"] == CONTEXT_VERSION,
+                "continuous metadata records require bl_metadata_policy and schema 0.4.0")
     def check_ref(ref, kind=None):
         require(isinstance(ref, dict) and set(ref) == {"project_id", "id", "revision"}, "invalid exact reference")
         require(ref["project_id"] == project["id"] and isinstance(ref["id"], str) and type(ref["revision"]) is int and ref["revision"] > 0, "foreign or invalid reference")
@@ -288,6 +298,8 @@ def validate_state(state):
         return index[ref_key(ref)]
     for rec in state["records"]:
         validate_links(rec, check_ref)
+    from .metadata import validate_graph as validate_metadata_graph
+    validate_metadata_graph(state["records"], check_ref, require)
     if project.get("design") is not None:
         check_ref(project["design"], "design")
     for purpose, ref in state["current"].items():
@@ -599,6 +611,8 @@ class ProjectBundle:
     def register_data(self, path, role, name=None, hash=False, **details):
         from .renderer_guard import reserve
         reserve(details)
+        from .metadata import reserve as reserve_metadata
+        reserve_metadata(details, require)
         from .results import KEY as RESULT_KEY
         require(RESULT_KEY not in details, "use register_result to declare a result")
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
@@ -617,6 +631,30 @@ class ProjectBundle:
         require(not hash or rec["sha256"] is not None, "hashing requires a local regular file")
         rec["details"]["provenance"] = {"file": "captured" if hash else "unknown", "analytical": "declared"}
         return self._stage(rec)
+
+    def register_metadata(self, path, category, key_columns, *, authority, reason, ref=None,
+                          links=None, required_columns=None, units=None, name=None, delimiter=","):
+        """Capture a bounded CSV/TSV metadata table as a typed DATA revision."""
+        from .metadata import register
+        return register(self, path, category, key_columns, authority=authority, reason=reason,
+                        ref=ref, links=links, required_columns=required_columns, units=units,
+                        name=name, delimiter=delimiter)
+
+    def get_metadata(self, ref, limit=20, offset=0):
+        from .metadata import get
+        return get(self, ref, limit, offset)
+
+    def bind_metadata(self, ref, metadata_refs, reason):
+        from .metadata import bind
+        return bind(self, ref, metadata_refs, reason)
+
+    def metadata_view(self, ref):
+        from .metadata import public_view
+        return public_view(self, ref)
+
+    def check_metadata(self, ref, required_categories=None):
+        from .metadata import check
+        return check(self, ref, required_categories)
 
     def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True,
                           design_ref=_DEFAULT, input_mode="separate", **details):
@@ -1097,6 +1135,13 @@ class ProjectBundle:
         from .presentation import KEY as PRESENTATION_KEY, presentation_only_change
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
+        from .metadata import BINDINGS_KEY, KEY as METADATA_KEY, is_metadata
+        if is_metadata(rec):
+            require(set(changes) <= {"name", "status"}, "typed metadata tables allow name/status corrections only")
+        if BINDINGS_KEY in rec["details"]:
+            require("details" not in changes, "metadata bindings are dedicated-writer only")
+        require(METADATA_KEY not in changes.get("details", {}) and BINDINGS_KEY not in changes.get("details", {}),
+                "metadata descriptors/bindings are dedicated-writer only")
         from .renderer_guard import guard_update as guard_renderer_update
         guard_renderer_update(self, rec, changes)
         require(not ({"comparison_plan", "comparison_assessment"} & set(rec["details"])), "comparison revisions use dedicated writers")

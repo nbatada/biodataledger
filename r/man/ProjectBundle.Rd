@@ -53,3 +53,5 @@ figure location. Artifact timestamps are UTC registration times, not inferred
 generation dates. Existing registration and runs views remain available.
 See installed CHRONOLOGY_V1.md for bounds, exact refs and cursor behavior.
 }
+
+\seealso{\code{\link{continuous_metadata}} for versioned sample-to-analysis metadata tables and checks.}

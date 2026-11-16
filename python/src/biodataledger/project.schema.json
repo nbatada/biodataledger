@@ -95,6 +95,9 @@
         },
         "figure_policy": {
           "const": "approved_renderers_v1"
+        },
+        "bl_metadata_policy": {
+          "const": "continuous_metadata_v1"
         }
       }
     },
@@ -374,6 +377,12 @@
           "properties": {
             "renderer_receipt": {
               "$ref": "#/$defs/renderer_receipt"
+            },
+            "bl_metadata_table": {
+              "$ref": "#/$defs/bl_metadata_table"
+            },
+            "bl_metadata_bindings": {
+              "$ref": "#/$defs/bl_metadata_bindings"
             }
           }
         },
@@ -636,6 +645,56 @@
                       }
                     }
                   }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "details": {
+                "required": [
+                  "bl_metadata_table"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "data"
+              },
+              "role": {
+                "const": "bl_metadata_table"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "details": {
+                "required": [
+                  "bl_metadata_bindings"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "data",
+                  "analysis"
                 ]
               }
             }
@@ -1177,6 +1236,150 @@
           }
         }
       ]
+    },
+    "bl_metadata_table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "category",
+        "key_columns",
+        "required_columns",
+        "authority",
+        "reason",
+        "units",
+        "links",
+        "columns",
+        "row_count",
+        "delimiter"
+      ],
+      "properties": {
+        "version": {
+          "const": "biodataledger-metadata/1"
+        },
+        "category": {
+          "enum": [
+            "sample_preparation",
+            "acquisition",
+            "processing_qc",
+            "analysis",
+            "annotation",
+            "result"
+          ]
+        },
+        "key_columns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_columns": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ref",
+              "columns",
+              "target_columns"
+            ],
+            "properties": {
+              "ref": {
+                "$ref": "#/$defs/ref"
+              },
+              "columns": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "target_columns": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "delimiter": {
+          "enum": [
+            ",",
+            "\t"
+          ]
+        }
+      }
+    },
+    "bl_metadata_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "refs",
+        "reason"
+      ],
+      "properties": {
+        "version": {
+          "const": "biodataledger-metadata-bindings/1"
+        },
+        "refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/ref"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   },
   "$comment": "Clients additionally validate exact references/kinds, ordered level subsets, reference membership, metadata report consistency, duplicate keys, finite values and path containment. Legacy files without design remain schema 0.1.0; first set_design promotes to 0.2.0. No scientific validation. Dataset scope and DATA design pins require schema 0.3.0. Clients validate reference kinds and canonical scope/report evidence; no implicit scientific verification. Schema 0.4.0 adds explicit input mode and captured figure preservation; context consistency is checked on new or revised analytical context, not legacy load. Optional approved_renderers_v1 figure policy and reserved locally observed renderer receipts require schema 0.4.0; clients validate receipt output hash binding. No scientific acceptance or unrestricted-interpreter security boundary. Clients additionally check export_settings pixel-area bound and binding to FIG details.format.",
@@ -1339,6 +1542,62 @@
       },
       "then": {
         "properties": {
+          "schema_version": {
+            "const": "0.4.0"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "project": {
+            "required": [
+              "bl_metadata_policy"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "schema_version": {
+            "const": "0.4.0"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "records": {
+            "contains": {
+              "properties": {
+                "details": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "bl_metadata_table"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "bl_metadata_bindings"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "project": {
+            "required": [
+              "bl_metadata_policy"
+            ]
+          },
           "schema_version": {
             "const": "0.4.0"
           }

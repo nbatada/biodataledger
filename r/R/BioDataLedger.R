@@ -410,9 +410,10 @@
   if (!setequal(names(state), required) || !state$schema_version %in% c("0.1.0", "0.2.0", "0.3.0", "0.4.0")) .fail("Unsupported state schema")
   if (!.is_int(state$state_revision, TRUE) || !.is_uuid(state$last_transaction)) .fail("Invalid state revision or transaction")
   project_fields <- c("id","name","purpose","raw_dir","metadata","next_task","questions","authorities")
-  optional_project_fields <- c(if (state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0")) "design", if (state$schema_version == "0.4.0") "figure_policy")
+  optional_project_fields <- c(if (state$schema_version %in% c("0.2.0", "0.3.0", "0.4.0")) "design", if (state$schema_version == "0.4.0") c("figure_policy", .metadata_policy_key))
   if (!.is_obj(state$project) || !all(project_fields %in% names(state$project)) || !all(names(state$project) %in% c(project_fields, optional_project_fields))) .fail("Invalid project fields")
   if ("figure_policy" %in% names(state$project) && !identical(state$project$figure_policy, .renderer_policy)) .fail("Invalid figure_policy")
+  if (.metadata_policy_key %in% names(state$project) && !identical(state$project[[.metadata_policy_key]], "continuous_metadata_v1")) .fail("Invalid metadata policy")
   if (!.is_uuid(state$project$id) || !is.character(state$project$name) || length(state$project$name) != 1L || !nzchar(state$project$name) || !.is_arr(state$project$questions) || !.is_arr(state$project$authorities)) .fail("Invalid project identity or arrays")
   for (field in c("purpose", "next_task")) if (!is.null(state$project[[field]]) && (!is.character(state$project[[field]]) || length(state$project[[field]]) != 1L)) .fail("Invalid project text")
   for (field in c("raw_dir", "metadata")) if (!is.null(state$project[[field]])) .validate_locator(state$project[[field]])
@@ -463,6 +464,7 @@
     if (!is.null(r$details$clustering_run) && .record_kind(state, r$details$clustering_run) != "analysis") .fail("Clustering run must be analysis")
   }
   if (is.null(record_only)) for (x in state$current) if (.record_kind(state, x) != "data") .fail("Current must reference data")
+  .metadata_validate_state(state, record_only)
   if (is.null(record_only)) for (h in state$history) {
     if (!.is_obj(h) || !setequal(names(h), c("at","action","actor","reason","target","transaction"))) .fail("Invalid history entry")
     if (!is.null(h$target)) .validate_ref_shape(state, h$target)
@@ -572,6 +574,8 @@ ProjectBundle <- local({
       proposed <- state
       if (!is.null(version)) proposed$schema_version <- version
       .validate(proposed, record_only = rec)
+      metadata_trial <- proposed; metadata_trial$records <- c(metadata_trial$records, list(rec)); if ((!is.null(rec$details[[.metadata_key]]) || !is.null(rec$details[[.metadata_binding_key]])) && is.null(metadata_trial$project[[.metadata_policy_key]])) metadata_trial$project[[.metadata_policy_key]] <- "continuous_metadata_v1"; metadata_trial <- .index_state(metadata_trial)
+      .metadata_validate_state(metadata_trial)
       if (rec$kind == "figure" && .sources_known(rec$details[[.figure_sources_key]])) .sources_normalize(state, rec$details[[.figure_sources_key]])
       if (context_check && rec$kind %in% c("analysis", "figure") && identical(context_report(rec)$status, "inconsistent")) .fail(paste0("SCOPE_CONFLICT: ", paste(unlist(context_report(rec)$issues), collapse = "; ")))
       state$schema_version <<- proposed$schema_version
@@ -688,11 +692,13 @@ ProjectBundle <- local({
       complete <- TRUE; out
     }
     register_data <- function(path, role, name = NULL, hash = FALSE, ...) {
+      if (identical(role, .metadata_role)) .fail("Use register_metadata for metadata tables")
       if (.result_key %in% names(list(...))) .fail('Use register_result for result declarations')
       if ("execution_receipt" %in% names(list(...))) .fail("Execution receipt is runner-managed")
       if (.scientific_decision_key %in% names(list(...))) .fail("Scientific decision metadata is reserved")
       if (.analysis_protocol_key %in% names(list(...))) .fail("Analysis protocol metadata is reserved")
       if (any(.comparison_keys %in% names(list(...)))) .fail("Comparison metadata is reserved")
+      if (any(c(.metadata_key, .metadata_binding_key) %in% names(list(...)))) .fail("Metadata descriptors are writer-managed")
       loc <- .locator(root, path); p <- .resolve(root, state, loc)
       if (!is.null(p) && !file.access(p, 4) == 0) .fail("Unreadable file")
       size <- if (!is.null(p) && !dir.exists(p)) file.info(p)$size else NULL
@@ -702,6 +708,61 @@ ProjectBundle <- local({
       rec <- .new_record(state, "data", if (is.null(name)) basename(if (is.null(p)) loc$value else p) else name, loc, role = role, sha256 = digest, size = size, details = details)
       append_record(rec, "register_data")
     }
+    register_metadata <- function(path, category, key_columns, authority, reason, ref = NULL, links = NULL, required_columns = NULL, units = NULL, name = NULL, delimiter = ",") {
+      if (!identical(delimiter, ",") && !identical(delimiter, "\t")) .fail("Metadata delimiter must be comma or tab")
+      source_candidate <- if (is.character(path) && length(path) == 1L && !startsWith(path, "/")) file.path(root, path) else path
+      if (is.character(source_candidate) && length(source_candidate) == 1L && nzchar(Sys.readlink(source_candidate))) .fail("Metadata source must not be a symbolic link")
+      loc <- .locator(root, path); source <- .resolve(root, state, loc)
+      if (is.null(source) || !file.exists(source) || dir.exists(source) || file.access(source, 4L) != 0L) .fail("Metadata source must be a readable regular file")
+      before <- .hash(source); table <- .metadata_parse(source, delimiter)
+      keys <- .metadata_array(key_columns, "key_columns", TRUE); required <- .metadata_array(if (is.null(required_columns)) list() else required_columns, "required_columns")
+      .metadata_validate_rows(table, keys, required)
+      columns <- .arr(as.list(names(table))); normalized_units <- if (is.null(units)) .obj() else units
+      if (!.is_obj(normalized_units)) .fail("Metadata units must be an object")
+      normalized_links <- .metadata_links(state, if (is.null(links)) list() else links, names(table))
+      .metadata_link_rows(root, state, normalized_links, table)
+      descriptor <- .metadata_descriptor(category, keys, required, authority, reason, normalized_units, normalized_links, columns, nrow(table), delimiter)
+      base <- .renderer_parent(root); dir.create(base, recursive = TRUE, showWarnings = FALSE); base <- .renderer_parent(root)
+      folder <- file.path(base, paste0("metadata-", .uuid())); if (!dir.create(folder, showWarnings = FALSE)) .fail("Cannot exclusively create metadata output directory")
+      complete <- FALSE; on.exit(if (!complete) unlink(folder, recursive = TRUE), add = TRUE)
+      destination <- file.path(folder, "table.csv")
+      if (!file.copy(source, destination, overwrite = FALSE) || !identical(before, .hash(destination)) || !identical(before, .hash(source))) .fail("Metadata source changed or copy failed")
+      if (is.null(ref)) {
+        rec <- .new_record(state, "data", if (is.null(name)) basename(source) else name, .locator(root, destination), role = .metadata_role, sha256 = before, size = as.numeric(file.info(destination)$size), details = .obj(bl_metadata_table = descriptor))
+      } else {
+        old <- .record(state, .ref(state, ref)); latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
+        if (old$kind != "data" || !identical(old$role, .metadata_role) || old$revision != latest$revision) .fail("Metadata revision requires latest metadata reference")
+        prior <- old$details[[.metadata_key]]
+        if (!identical(prior$category, descriptor$category) || !identical(prior$key_columns, descriptor$key_columns)) .fail("Metadata category and key_columns are immutable")
+        rec <- .copy(old); rec$revision <- latest$revision + 1L; rec$created_at <- .now(); rec$name <- if (is.null(name)) old$name else name; rec$locator <- .locator(root, destination); rec$sha256 <- before; rec$size <- as.numeric(file.info(destination)$size); rec$details <- .obj(bl_metadata_table = descriptor)
+      }
+      previous <- .copy(state); out <- tryCatch(append_record(rec, "register_metadata", version = "0.4.0"), error = function(e) { state <<- previous; .fail(conditionMessage(e)) })
+      if (is.null(state$project[[.metadata_policy_key]])) { state$project[[.metadata_policy_key]] <<- "continuous_metadata_v1"; event("enable_metadata_policy") }
+      complete <- TRUE; out
+    }
+    get_metadata <- function(ref, limit = 20L, offset = 0L) {
+      if (!.is_int(limit, TRUE) || limit > 200L || !.is_int(offset) || offset < 0L) .fail("Invalid metadata pagination")
+      exact <- .metadata_ref(state, ref); rec <- .record(state, exact); path <- .resolve(root, state, rec$locator)
+      if (is.null(path) || !file.exists(path) || dir.exists(path)) .fail("Metadata table is unavailable")
+      if (nzchar(Sys.readlink(path))) .fail("UNSAFE_FILE: managed metadata table must not be a symbolic link")
+      before <- file.info(path); if (is.na(before$size) || before$size != rec$size || !identical(.hash(path), rec$sha256)) .fail("Metadata table integrity mismatch")
+      table <- .metadata_parse(path, rec$details[[.metadata_key]]$delimiter); .metadata_validate_rows(table, rec$details[[.metadata_key]]$key_columns, rec$details[[.metadata_key]]$required_columns)
+      after <- file.info(path); if (!identical(before$size, after$size) || !identical(before$mtime, after$mtime) || !identical(before$ctime, after$ctime)) .fail("Metadata table changed during read")
+      if (!identical(names(table), unlist(rec$details[[.metadata_key]]$columns, use.names = FALSE)) || nrow(table) != rec$details[[.metadata_key]]$row_count) .fail("Metadata table differs from descriptor")
+      d <- rec$details[[.metadata_key]]; .metadata_public_get(.obj(ref = exact, name = rec$name, category = d$category, authority = d$authority, reason = d$reason, key_columns = .copy(d$key_columns), required_columns = .copy(d$required_columns), units = .copy(d$units), links = .copy(d$links), columns = .copy(d$columns), row_count = d$row_count, rows = .metadata_rows(table, offset, limit), offset = as.integer(offset), limit = as.integer(limit), has_more = offset + limit < nrow(table), integrity = "verified"))
+    }
+    bind_metadata <- function(ref, metadata_refs, reason) {
+      if (!.metadata_text(reason)) .fail("Metadata binding reason required")
+      subject_ref <- .ref(state, ref); subject <- .record(state, subject_ref); latest <- state$records[[get(subject$id, attr(state, "record_index")$latest)]]
+      if (!subject$kind %in% c("data", "analysis") || identical(subject$role, .metadata_role) || subject$revision != latest$revision || !is.null(subject$details$execution_receipt) || !is.null(subject$details[[.analysis_protocol_key]]) || !is.null(subject$details$renderer_receipt)) .fail("Metadata binding target is not eligible")
+      if (!is.list(metadata_refs) || !length(metadata_refs)) .fail("Metadata bindings must be a nonempty array")
+      refs <- .arr(lapply(metadata_refs, function(x) .metadata_ref(state, x))); ids <- vapply(refs, `[[`, "id", FUN.VALUE = character(1)); if (anyDuplicated(ids)) .fail("Duplicate metadata ID binding")
+      rec <- .copy(subject); rec$revision <- latest$revision + 1L; rec$created_at <- .now(); rec$details[[.metadata_binding_key]] <- .obj(version = .metadata_binding_version, refs = refs, reason = reason)
+      previous <- .copy(state); out <- tryCatch(append_record(rec, "bind_metadata", version = "0.4.0"), error = function(e) { state <<- previous; .fail(conditionMessage(e)) })
+      if (is.null(state$project[[.metadata_policy_key]])) { state$project[[.metadata_policy_key]] <<- "continuous_metadata_v1"; event("enable_metadata_policy") }; out
+    }
+    metadata_view <- function(ref) .metadata_public_view(.metadata_view(state, ref))
+    check_metadata <- function(ref, required_categories = NULL) .metadata_public_check(.metadata_check(root, state, ref, required_categories))
     register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Analysis inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
@@ -710,6 +771,7 @@ ProjectBundle <- local({
       if (.scientific_decision_key %in% names(details)) .fail("Scientific decision metadata is reserved")
       if (.analysis_protocol_key %in% names(details)) .fail("Analysis protocol metadata is reserved")
       if (any(.comparison_keys %in% names(details))) .fail("Comparison metadata is reserved")
+      if (any(c(.metadata_key, .metadata_binding_key) %in% names(details))) .fail("Metadata descriptors are writer-managed")
       details$provenance <- .obj(file = "unknown", analytical = "declared")
       rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
@@ -1238,6 +1300,9 @@ ProjectBundle <- local({
       allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
+      if (!is.null(rec$details[[.metadata_key]]) && !all(names(changes) %in% c("name", "status"))) .fail("Use register_metadata to revise metadata tables")
+      if (!is.null(rec$details[[.metadata_binding_key]])) .fail("Use bind_metadata to revise metadata bindings")
+      if ("details" %in% names(changes) && any(c(.metadata_key, .metadata_binding_key) %in% names(changes$details))) .fail("Metadata descriptors are writer-managed")
       if ("details" %in% names(changes)) {
         old_receipt <- rec$details$renderer_receipt
         if ("renderer_receipt" %in% names(changes$details) || !is.null(old_receipt)) {
@@ -1735,7 +1800,7 @@ ProjectBundle <- local({
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
-    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, register_metadata = register_metadata, get_metadata = get_metadata, bind_metadata = bind_metadata, metadata_view = metadata_view, check_metadata = check_metadata, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     viewer_generation <- function() list(state$state_revision, state$last_transaction, length(state$records), length(state$history), dirty)
     self$view <- function(path = NULL, open_browser = TRUE, limit = 5000L, preview_refs = NULL)
       .export_view(root, state, result_graph, dirty, self$timeline, viewer_generation, path, open_browser, limit, preview_refs)
@@ -1825,10 +1890,12 @@ print.ProjectBundle <- function(x, ...) {
     }
   }
   payload <- payload[order(vapply(payload, function(x) paste0(x$source_locator$kind, ":", x$source_locator$value), character(1)))]
-  for (i in seq_along(payload)) if (!startsWith(payload[[i]]$path, ".nb_project_bundle/code/")) {
-    old <- payload[[i]]$path
-    payload[[i]]$path <- sprintf("payload/%05d-%s", i, gsub("[^A-Za-z0-9._-]", "_", basename(payload[[i]]$source)))
-    for (key in names(bindings)) if (identical(bindings[[key]], old)) bindings[[key]] <- payload[[i]]$path
+  old_paths <- vapply(payload, function(x) x$path, character(1)); new_paths <- old_paths
+  for (i in seq_along(payload)) if (!startsWith(old_paths[[i]], ".nb_project_bundle/code/")) new_paths[[i]] <- sprintf("payload/%05d-%s", i, gsub("[^A-Za-z0-9._-]", "_", basename(payload[[i]]$source)))
+  for (i in seq_along(payload)) payload[[i]]$path <- new_paths[[i]]
+  for (key in names(bindings)) {
+    at <- match(bindings[[key]], old_paths, nomatch = 0L)
+    if (at) bindings[[key]] <- new_paths[[at]]
   }
   for (rec in state$records) if (!is.null(rec$locator)) {
     key <- paste0(rec$locator$kind, ":", rec$locator$value)

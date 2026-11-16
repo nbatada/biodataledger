@@ -264,6 +264,8 @@ def project_help(project):
         "",
         "Project overview         print(p)",
         "Technical status         p.status()",
+        'Metadata categories      p.metadata_view("DATA-001@1")',
+        'Check pinned metadata    p.check_metadata("DATA-001@1")',
         'Find a topic             p.find_outputs(topic="QC")',
         'Analysis inputs/outputs  p.get_info("ANA-001@1")',
         'Figure sources and code  p.get_info("FIG-001@1")',

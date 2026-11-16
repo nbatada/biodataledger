@@ -14,6 +14,12 @@ The example illustrates records you supply; the package does not choose or verif
 
 [Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
+**New in local 0.19.0:** [continuous sample-to-analysis metadata](docs/METADATA.md)
+starts with the authoritative sample sheet before data generation, then links
+acquisition, QC, analysis, annotation and result metadata. It preserves table
+snapshots and exact historical bindings. This addition is not yet in GitHub main;
+use the reviewed local 0.19.0 build and keep existing live sessions intact.
+
 ## What it adds to an agent-assisted workflow
 
 An agent can read your scripts and a project manifest. BioDataLedger adds a native
@@ -470,7 +476,7 @@ Older projects remain readable. Saving experimental design requires clients ≥0
 
 ## Tests
 
-From the **0.18.0 source checkout**, install both clients and the optional
+From the **0.19.0 local checkout**, install both clients and the optional
 plotting dependencies required by the full test suite. Core use does not require
 them; the suite also tests core imports with Python plotting dependencies blocked.
 
@@ -479,7 +485,7 @@ them; the suite also tests core imports with Python plotting dependencies blocke
 Rscript -e 'install.packages(c("ggplot2", "patchwork", "SeuratObject"), repos="https://cloud.r-project.org")'
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.18.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.19.0.tar.gz
 ```
 
 ## Confirm a saved change

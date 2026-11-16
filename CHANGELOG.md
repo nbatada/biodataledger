@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.0 — local development
+
+- Add versioned sample-to-analysis metadata tables in six categories, explicit
+  key relationships, pinned dataset/analysis bindings, grouped metadata views
+  and structural readiness checks. Retain managed table snapshots and historical
+  references without loading scientific matrices or adding runtime dependencies.
+  Metadata-enabled projects require clients supporting continuous metadata v1.
+  Generated metadata uses `bl_`; original table columns and optional animal IDs
+  remain unchanged, including records representing pooled samples.
+- Fix R ZIP payload bindings when different source files share a filename,
+  preserving each file's identity after archive-path sorting.
+
+
 ## 0.18.0 — source update, 2026-11-14
 
 - Qualify the complete native test suite by installing its optional plotting

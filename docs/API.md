@@ -21,6 +21,35 @@ remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md`
 files describe their named versions.
 
+## Continuous metadata (local 0.19.0)
+
+New local methods in both native clients classify and link versioned metadata
+without loading scientific matrices. Older clients cannot open metadata-enabled
+projects. The published 0.18.0 source does not yet provide these methods.
+See the [metadata guide](METADATA.md) for the six categories, first-project setup,
+scientist-declared authority, foreign keys, corrections and structural readiness.
+
+| Method | Purpose |
+| --- | --- |
+| `register_metadata(path, category, key_columns, authority=..., reason=..., ref=None/NULL, links=None/NULL, required_columns=None/NULL, units=None/NULL, name=None/NULL, delimiter=",")` | Verify a CSV/TSV and preserve a managed snapshot as an exact DATA revision. Python parameters after `key_columns` are keyword-only. |
+| `get_metadata(ref, limit=20, offset=0)` | Verify and inspect selected table rows, keys, authority and links; page size at most 200. |
+| `bind_metadata(ref, metadata_refs, reason)` | Return a new latest DATA/ANA revision with an explicit replacement list of exact metadata bindings. |
+| `metadata_view(ref)` | Metadata-only grouped view of pinned tables and their links through recorded inputs/analyses. No table reads or automatic latest selection. |
+| `check_metadata(ref, required_categories=None/NULL)` | Explicit file/key/link/conflict checks; default required category is `sample_preparation`. PASS is structural metadata readiness, not matrix alignment or scientific acceptance. |
+
+Generated metadata result fields use `bl_` (for example `bl_rows`, `bl_categories`,
+`bl_status` and `bl_issues`); source table columns and exact reference keys remain
+unchanged. Sample identifiers are required as declared keys; mouse/donor IDs and
+pool membership are optional unless the caller requires or links them. No identities,
+replicate status or before/after pairing are inferred.
+
+Tables are capped at 64 MiB/256 columns and stored outside registry JSON. Fields
+remain text, including literal NA and leading zeros. Use full composite keys for
+pooled/split samples. Exclusions remain contextual declarations; the package does
+not filter cells or certify interpretations. New descriptors use the existing
+schema0.4.0 with a fail-closed optional project marker. Legacy projects stay unchanged
+until explicit metadata registration. Save staged changes at meaningful checkpoints.
+
 ## Problems this API addresses
 
 The function index below remains the complete navigation surface. This map points
