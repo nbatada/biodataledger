@@ -2,6 +2,8 @@
 
 ## 0.19.0 — local development
 
+- Batch R dependency-graph construction for ordinary and extended edges, so
+  high-fanout adjacency buckets are sorted once while preserving graph output.
 - Avoid R whole-state metadata validation and index reconstruction for ordinary
   DATA/ANA registration. Typed metadata tables and bindings retain full validation.
 - Add versioned sample-to-analysis metadata tables in six categories, explicit

@@ -235,15 +235,17 @@
   graph$target_limit <- FALSE
   graph$result_records <- new.env(hash=TRUE,parent=emptyenv())
   graph$figure_unknown <- new.env(hash=TRUE,parent=emptyenv())
-  graph$pending <- new.env(hash=TRUE,parent=emptyenv())
+  graph$pending <- list(primary = new.env(hash=TRUE,parent=emptyenv()),
+                        extra = new.env(hash=TRUE,parent=emptyenv()))
   for (rec in state$records) .result_index_record(graph,state,rec)
-  # Batch the supplemental edges so opening high-fanout registries sorts once.
-  extra <- .result_sort_edges(unname(as.list(graph$pending)))
-  if (length(extra)) {
-    for (side in c('forward','backward')) {
+  # Batch construction so each high-fanout adjacency bucket sorts once.
+  for (kind in c('primary','extra')) {
+    edges <- .result_sort_edges(unname(as.list(graph$pending[[kind]])))
+    if (length(edges)) for (side in c('forward','backward')) {
       endpoint <- if (side=='forward') 'from' else 'to'
-      keys <- vapply(extra,function(edge).result_id(edge[[endpoint]]),character(1))
-      list2env(split(extra,keys),envir=graph[[paste0('extra_',side)]])
+      keys <- vapply(edges,function(edge).result_id(edge[[endpoint]]),character(1))
+      env <- graph[[if (kind=='extra') paste0('extra_',side) else side]]
+      list2env(split(edges,keys),envir=env)
     }
   }
   graph$pending <- NULL
@@ -257,8 +259,8 @@
     if (exists(edge_key,graph$edges,inherits=FALSE)) return(invisible(NULL))
     edge <- .obj(from=from,to=to,type=type,basis=basis,source_field=source_field)
     assign(edge_key,TRUE,graph$edges)
-    if (graph_only && !is.null(graph$pending)) {
-      assign(edge_key,edge,graph$pending)
+    if (!is.null(graph$pending)) {
+      assign(edge_key,edge,graph$pending[[if (graph_only) 'extra' else 'primary']])
       return(invisible(NULL))
     }
     for (side in c('forward','backward')) {
