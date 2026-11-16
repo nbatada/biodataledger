@@ -574,8 +574,13 @@ ProjectBundle <- local({
       proposed <- state
       if (!is.null(version)) proposed$schema_version <- version
       .validate(proposed, record_only = rec)
-      metadata_trial <- proposed; metadata_trial$records <- c(metadata_trial$records, list(rec)); if ((!is.null(rec$details[[.metadata_key]]) || !is.null(rec$details[[.metadata_binding_key]])) && is.null(metadata_trial$project[[.metadata_policy_key]])) metadata_trial$project[[.metadata_policy_key]] <- "continuous_metadata_v1"; metadata_trial <- .index_state(metadata_trial)
-      .metadata_validate_state(metadata_trial)
+      if (!is.null(rec$details[[.metadata_key]]) || !is.null(rec$details[[.metadata_binding_key]])) {
+        metadata_trial <- proposed
+        metadata_trial$records <- c(metadata_trial$records, list(rec))
+        if (is.null(metadata_trial$project[[.metadata_policy_key]])) metadata_trial$project[[.metadata_policy_key]] <- "continuous_metadata_v1"
+        metadata_trial <- .index_state(metadata_trial)
+        .metadata_validate_state(metadata_trial)
+      }
       if (rec$kind == "figure" && .sources_known(rec$details[[.figure_sources_key]])) .sources_normalize(state, rec$details[[.figure_sources_key]])
       if (context_check && rec$kind %in% c("analysis", "figure") && identical(context_report(rec)$status, "inconsistent")) .fail(paste0("SCOPE_CONFLICT: ", paste(unlist(context_report(rec)$issues), collapse = "; ")))
       state$schema_version <<- proposed$schema_version

@@ -2,6 +2,8 @@
 
 ## 0.19.0 — local development
 
+- Avoid R whole-state metadata validation and index reconstruction for ordinary
+  DATA/ANA registration. Typed metadata tables and bindings retain full validation.
 - Add versioned sample-to-analysis metadata tables in six categories, explicit
   key relationships, pinned dataset/analysis bindings, grouped metadata views
   and structural readiness checks. Retain managed table snapshots and historical
