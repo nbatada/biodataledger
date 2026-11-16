@@ -38,6 +38,13 @@ The log favors human-readable registered names and paths. Open a row's details
 to inspect or copy its exact revision; a link outside the captured record cards
 is marked unavailable rather than replaced by an ID.
 
+Use **Contents — choose an analysis** to jump by readable analysis title.
+Search titles or displayed dates, or expand a day/week/month to browse its work.
+Contents includes all captured analyses, grouped according to Day/Week/Month;
+a jump switches the displayed group page when necessary and selects the exact
+analysis row. **Back to contents** appears after each group and at the bottom.
+Historical entries are labelled earlier revisions. Snapshot omissions still apply.
+
 ## What the snapshot captures
 
 The page shows the loaded registry revision, capture time, and unsaved changes

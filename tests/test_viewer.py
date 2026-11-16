@@ -230,6 +230,64 @@ class ViewerTests(unittest.TestCase):
                                 env={**os.environ, "TZ": "America/Los_Angeles"})
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    @unittest.skipUnless(shutil.which("node"), "Node is required for deterministic viewer navigation checks")
+    def test_analysis_contents_search_jump_and_return(self):
+        source = (Path(__file__).parents[1] / "shared" / "viewer.html").read_text()
+        script = "function analysisContentsTop" + source.split("function analysisContentsTop", 1)[1].split("function showAnalysisLog", 1)[0]
+        check = r"""
+            const assert = require('assert');
+            class Element {
+              constructor(tag) { this.tag = tag; this.children = []; this.events = {}; }
+              append(node) { this.children.push(node); }
+              replaceChildren() { this.children = []; }
+              setAttribute() {}
+              addEventListener(event, action) { this.events[event] = action; }
+              scrollIntoView() { this.scrolled = true; }
+              focus() { this.focused = true; }
+            }
+            const walk = node => [node, ...node.children.flatMap(walk)];
+            const main = new Element('main'), state = {analysisLogPage: 0};
+            const ANALYSIS_GROUPS_PER_PAGE = 8, byKey = new Map([['ANA-009', {}]]);
+            const row = new Element('tr'); row.dataset = {key: 'ANA-009'};
+            main.querySelectorAll = () => [row];
+            const byId = id => walk(main).find(node => node.id === id);
+            const keyFor = ref => ref.id, localDate = value => value;
+            let rendered, selected;
+            const showMode = mode => { rendered = mode; };
+            const selectRecord = key => { selected = key; };
+            function add(parent, tag, text) {
+              const node = new Element(tag); node.textContent = text; parent.append(node); return node;
+            }
+            function button(parent, text, action) {
+              const node = add(parent, 'button', text); node.events.click = action; return node;
+            }
+            eval(require('fs').readFileSync(0, 'utf8'));
+            const groups = Array.from({length: 9}, (_, i) => ({label: `Nov ${i+1}, 2026`, rows: [{
+              name: `QC sample ${i+1}`, time_utc: `Nov ${i+1}, 2026`, ref: {id: `ANA-00${i+1}`}
+            }]}));
+            analysisContents(groups);
+            let links = walk(main).filter(node => node.tag === 'button');
+            assert.equal(links.length, 9);
+            assert(links.every(node => node.textContent.startsWith('QC sample')));
+            const search = byId('analysis-log-toc-search');
+            search.value = 'Nov 9'; search.events.input();
+            links = walk(main).filter(node => node.tag === 'button');
+            assert.equal(links.length, 1); assert.equal(links[0].textContent, 'QC sample 9');
+            links[0].events.click();
+            assert.equal(state.analysisLogPage, 1); assert.equal(rendered, 'analysis-log');
+            assert.equal(selected, 'ANA-009'); assert(row.focused && row.scrolled);
+            analysisContentsTop();
+            assert(byId('analysis-log-contents').focused && byId('analysis-log-contents').scrolled);
+            search.value = 'QC sample 1'; search.events.input();
+            assert.equal(walk(main).filter(node => node.tag === 'button').length, 1);
+            search.value = 'no matching title'; search.events.input();
+            assert(walk(main).some(node => node.textContent === 'No matching analysis in this snapshot.'));
+            search.value = ''; search.events.input();
+            assert.equal(walk(main).filter(node => node.tag === 'button').length, 9);
+        """
+        result = subprocess.run(["node", "-e", check], input=script, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_metadata_only_and_opt_in_preview_results(self):
         source = self.root / "figure panel.png"
         data = self.root / "input.csv"

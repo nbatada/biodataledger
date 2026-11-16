@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.2 — local development
+
+- Add a searchable analysis-title/date contents list, exact-analysis jumps across
+  group pages, and return-to-contents controls in the offline Analysis log.
+
+
 ## 0.19.1 — local development
 
 - Add an Analysis log to the offline HTML viewer using recorded analysis

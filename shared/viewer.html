@@ -94,6 +94,8 @@ table.analysis-log th:first-child { width: 14%; }
 table.analysis-log th:nth-child(2) { width: 22%; }
 table.analysis-log th:nth-child(3), table.analysis-log th:nth-child(4) { width: 22%; }
 table.analysis-log th:nth-child(5) { width: 20%; }
+.analysis-log-contents { display: block; margin-block: 1rem; }
+.analysis-log-contents input { display: block; width: 100%; max-width: 32rem; }
 .analysis-log-group { margin-top: 1.25rem; }
 .analysis-log-path { display: block; font: .85rem/1.35 ui-monospace, monospace; margin-top: .25rem; }
 tr.selected { background: var(--selection); }
@@ -260,6 +262,7 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
   const state = {query: "", kind: "", topic: "", history: false, page: 0,
     timeline: "registration", timelinePage: 0, analysisLogPage: 0, analysisGrouping: "day", selected: null, back: []};
   const PAGE_SIZE = 25;
+  const ANALYSIS_GROUPS_PER_PAGE = 8;
   const displayName = record => record.info?.presentation?.title || record.name || "[Name omitted]";
   const searchIndex = new Map(records.map(record => {
     const desc = record.info?.presentation || {};
@@ -926,6 +929,74 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
     });
   }
 
+  function analysisContentsTop() {
+    const heading = byId("analysis-log-contents");
+    if (!heading) return;
+    heading.scrollIntoView({block: "start"});
+    heading.focus({preventScroll: true});
+  }
+
+  function jumpToAnalysis(ref, groupIndex) {
+    state.analysisLogPage = Math.floor(groupIndex / ANALYSIS_GROUPS_PER_PAGE);
+    showMode("analysis-log");
+    const key = keyFor(ref);
+    if (byKey.has(key)) selectRecord(key);
+    const row = Array.from(main.querySelectorAll("tr[data-key]"))
+      .find(item => item.dataset.key === key);
+    if (row) {
+      row.tabIndex = -1;
+      row.scrollIntoView({block: "start"});
+      row.focus({preventScroll: true});
+    }
+  }
+
+  function analysisContents(groups) {
+    const contents = add(main, "nav", undefined, "analysis-log-contents");
+    contents.setAttribute("aria-label", "Analysis contents");
+    const heading = add(contents, "h3", "Contents — choose an analysis");
+    heading.id = "analysis-log-contents";
+    heading.tabIndex = -1;
+    const label = add(contents, "label", "Find an analysis title or date");
+    label.htmlFor = "analysis-log-toc-search";
+    const search = add(contents, "input");
+    search.type = "search";
+    search.id = label.htmlFor;
+    search.value = state.analysisTocQuery || "";
+    const matches = add(contents, "div");
+    function drawContents() {
+      matches.replaceChildren();
+      const terms = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+      let found = 0;
+      groups.forEach((group, groupIndex) => {
+        const rows = group.rows.filter(row => {
+          const text = [row.name, localDate(row.time_utc), group.label].filter(Boolean)
+            .join(" ").toLocaleLowerCase();
+          return terms.every(term => text.includes(term));
+        });
+        if (!rows.length) return;
+        found += rows.length;
+        const details = add(matches, "details");
+        details.open = terms.length > 0 || groups.length === 1;
+        add(details, "summary", group.label + " · " + rows.length +
+          (rows.length === 1 ? " analysis" : " analyses"));
+        const entries = add(details, "ol");
+        for (const row of rows) {
+          const entry = add(entries, "li");
+          button(entry, row.name || "Analysis title not recorded",
+            () => jumpToAnalysis(row.ref, groupIndex), "record-link");
+          add(entry, "span", (row.revision_status === "historical" ? "Earlier revision · " : "") +
+            (localDate(row.time_utc) || "Date unknown"), "secondary quiet");
+        }
+      });
+      if (!found) add(matches, "p", "No matching analysis in this snapshot.", "quiet");
+    }
+    search.addEventListener("input", () => {
+      state.analysisTocQuery = search.value;
+      drawContents();
+    });
+    drawContents();
+  }
+
   function showAnalysisLog() {
     add(main, "h2", "Analysis log");
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "local time";
@@ -953,19 +1024,22 @@ pre { font: .93rem/1.45 ui-monospace, monospace; white-space: pre-wrap; margin: 
       if (!last || last.key !== date.key) groups.push({key: date.key, label: date.label, rows: [row]});
       else last.rows.push(row);
     }
-    const GROUPS_PER_PAGE = 8, start = state.analysisLogPage * GROUPS_PER_PAGE;
-    for (const group of groups.slice(start, start + GROUPS_PER_PAGE)) {
+    analysisContents(groups);
+    const start = state.analysisLogPage * ANALYSIS_GROUPS_PER_PAGE;
+    for (const group of groups.slice(start, start + ANALYSIS_GROUPS_PER_PAGE)) {
       const section = add(main, "section", undefined, "analysis-log-group");
       add(section, "h3", group.label);
       analysisLogRows(section, {rows: group.rows});
+      button(section, "Back to contents ↑", analysisContentsTop, "secondary");
     }
-    const pages = Math.ceil(groups.length / GROUPS_PER_PAGE);
+    const pages = Math.ceil(groups.length / ANALYSIS_GROUPS_PER_PAGE);
     if (pages > 1) pager(main, "Group page " + (state.analysisLogPage + 1) + " of " + pages,
       state.analysisLogPage, pages, (pageNumber, direction) => {
         state.analysisLogPage = pageNumber;
         showMode("analysis-log");
         focusPager(direction);
       });
+    button(main, "Back to contents ↑", analysisContentsTop);
   }
 
   function showTimeline() {
