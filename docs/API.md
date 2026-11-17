@@ -15,8 +15,8 @@ and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
 BioDataLedger **0.21.2 source version** API for Python (`biodataledger`) and R
-(`BioDataLedger`) in this local, unpublished source build. Pin a reviewed commit when installing; no
-`v0.18.0` tag is provided. The latest tagged release
+(`BioDataLedger`). Pin a reviewed source commit when installing. Source updates
+are separate from tagged releases; the latest tagged release
 remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md`
 files describe their named versions.

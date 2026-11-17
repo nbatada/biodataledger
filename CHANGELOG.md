@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.21.2 — local development
+## 0.21.2 — 2026-11-17 (source update)
 
 - Preserve requested source snapshots on R code-reference updates and reject
   noncanonical snapshot paths consistently with Python. Existing missing snapshots
@@ -10,8 +10,6 @@
 - Add opt-in compact, paged `find_figures(limit=..., offset=...)` in both clients;
   the full-list default and search matching stay compatible.
 - Clarify macOS write support and the minimal agent-memory workflow.
-
-## Unreleased documentation
 
 - Clarify that shared-library names, locations and project-level source lists are
   caller conventions, not ProjectBundle configuration or a global API default.
