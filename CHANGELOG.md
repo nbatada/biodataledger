@@ -1,11 +1,9 @@
 # Changelog
 
-## Unreleased documentation
+## 0.21.1 — 2026-11-17 (source update)
 
 - Add runnable synthetic R/Python examples and guidance for an optional explicit
   shared-helper-library workflow; no runtime API or schema changes.
-
-## 0.21.1 — local development
 
 - Bound cross-project registry and retained-source captures to their declared limits,
   including growth races, while preserving source token and snapshot checks.

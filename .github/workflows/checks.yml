@@ -48,5 +48,6 @@ jobs:
       - name: R package check
         run: |
           R CMD build r
-          R CMD check --no-manual BioDataLedger_0.19.0.tar.gz
+          bdl_version=$(Rscript --vanilla -e 'cat(read.dcf("r/DESCRIPTION")[1, "Version"])')
+          R CMD check --no-manual "BioDataLedger_${bdl_version}.tar.gz"
           grep -q "^Status: OK" BioDataLedger.Rcheck/00check.log

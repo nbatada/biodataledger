@@ -17,7 +17,7 @@ The example illustrates records you supply; the package does not choose or verif
 
 [Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
-**Local source 0.21.1** includes [continuous sample metadata](docs/METADATA.md)
+**Source 0.21.1** includes [continuous sample metadata](docs/METADATA.md)
 and [cross-project helper discovery and adoption](docs/HELPERS.md). Installed
 clients and GitHub revisions may differ; check the loaded version and required
 methods before using a workflow. Keep existing live sessions intact.

@@ -4,9 +4,9 @@ A lightweight local registry for finding retained results, tracing their recorde
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Local 0.21.1 source build
+## 0.21.1 source build
 
-This unpublished local source includes continuous metadata and explicit bounded helper
+This source includes continuous metadata and explicit bounded helper
 discovery/adoption. Published `main` or tags may differ; check the installed version and
 available methods before using the shared-helper workflow.
 
