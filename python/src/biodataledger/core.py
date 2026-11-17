@@ -30,8 +30,10 @@ RECORD_KEYS = set("kind id revision name created_at locator role type sha256 siz
 STATE_KEYS = set("schema_version project state_revision last_transaction records current bindings history imported".split())
 PROJECT_KEYS = set("id name purpose raw_dir metadata next_task questions authorities".split())
 SCIENTIFIC_DECISION_KEY = "scientific_decision"
+HELPER_KEY = "bl_helper"
 ANALYSIS_PROTOCOL_KEY = "analysis_protocol"
 SCIENTIFIC_DECISION_VERSION = "biodataledger-scientific-decision/1"
+HELPER_VERSION = "biodataledger-helper/1"
 SCIENTIFIC_STATUSES = {"proposed", "provisional", "approved", "superseded"}
 
 
@@ -214,6 +216,40 @@ def validate_record(rec, version):
     validate_receipt(rec, version)
     from .metadata import validate_record as validate_metadata_record
     validate_metadata_record(rec, require)
+    validate_helper_record(rec)
+
+
+def validate_helper_record(rec):
+    """Validate the inert typed card at every existing record trust boundary."""
+    if HELPER_KEY not in rec["details"]:
+        return
+    require(rec["kind"] == "decision", "helper descriptor requires DEC")
+    require(set(rec["details"]) == {HELPER_KEY, "reason", "targets", "approval"}, "invalid helper details")
+    require(rec["details"]["targets"] == [] and rec["details"]["approval"] == "not_authenticated", "invalid helper decision metadata")
+    require(isinstance(rec["details"]["reason"], str) and rec["details"]["reason"].strip(), "helper reason required")
+    require(len(rec["name"].encode("utf-8")) <= 256, "helper name exceeds 256 bytes")
+    require(rec["locator"] is None and rec["inputs"] is None and rec["analysis"] is None, "helper is not a data input or analysis")
+    value = rec["details"][HELPER_KEY]
+    require(isinstance(value, dict) and set(value) == {"version", "language", "purpose", "contract", "tags", "location"}, "invalid helper descriptor")
+    require(value["version"] == HELPER_VERSION and value["language"] in ("Python", "R"), "unsupported helper version/language")
+    def text(value, size):
+        return isinstance(value, str) and bool(value.strip()) and len(value.encode("utf-8")) <= size
+    require(text(value["purpose"], 4096), "helper purpose must be text up to 4 KiB")
+    contract = value["contract"]
+    require(isinstance(contract, dict) and set(contract) == {"inputs", "parameters", "outputs", "example", "limitations"}, "invalid helper contract")
+    require(all(text(v, 4096) for v in contract.values()), "helper contract fields must be text up to 4 KiB")
+    tags = value["tags"]
+    require(isinstance(tags, list) and len(tags) <= 20 and all(text(v, 256) for v in tags), "invalid helper tags")
+    location = value["location"]
+    require(isinstance(location, dict) and location.get("kind") in ("source", "package"), "invalid helper location")
+    keys = {"kind", "function"} if location["kind"] == "source" else {"kind", "function", "package", "version"}
+    require(set(location) == keys and all(text(v, 256) for v in location.values()), "invalid helper location fields")
+    require(len(canonical(value)) <= 32 * 1024, "helper descriptor exceeds 32 KiB")
+    if location["kind"] == "source":
+        require(1 <= len(rec["code"]) <= 20 and all(c["sha256"] is not None for c in rec["code"]), "source helper requires 1..20 hashed source files")
+        require(len({canonical(c["locator"]) for c in rec["code"]}) == len(rec["code"]), "duplicate helper source")
+    else:
+        require(rec["code"] == [], "package helper cannot contain source snapshots")
 
 
 def validate_links(rec, check_ref):
@@ -221,6 +257,14 @@ def validate_links(rec, check_ref):
         check_ref(ref, "data")
     if rec["analysis"] is not None:
         check_ref(rec["analysis"], "analysis")
+    if "bl_helper_refs" in rec["details"]:
+        refs = rec["details"]["bl_helper_refs"]
+        require(rec["kind"] == "analysis" and isinstance(refs, list) and len(refs) <= 100, "helper_refs belong to analyses and must be a list of at most 100")
+        for ref in refs:
+            target = check_ref(ref, "decision")
+            require(HELPER_KEY in target["details"], "helper_refs require typed helper decisions")
+            validate_helper_record(target)
+        require(len({ref_key(value) for value in refs}) == len(refs), "duplicate helper reference")
     for field, kind in (("parent", "data"), ("membership", "data"), ("clustering_run", "analysis")):
         if rec["details"].get(field) is not None:
             check_ref(rec["details"][field], kind)
@@ -536,6 +580,39 @@ class ProjectBundle:
         except BundleError:
             return None, "malformed_scientific_decision"
 
+    def _helper_descriptor(self, *, language, purpose, contract, tags, source, package, version, function):
+        require(language in ("Python", "R"), "language must be Python or R")
+        require(isinstance(purpose, str) and purpose.strip(), "helper purpose required")
+        require(isinstance(contract, dict) and set(contract) == {"inputs", "parameters", "outputs", "example", "limitations"}, "helper contract requires inputs, parameters, outputs, example, limitations")
+        require(all(isinstance(value, str) and value.strip() for value in contract.values()), "helper contract fields must be nonempty text")
+        require(isinstance(tags, list) and len(tags) <= 20 and all(isinstance(x, str) and x.strip() for x in tags), "helper tags must be up to 20 nonempty strings")
+        require(bool(source) != bool(package), "provide exactly one of source or package")
+        if source:
+            require(isinstance(function, str) and function.strip(), "source helper function required")
+            return {"version": HELPER_VERSION, "language": language, "purpose": purpose, "contract": copy.deepcopy(contract), "tags": list(tags), "location": {"kind": "source", "function": function}}
+        require(all(isinstance(x, str) and x.strip() for x in (package, version, function)), "package, version and function required")
+        return {"version": HELPER_VERSION, "language": language, "purpose": purpose, "contract": copy.deepcopy(contract), "tags": list(tags), "location": {"kind": "package", "package": package, "version": version, "function": function}}
+
+    def _read_helper_descriptor(self, value):
+        if not isinstance(value, dict) or value.get("version") != HELPER_VERSION:
+            return None, "unsupported_helper"
+        try:
+            location = value.get("location", {})
+            descriptor = self._helper_descriptor(language=value.get("language"), purpose=value.get("purpose"), contract=value.get("contract"), tags=value.get("tags"), source=location.get("kind") == "source", package=location.get("package"), version=location.get("version"), function=location.get("function"))
+            require(descriptor == value, "helper descriptor is not canonical")
+            return descriptor, None
+        except BundleError:
+            return None, "malformed_helper"
+
+    def _helper_for_record(self, rec):
+        if rec["kind"] != "decision" or HELPER_KEY not in rec["details"]:
+            return None, "not_helper"
+        try:
+            validate_helper_record(rec)
+            return copy.deepcopy(rec["details"][HELPER_KEY]), None
+        except (BundleError, KeyError, TypeError):
+            return None, "malformed_helper"
+
     def _event(self, action, target=None, reason=None, transaction=None):
         self._dirty = True
         self.state["history"].append({"at": now(), "action": action, "actor": "caller", "reason": reason,
@@ -657,18 +734,27 @@ class ProjectBundle:
         return check(self, ref, required_categories)
 
     def register_analysis(self, name, inputs, code=None, method=None, params=None, snapshot_code=True,
-                          design_ref=_DEFAULT, input_mode="separate", **details):
+                          design_ref=_DEFAULT, input_mode="separate", helper_refs=None, **details):
         from .renderer_guard import reserve
         reserve(details)
         require("execution_receipt" not in details, "execution receipt is reserved for run_analysis")
         require(SCIENTIFIC_DECISION_KEY not in details, "scientific decision metadata is reserved")
         require(not ({"comparison_plan", "comparison_assessment"} & set(details)), "comparison metadata is reserved")
         require(ANALYSIS_PROTOCOL_KEY not in details, "analysis protocol metadata is reserved")
+        require(HELPER_KEY not in details and "bl_helper_refs" not in details, "helper metadata is reserved")
         rec = self._new("analysis", name)
         require(inputs is None or isinstance(inputs, list), "inputs must be list or None")
         rec.update(inputs=None if inputs is None else [self._ref(self._record(x, "data")) for x in inputs],
                    code=self._code(code, snapshot_code), method=method, params=copy.deepcopy(params), details=copy.deepcopy(details))
         rec["details"]["provenance"] = {"file": "unknown", "analytical": "declared"}
+        if helper_refs is not None:
+            require(isinstance(helper_refs, list) and len(helper_refs) <= 100, "helper_refs must be an array of at most 100 references")
+            refs = [self._ref(self._record(value, "decision")) for value in helper_refs]
+            require(len({ref_key(value) for value in refs}) == len(refs), "duplicate helper reference")
+            for value in refs:
+                descriptor, issue = self._helper_for_record(self._record(value, "decision"))
+                require(descriptor is not None, "helper_refs require usable exact helper decisions: " + str(issue))
+            rec["details"]["bl_helper_refs"] = refs
         rec["design"] = self._select_design(design_ref)
         rec["input_mode"] = input_mode
         return self._stage(rec, version=CONTEXT_VERSION)
@@ -1135,6 +1221,9 @@ class ProjectBundle:
         from .presentation import KEY as PRESENTATION_KEY, presentation_only_change
         require(isinstance(changes, dict) and isinstance(reason, str) and reason.strip(), "changes and reason required")
         rec = copy.deepcopy(self._record(ref))
+        require(HELPER_KEY not in changes.get("details", {}), "use register_helper to create or revise helpers")
+        if HELPER_KEY in rec["details"]:
+            require(set(changes) == {"status"}, "typed helpers allow lifecycle status correction only")
         from .metadata import BINDINGS_KEY, KEY as METADATA_KEY, is_metadata
         if is_metadata(rec):
             require(set(changes) <= {"name", "status"}, "typed metadata tables allow name/status corrections only")
@@ -1226,6 +1315,99 @@ class ProjectBundle:
         rec["details"] = {"reason": reason, "targets": [self._ref(self._record(x)) for x in targets], "approval": "not_authenticated"}
         return self._stage(rec, "record_decision", reason)
 
+    def register_helper(self, name, *, language, purpose, contract, source=None, package=None, version=None,
+                        function=None, tags=None, ref=None, snapshot_code=True, reason=None):
+        """Register an inert, versioned helper card; this never imports or runs code."""
+        descriptor = self._helper_descriptor(language=language, purpose=purpose, contract=contract,
+                                             tags=[] if tags is None else tags, source=source,
+                                             package=package, version=version, function=function)
+        if ref is None:
+            rec = self._new("decision", name)
+        else:
+            old = self._record(ref, "decision")
+            prior, issue = self._helper_for_record(old)
+            require(prior is not None, "can only revise a usable helper: " + str(issue))
+            require(old["revision"] == self._latest_index[old["id"]]["revision"], "helper revision must be current")
+            rec = copy.deepcopy(old); rec["revision"] += 1; rec["created_at"] = now()
+        rec["name"] = name
+        rec["code"] = self._code(source, snapshot_code) if source else []
+        require(not source or 1 <= len(rec["code"]) <= 20, "source helper requires 1..20 source files")
+        rec["details"] = {"reason": reason or "registered reusable implementation choice", "targets": [],
+                          "approval": "not_authenticated", HELPER_KEY: descriptor}
+        return self._stage(rec, "register_helper", rec["details"]["reason"])
+
+    def get_helper(self, ref, verify="none"):
+        rec = self._record(ref, "decision"); descriptor, issue = self._helper_for_record(rec)
+        require(descriptor is not None, "unavailable helper: " + str(issue))
+        require(verify in ("none", "sha256", "snapshot", "identity"), "verify must be none, sha256, snapshot or identity")
+        verification = {"requested": verify, "status": "not_checked", "files": []}
+        if verify in ("sha256", "snapshot") and descriptor["location"]["kind"] == "source":
+            files = []
+            for code in rec["code"]:
+                locator = code["locator"] if verify == "sha256" else ({"kind": "project", "value": code["snapshot"]} if code["snapshot"] else None)
+                path = self._resolve(locator) if locator else None
+                try:
+                    status = "not_retained" if locator is None else ("missing" if path is None or not path.is_file() else ("match" if fingerprint(path) == code["sha256"] else "mismatch"))
+                except OSError:
+                    status = "unreadable"
+                files.append({"locator": copy.deepcopy(locator), "path": str(path) if path is not None else None,
+                              "sha256": code["sha256"], "status": status})
+            status = "fail" if any(x["status"] in ("missing", "mismatch") for x in files) else ("unknown" if any(x["status"] in ("unreadable", "not_retained") for x in files) else "pass")
+            verification = {"requested": verify, "status": status, "files": files,
+                            "basis": "current_source" if verify == "sha256" else "retained_snapshot"}
+        elif verify in ("sha256", "snapshot"):
+            verification = {"requested": verify, "status": "unavailable", "files": [], "note": "package source bytes are not inspected"}
+        elif verify == "identity":
+            if descriptor["location"]["kind"] != "package" or descriptor["language"] != "Python":
+                verification = {"requested": verify, "status": "unknown", "files": [], "note": "no native package metadata check for this helper"}
+            else:
+                from importlib import metadata
+                try:
+                    actual = metadata.version(descriptor["location"]["package"])
+                    verification = {"requested": verify, "status": "qualified_match" if actual == descriptor["location"]["version"] else "mismatch", "files": [], "declared_version": descriptor["location"]["version"], "installed_version": actual, "note": "installed metadata only; source bytes and executed code are unverified"}
+                except metadata.PackageNotFoundError:
+                    verification = {"requested": verify, "status": "missing", "files": [], "note": "package metadata unavailable; nothing was imported"}
+        return {"ref": self._ref(rec), "name": rec["name"], "record_status": rec["status"], "descriptor": copy.deepcopy(descriptor),
+                "code": copy.deepcopy(rec["code"]), "verification": verification,
+                "approval": "not_authenticated", "execution": "unknown"}
+
+    def find_helpers(self, query, language=None, limit=5):
+        require(isinstance(query, str) and query.strip() and len(query.encode("utf-8")) <= 256, "query must be nonempty text up to 256 bytes")
+        require(language is None or language in ("Python", "R"), "language must be Python or R")
+        require(type(limit) is int and 1 <= limit <= 20, "limit must be 1..20")
+        from .related_work import _clip
+        tokens = query.casefold().split()
+        records = self._latest("decision")
+        inspected = matched = invalid = 0
+        cards = []
+        for rec in records[:100]:
+            descriptor, issue = self._helper_for_record(rec)
+            if issue == "not_helper":
+                continue
+            inspected += 1
+            if descriptor is None:
+                invalid += 1
+                continue
+            if rec["status"] != "active" or language is not None and descriptor["language"] != language:
+                continue
+            text = " ".join([rec["name"], descriptor["purpose"], *descriptor["tags"]]).casefold()
+            if all(token in text for token in tokens):
+                matched += 1
+                if len(cards) < limit:
+                    fields = {"name": rec["name"], "purpose": descriptor["purpose"], "entry_point": descriptor["location"]["function"]}
+                    shortened = [key for key, value in fields.items() if len(value.encode("utf-8")) > 256]
+                    cards.append({"ref": self._ref(rec), **{key: _clip(value, 256)[0] for key, value in fields.items()},
+                                  "language": descriptor["language"], "location_kind": descriptor["location"]["kind"], "shortened_fields": shortened})
+        report = {"query": query, "helpers": cards, "registry_revision": self.state["state_revision"],
+                  "coverage": {"scanned_latest_records": min(100, len(records)), "scanned_latest_helpers": inspected,
+                               "scan_limit": 100, "matched": matched, "returned": len(cards), "invalid": invalid,
+                               "incomplete": len(records) > 100 or matched > len(cards),
+                               "scope": "first 100 latest DEC records in this ledger; metadata only"}, "unsaved": self.unsaved}
+        while len(canonical(report)) > 16 * 1024 and cards:
+            cards.pop()
+            report["coverage"].update(returned=len(cards), incomplete=True)
+        return report
+
     def record_scientific_decision(self, text, reason, subjects, scientific_status, supporting=None, contradictory=None, ref=None):
         require(isinstance(text, str) and text.strip() and isinstance(reason, str) and reason.strip(),
                 "decision text and reason required")
@@ -1234,6 +1416,7 @@ class ProjectBundle:
             rec = self._new("decision", text)
         else:
             old = self._record(ref, "decision")
+            require(HELPER_KEY not in old["details"], "cannot convert helper to scientific decision")
             require(not ({"comparison_plan", "comparison_assessment"} & set(old["details"])), "cannot convert comparison to scientific decision")
             require(old["revision"] == self._latest_index[old["id"]]["revision"], "scientific decision revision must be current")
             require(ANALYSIS_PROTOCOL_KEY not in old["details"], "cannot convert analysis protocol to scientific decision")
@@ -1257,6 +1440,12 @@ class ProjectBundle:
 
     def get_decision(self, ref):
         rec = self._record(ref, "decision")
+        if HELPER_KEY in rec["details"]:
+            _, helper_issue = self._helper_for_record(rec)
+            return {"ref": self._ref(rec), "text": rec["name"], "reason": copy.deepcopy(rec["details"].get("reason")),
+                    "targets": [], "record_status": rec["status"], "scientific": None,
+                    "approval": "not_applicable", "unknown": ["helper_not_scientific_decision"] + ([helper_issue] if helper_issue else []),
+                    "imported_claim": "untrusted_imported_claim" if self.state["imported"] else None}
         scientific, issue = self._scientific_decision_for_record(rec)
         unknown = [] if issue is None else [issue]
         if self.state["imported"]:

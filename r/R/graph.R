@@ -3,7 +3,7 @@
 .graph_edge_types <- c("input_to_analysis","produced_result","artifact_container","observation_authority",
                        "analytical_association","rendered_in_figure","revision_of","parent_data",
                        "clustering_context","transformation_context","input_to_figure","decision_concerns",
-                       "design_context","design_subject","metadata_table_link","metadata_binding")
+                       "design_context","design_subject","metadata_table_link","metadata_binding","declared_helper_use")
 .graph_scan_limit <- 1000L
 .graph_edge_limit <- 100L
 .graph_byte_limit <- 131072L
@@ -40,6 +40,8 @@
     link(metadata_ref,ref,"metadata_binding","details.bl_metadata_bindings.refs")
   if (rec$kind=="figure" && is.null(rec$analysis)) for (source in rec$inputs)
     link(source,ref,"input_to_figure","inputs")
+  if (rec$kind=="analysis" && !is.null(details[[.helper_refs_key]])) for (helper_ref in details[[.helper_refs_key]])
+    link(helper_ref,ref,"declared_helper_use","details.bl_helper_refs")
   issue <- NULL; count <- 0L
   if (rec$kind=="decision" && "targets" %in% names(details)) {
     targets <- details[["targets"]]

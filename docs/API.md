@@ -14,8 +14,8 @@ to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger **0.18.0 source version** API for Python (`biodataledger`) and R
-(`BioDataLedger`) on `main`. Pin a reviewed commit when installing; no
+BioDataLedger **0.20.0 source version** API for Python (`biodataledger`) and R
+(`BioDataLedger`) in this local, unpublished source build. Pin a reviewed commit when installing; no
 `v0.18.0` tag is provided. The latest tagged release
 remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
 Linked feature contracts specify nested inputs and reports. Earlier `API_0.*.md`
@@ -49,6 +49,29 @@ pooled/split samples. Exclusions remain contextual declarations; the package doe
 not filter cells or certify interpretations. New descriptors use the existing
 schema0.4.0 with a fail-closed optional project marker. Legacy projects stay unchanged
 until explicit metadata registration. Save staged changes at meaningful checkpoints.
+
+## Reusable helpers (0.20.0)
+
+`register_helper(name, language, purpose, contract, source=... OR package=...,
+version=..., function=..., tags=..., ref=...)` registers an inert implementation
+card. Python uses `function`; R uses `function_name`. `contract` contains inputs,
+parameters, outputs, example and limitations. `ref` explicitly creates a new revision;
+previous analysis links never change. Source files are hashed/snapshotted by default.
+
+`find_helpers(query, language=None/NULL, limit=5)` searches metadata from the first
+100 latest DEC records and reports coverage. `get_helper(ref, verify="none")` inspects
+an exact revision; `verify="sha256"` checks selected current source bytes,
+`verify="snapshot"` checks retained saved source snapshots and returns their paths, while
+`verify="identity"` makes a qualified native package-version check without loading it.
+These operations do not establish scientific approval or execution.
+
+`register_analysis(..., helper_refs=[...])` (R: `list(...)`) records exact declared
+helper use separately from scientific inputs. Reuse existing functions first, then
+extend a general implementation with compatibility tests, then create a separate
+function only for a justified gap. No automatic upgrades or reruns.
+
+See [the helper guide](HELPERS.md) for source/package examples, revisions, verification,
+bounded discovery and explicit export limits.
 
 ## Problems this API addresses
 
@@ -98,6 +121,7 @@ See [agent operating guidance](agent/USAGE.md), [updating a running project](UPD
 | Task | Functions |
 | --- | --- |
 | [Project lifecycle and orientation](#project-lifecycle-and-orientation) | [`create`](#create), [`open`](#open), [`status`](#status), [`summary`](#summary), [`summary_text`](#summary_text), [`help`](#help), [`view`](#view), [`get_raw_dir`](#get_raw_dir), [`get_metadata_path`](#get_metadata_path), [`get_output_dir`](#get_output_dir) |
+| [Reusable helpers](#reusable-helpers-0200) | `register_helper`, `find_helpers`, `get_helper`; analysis `helper_refs` |
 | [Find and search](#find-and-search) | [`find_figures`](#find_figures), [`find_outputs`](#find_outputs), [`recent_figures`](#recent_figures), [`related_work`](#related_work) |
 | [Retrieve exact records and code](#retrieve-exact-records-and-code) | [`get_data`](#get_data), [`get_analysis`](#get_analysis), [`get_figure`](#get_figure), [`get_info`](#get_info), [`read_figure_source`](#read_figure_source) |
 | [Explicit verification](#explicit-verification) | [`resolve_data`](#resolve_data), [`resolve_figure`](#resolve_figure), [`check`](#check), [`check_context`](#check_context), [`check_design_metadata`](#check_design_metadata), [`check_object`](#check_object), [`check_result`](#check_result) |

@@ -50,6 +50,9 @@ def index_graph_record(project, rec, ref, result_valid, add):
     if rec['kind'] == 'figure' and rec['analysis'] is None:
         for source in rec['inputs'] or []:
             link(source, ref, 'input_to_figure', 'inputs')
+    if rec['kind'] == 'analysis':
+        for helper_ref in details.get('bl_helper_refs', []):
+            link(helper_ref, ref, 'declared_helper_use', 'details.bl_helper_refs')
     if rec['kind'] == 'decision' and 'targets' in details:
         targets = details['targets']
         if not isinstance(targets, list):

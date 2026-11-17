@@ -70,4 +70,8 @@ generation dates. Existing registration and runs views remain available.
 See installed CHRONOLOGY_V1.md for bounds, exact refs and cursor behavior.
 }
 
+\section{Reusable helpers}{
+\code{register_helper} records a reusable helper as a typed DEC revision. Source helpers pin one to 20 explicit source files and digests; package helpers pin package, version and function without source bytes. \code{find_helpers(query)} searches only the first 100 latest DEC records in sorted ID order and reports incomplete coverage. \code{get_helper(ref, verify = "none")} never executes code; \code{verify = "sha256"} checks current source bytes, \code{verify = "snapshot"} checks retained saved snapshots and returns their paths, and \code{verify = "identity"} checks an R package's loaded namespace or selected installed DESCRIPTION. \code{register_analysis(..., helper_refs = list(...))} preserves exact historical helper revisions as declared use. Generic updates may only change a typed helper's lifecycle status.
+}
+
 \seealso{\code{\link{continuous_metadata}} for versioned sample-to-analysis metadata tables and checks.}

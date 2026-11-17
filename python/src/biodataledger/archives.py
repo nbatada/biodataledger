@@ -95,7 +95,10 @@ def preview_export(project, mode, include=None, exclude=None, redact=None):
                                          "sha256": actual, "role": role}
     for ref in include or []:
         rec = project._record(ref)
-        require(rec["kind"] in ("data", "figure", "analysis"), "select data, figures or analyses")
+        require(rec["kind"] in ("data", "figure", "analysis", "decision"), "select data, figures, analyses or helpers")
+        if rec["kind"] == "decision":
+            helper, issue = project._helper_for_record(rec)
+            require(helper is not None, "only usable helper decisions may be selected: " + str(issue))
         if rec["locator"] is not None:
             add(rec["locator"], rec["sha256"], rec["kind"])
         source = project._record(rec["analysis"], "analysis") if rec["analysis"] else rec

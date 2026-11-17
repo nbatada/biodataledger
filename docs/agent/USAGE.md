@@ -96,3 +96,18 @@ metadata.
 Preview the complete registry metadata and history alongside the selected payloads before an authorized export. Use exact getters and explicit verification to determine readiness for a named next task after import. Import leaves scripts inert. See [sharing and recovery](../API.md#save-share-and-recover).
 
 These instructions guide use of the registry. They do not restrict an unrestricted interpreter or require calls on every chat turn.
+
+
+## Reuse functions before implementing another one (0.20.0)
+
+Before writing a function, use `find_helpers` and inspect suitable exact candidates
+with `get_helper`. Search only covers registered metadata and reports incomplete
+coverage. Prefer reuse -> a general extension -> a justified separate implementation.
+If extending, preserve earlier behavior with tests and register a new helper revision;
+do not silently fork, upgrade other projects, or redirect earlier analysis references.
+Check the selected source/package identity explicitly before ordinary native execution.
+Record exact `helper_refs` on retained analyses, separately from scientific inputs.
+A bug fix warrants review of recorded uses, not automatic reruns or historical edits.
+Missing functions, unsupported requirements and identity mismatches need an explicit
+resolution. Registered claims are not scientific approval or proof of execution.
+See [source and shared-package examples](../HELPERS.md).

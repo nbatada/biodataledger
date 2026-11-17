@@ -57,6 +57,9 @@
 .scientific_decision_key <- "scientific_decision"
 .analysis_protocol_key <- "analysis_protocol"
 .scientific_decision_version <- "biodataledger-scientific-decision/1"
+.helper_key <- "bl_helper"
+.helper_refs_key <- "bl_helper_refs"
+.helper_version <- "biodataledger-helper/1"
 .scientific_statuses <- c("proposed", "provisional", "approved", "superseded")
 # Parse only the bounded bytes that were actually read.
 .parse_json_bytes <- function(bytes) {
@@ -462,6 +465,8 @@
     if ("scope" %in% names(r)) .validate_scope(state, r$scope)
     for (field in c("parent","membership")) if (!is.null(r$details[[field]]) && .record_kind(state, r$details[[field]]) != "data") .fail("Selection reference must be data")
     if (!is.null(r$details$clustering_run) && .record_kind(state, r$details$clustering_run) != "analysis") .fail("Clustering run must be analysis")
+    .validate_helper_record(state, r)
+    .validate_helper_refs(state, r)
   }
   if (is.null(record_only)) for (x in state$current) if (.record_kind(state, x) != "data") .fail("Current must reference data")
   .metadata_validate_state(state, record_only)
@@ -522,6 +527,77 @@
     parsed
   }, error = function(e) list(scientific = NULL, issue = "malformed_scientific_decision"))
   result
+}
+.helper_text <- function(value, label) {
+  if (!.design_text(value) || nchar(enc2utf8(value), type = "bytes") > if (label %in% c("tag", "package", "version", "function")) 256L else 4096L) .fail(paste0("Invalid helper ", label))
+  value
+}
+.helper_descriptor <- function(language, purpose, contract, tags, source, package, version, function_name) {
+  if (!is.character(language) || length(language) != 1L || !language %in% c("Python", "R")) .fail("Language must be Python or R")
+  .helper_text(purpose, "purpose")
+  if (!.is_obj(contract) || !setequal(names(contract), c("inputs", "parameters", "outputs", "example", "limitations"))) .fail("Helper contract requires fixed fields")
+  for (field in names(contract)) .helper_text(contract[[field]], paste0("contract ", field))
+  if (!is.list(tags) || !is.null(names(tags)) || length(tags) > 20L) .fail("Helper tags must be up to 20 nonempty strings")
+  for (tag in tags) .helper_text(tag, "tag")
+  if (xor(!is.null(source), !is.null(package)) == FALSE) .fail("Provide exactly one of source or package")
+  .helper_text(function_name, "function")
+  location <- if (!is.null(source)) structure(list("source", function_name), names=c("kind", "function")) else {
+    .helper_text(package, "package"); .helper_text(version, "version")
+    structure(list("package", package, version, function_name), names=c("kind", "package", "version", "function"))
+  }
+  descriptor <- .obj(version=.helper_version, language=language, purpose=purpose, contract=.copy(contract), tags=.arr(tags), location=location)
+  if (nchar(enc2utf8(.json(descriptor)), type = "bytes") > 32768L) .fail("Helper descriptor exceeds 32 KiB")
+  descriptor
+}
+.helper_code_valid <- function(rec) {
+  if (!length(rec$code) || length(rec$code) > 20L) .fail("Source helper requires one to 20 code files")
+  locators <- character()
+  for (entry in rec$code) {
+    if (!.is_obj(entry) || !setequal(names(entry), c("locator", "sha256", "snapshot")) || is.null(entry$sha256)) .fail("Source helper code requires explicit locators and digests")
+    .validate_locator(entry$locator)
+    if (!.is_sha(entry$sha256)) .fail("Source helper code requires SHA-256 digests")
+    locator <- .json(entry$locator); if (locator %in% locators) .fail("Source helper code locators must be unique"); locators <- c(locators, locator)
+  }
+  invisible(TRUE)
+}
+.validate_helper_record <- function(state, rec) {
+  if (!.helper_key %in% names(rec$details)) return(invisible(TRUE))
+  if (rec$kind != "decision" || !is.null(rec$locator) || !is.null(rec$inputs) || !is.null(rec$analysis)) .fail("Helpers require DEC records, not data inputs or analyses")
+  if (any(c(.scientific_decision_key, .analysis_protocol_key, .comparison_keys) %in% names(rec$details))) .fail("Helper cannot mix scientific, protocol, or comparison descriptors")
+  if (!setequal(names(rec$details), c("reason", "targets", "approval", .helper_key)) || !.design_text(rec$details$reason) || nchar(enc2utf8(rec$name),type="bytes") > 256L ||
+      !identical(rec$details$approval, "not_authenticated") || !.is_arr(rec$details$targets) || length(rec$details$targets)) .fail("Invalid helper decision details")
+  parsed <- .helper_for_record(state, rec)
+  if (is.null(parsed$helper)) .fail(paste("Invalid helper descriptor:", parsed$issue))
+  if (identical(parsed$helper$location$kind, "source")) .helper_code_valid(rec) else if (length(rec$code)) .fail("Package helper cannot carry source code")
+  invisible(TRUE)
+}
+.validate_helper_refs <- function(state, rec) {
+  if (!.helper_refs_key %in% names(rec$details)) return(invisible(TRUE))
+  refs <- rec$details[[.helper_refs_key]]
+  if (rec$kind != "analysis" || !.is_arr(refs) || length(refs) > 100L) .fail("Helper references require an ANALYSIS array of at most 100 references")
+  keys <- character()
+  for (ref in refs) {
+    .validate_ref_shape(state, ref)
+    helper <- .record(state, ref)
+    if (helper$kind != "decision" || is.null(.helper_for_record(state, helper)$helper)) .fail("Helper references require usable exact helper decisions")
+    key <- paste(ref$id, ref$revision, sep = "@")
+    if (key %in% keys) .fail("Duplicate helper reference")
+    keys <- c(keys, key)
+  }
+  invisible(TRUE)
+}
+.helper_for_record <- function(state, rec) {
+  if (rec$kind != "decision" || !.helper_key %in% names(rec$details)) return(list(helper=NULL, issue="not_helper"))
+  value <- rec$details[[.helper_key]]
+  if (!.is_obj(value) || !identical(value$version, .helper_version)) return(list(helper=NULL, issue="unsupported_helper"))
+  tryCatch({
+    loc <- value$location
+    descriptor <- .helper_descriptor(value$language, value$purpose, value$contract, value$tags,
+      if (identical(loc$kind,"source")) TRUE else NULL, loc$package, loc$version, loc[["function"]])
+    if (!.result_equal(descriptor, value)) .fail("descriptor")
+    if (identical(descriptor$location$kind, "source")) .helper_code_valid(rec) else if (length(rec$code)) .fail("package helper code")
+    list(helper=descriptor, issue=NULL)
+  }, error=function(e) list(helper=NULL, issue="malformed_helper"))
 }
 .code_entries <- function(root, paths, snapshot_code) {
   if (is.null(paths)) return(list())
@@ -768,16 +844,23 @@ ProjectBundle <- local({
     }
     metadata_view <- function(ref) .metadata_public_view(.metadata_view(state, ref))
     check_metadata <- function(ref, required_categories = NULL) .metadata_public_check(.metadata_check(root, state, ref, required_categories))
-    register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", ...) {
+    register_analysis <- function(name, inputs, code = NULL, method = NULL, params = NULL, snapshot_code = TRUE, design_ref = state$project$design, input_mode = "separate", helper_refs = NULL, ...) {
       if (!is.null(inputs)) inputs <- .arr(lapply(inputs, function(x) {r <- .ref(state, x); if (.record_kind(state, r) != "data") .fail("Analysis inputs must be data"); r}))
       entries <- .code_entries(root, code, snapshot_code)
       details <- .obj(...)
       if ("execution_receipt" %in% names(details)) .fail("Execution receipt is runner-managed")
       if (.scientific_decision_key %in% names(details)) .fail("Scientific decision metadata is reserved")
       if (.analysis_protocol_key %in% names(details)) .fail("Analysis protocol metadata is reserved")
+      if (.helper_key %in% names(details) || .helper_refs_key %in% names(details)) .fail("Helper metadata is reserved")
       if (any(.comparison_keys %in% names(details))) .fail("Comparison metadata is reserved")
       if (any(c(.metadata_key, .metadata_binding_key) %in% names(details))) .fail("Metadata descriptors are writer-managed")
       details$provenance <- .obj(file = "unknown", analytical = "declared")
+      if (!is.null(helper_refs)) {
+        if (!is.list(helper_refs) || length(helper_refs) > 100L) .fail("helper_refs must be an array of at most 100 references")
+        refs <- .arr(lapply(helper_refs, function(x) { ref <- .ref(state, x); parsed <- .helper_for_record(state, .record(state, ref)); if (is.null(parsed$helper)) .fail(paste("helper_refs require usable exact helper decisions:", parsed$issue)); ref }))
+        keys <- vapply(refs, function(x) paste(x$id, x$revision), character(1)); if (anyDuplicated(keys)) .fail("Duplicate helper reference")
+        details[[.helper_refs_key]] <- refs
+      }
       rec <- .new_record(state, "analysis", name, inputs = inputs, code = entries, method = method, params = params, details = details, design = select_design(design_ref))
       rec["design"] <- list(select_design(design_ref)); rec$input_mode <- input_mode
       append_record(rec, "register_analysis", capture_code(rec), version = "0.4.0")
@@ -1305,6 +1388,7 @@ ProjectBundle <- local({
       allowed <- c("name", "status", "details", "method", "params", "inputs", "code", "foreign_refs", "path", "design_ref", "input_mode", "analysis", "figure_sources")
       if (!is.character(reason) || !nzchar(reason)) .fail("Reason required")
       if (!.is_obj(changes) || !length(changes) || !all(names(changes) %in% allowed)) .fail("Unsupported record correction")
+      if (.helper_key %in% names(rec$details) && !identical(names(changes), "status")) .fail("Typed helpers allow lifecycle status correction only")
       if (!is.null(rec$details[[.metadata_key]]) && !all(names(changes) %in% c("name", "status"))) .fail("Use register_metadata to revise metadata tables")
       if (!is.null(rec$details[[.metadata_binding_key]])) .fail("Use bind_metadata to revise metadata bindings")
       if ("details" %in% names(changes) && any(c(.metadata_key, .metadata_binding_key) %in% names(changes$details))) .fail("Metadata descriptors are writer-managed")
@@ -1323,7 +1407,9 @@ ProjectBundle <- local({
       if ("details" %in% names(changes) && .scientific_decision_key %in% names(changes$details)) .fail("Scientific decision metadata is writer-managed")
       if ("details" %in% names(changes) && .analysis_protocol_key %in% names(changes$details)) .fail("Analysis protocol metadata is writer-managed")
       if ("details" %in% names(changes) && any(.comparison_keys %in% names(changes$details))) .fail("Comparison metadata is writer-managed")
+      if ("details" %in% names(changes) && .helper_key %in% names(changes$details)) .fail("Helper metadata is writer-managed")
       if (rec$kind == "decision" && .scientific_decision_key %in% names(rec$details) && !identical(names(changes), "status")) .fail("Typed scientific decisions allow lifecycle status correction only")
+      if (rec$kind == "decision" && .helper_key %in% names(rec$details) && !identical(names(changes), "status")) .fail("Typed helpers allow lifecycle status correction only")
       if (.analysis_protocol_key %in% names(rec$details)) .fail("Use register_protocol to revise analysis protocols")
       if (any(.comparison_keys %in% names(rec$details))) .fail("Use comparison writers to revise comparison records")
       if (!is.null(rec$details[[.result_key]]) && ('path' %in% names(changes) ||
@@ -1368,12 +1454,92 @@ ProjectBundle <- local({
       rec <- .new_record(state, "decision", text, details = .obj(text = text, reason = reason, targets = targets, provenance = .obj(file = "unknown", analytical = "declared")))
       out <- append_record(rec, "record_decision"); state$history[[length(state$history)]]$reason <<- reason; out
     }
+    register_helper <- function(name, language, purpose, contract, source = NULL, package = NULL, version = NULL, function_name = NULL, tags = list(), ref = NULL, snapshot_code = TRUE, reason = NULL) {
+      descriptor <- .helper_descriptor(language, purpose, contract, tags, source, package, version, function_name)
+      if (is.null(ref)) rec <- .new_record(state, "decision", name) else {
+        old <- .record(state, .ref(state, ref)); parsed <- .helper_for_record(state, old)
+        latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
+        if (is.null(parsed$helper) || old$revision != latest$revision) .fail("Helper revision requires current usable helper")
+        rec <- .copy(old); rec$revision <- old$revision + 1L; rec$created_at <- .now()
+      }
+      rec$name <- name; rec$code <- if (is.null(source)) list() else .code_entries(root, source, snapshot_code)
+      rec$details <- .obj(reason=if (is.null(reason)) "registered reusable implementation choice" else reason, targets=list(), approval="not_authenticated", bl_helper=descriptor)
+      append_record(rec, "register_helper", capture_code(rec))
+    }
+    get_helper <- function(ref, verify = "none") {
+      rec <- .record(state, .ref(state, ref)); parsed <- .helper_for_record(state, rec); if (is.null(parsed$helper)) .fail(paste("Unavailable helper:", parsed$issue))
+      if (!verify %in% c("none", "sha256", "snapshot", "identity")) .fail("verify must be none, sha256, snapshot or identity")
+      verification <- .obj(requested=verify, status="not_checked", files=list())
+      if (verify %in% c("sha256", "snapshot") && identical(parsed$helper$location$kind,"source")) {
+        files <- lapply(rec$code, function(entry) {
+          locator <- if (identical(verify, "sha256")) entry$locator else if (!is.null(entry$snapshot)) .obj(kind="project", value=entry$snapshot) else NULL
+          path <- if (!is.null(locator)) .resolve(root, state, locator) else NULL
+          status <- tryCatch(if (is.null(locator)) "not_retained" else if (is.null(path) || !file.exists(path) || dir.exists(path)) "missing"
+            else if (file.access(path, 4L) != 0L) "unreadable"
+            else if (identical(.hash(path), entry$sha256)) "match" else "mismatch", error=function(e) "unreadable")
+          .obj(locator=.copy(locator), path=path, sha256=entry$sha256, status=status)
+        })
+        statuses <- vapply(files, `[[`, "", "status")
+        overall <- if (any(statuses %in% c("missing", "mismatch"))) "fail" else if (any(statuses %in% c("unreadable", "not_retained"))) "unknown" else "pass"
+        verification <- .obj(requested=verify, status=overall, files=.arr(files), basis=if (identical(verify,"sha256")) "current_source" else "retained_snapshot")
+      } else if (verify %in% c("sha256", "snapshot")) verification <- .obj(requested=verify,status="unavailable",files=list(),note="package source bytes are not inspected")
+      else if (identical(verify,"identity")) {
+        if (!identical(parsed$helper$location$kind,"package") || !identical(parsed$helper$language,"R")) verification <- .obj(requested=verify,status="unknown",files=list(),note="no native package metadata check for this helper")
+        else {
+          package <- parsed$helper$location$package
+          if (package %in% loadedNamespaces()) {
+            installed_version <- as.character(getNamespaceVersion(package)); installed_path <- getNamespaceInfo(asNamespace(package), "path")
+            verification <- .obj(requested=verify,status=if (identical(installed_version,parsed$helper$location$version)) "qualified_match" else "mismatch",files=list(),declared_version=parsed$helper$location$version,installed_version=installed_version,installed_path=installed_path,note="loaded namespace identity only; source bytes and executed code are unverified")
+          } else {
+            installed_path <- tryCatch(find.package(package, quiet=TRUE), error=function(e) character())
+            description <- if (length(installed_path)) tryCatch(read.dcf(file.path(installed_path[[1L]], "DESCRIPTION")), error=function(e) NULL) else NULL
+            if (is.null(description) || !nrow(description) || !"Version" %in% colnames(description)) verification <- .obj(requested=verify,status="missing",files=list(),note="selected installed package DESCRIPTION unavailable; no namespace was loaded")
+            else { installed_version <- unname(description[1L,"Version"]); verification <- .obj(requested=verify,status=if (identical(installed_version,parsed$helper$location$version)) "qualified_match" else "mismatch",files=list(),declared_version=parsed$helper$location$version,installed_version=installed_version,installed_path=installed_path[[1L]],note="selected installed DESCRIPTION only; source bytes and executed code are unverified") }
+          }
+        }
+      }
+      .obj(ref=.make_ref(state,rec),name=rec$name,record_status=rec$status,descriptor=.copy(parsed$helper),code=.copy(rec$code),verification=verification,approval="not_authenticated",execution="unknown")
+    }
+    find_helpers <- function(query, language = NULL, limit = 5L) {
+      if (!.design_text(query) || nchar(enc2utf8(query),type="bytes") > 256L || (!is.null(language) && (!is.character(language) || length(language)!=1L || !language %in% c("Python","R"))) || !.is_int(limit,TRUE) || limit > 20L) .fail("Invalid helper query, language or limit")
+      normalized_query <- stringi::stri_trans_casefold(stringi::stri_trim_both(query)); if (!nzchar(normalized_query)) .fail("Invalid helper query")
+      candidates <- Filter(function(rec) rec$kind == "decision" && rec$revision == state$records[[get(rec$id, attr(state,"record_index")$latest)]]$revision, state$records)
+      candidates <- candidates[order(vapply(candidates, `[[`, "", "id"))]; omitted_candidates <- max(0L, length(candidates) - 100L); records <- utils::head(candidates, 100L)
+      inspected <- helpers_scanned <- matched <- invalid <- 0L; cards <- list(); shortened_fields <- list(); tokens <- stringi::stri_split_regex(normalized_query,"\\s+")[[1L]]
+      clip <- function(value, field) { result <- .related_clip(value, 256L); if (result$clipped) shortened_fields[[length(shortened_fields)+1L]] <<- field; result$value }
+      for (rec in records) {
+        inspected <- inspected + 1L; parsed <- .helper_for_record(state, rec)
+        if (identical(parsed$issue, "not_helper")) next
+        helpers_scanned <- helpers_scanned + 1L
+        if (is.null(parsed$helper)) { invalid <- invalid + 1L; next }
+        h <- parsed$helper
+        text <- stringi::stri_trans_casefold(paste(c(rec$name, h$purpose, unlist(h$tags)), collapse = " "))
+        if (rec$status == "active" && (is.null(language) || identical(language, h$language)) &&
+            all(vapply(tokens, function(x) stringi::stri_detect_fixed(text, x), logical(1)))) {
+          matched <- matched + 1L
+          if (length(cards) < limit) {
+            card_shortened <- character()
+            card_clip <- function(value, field) { before <- length(shortened_fields); out <- clip(value, field); if (length(shortened_fields) > before) card_shortened <<- c(card_shortened, field); out }
+            cards[[length(cards) + 1L]] <- .obj(ref=.make_ref(state, rec), name=card_clip(rec$name, "name"),
+              purpose=card_clip(h$purpose, "purpose"), entry_point=card_clip(h$location[["function"]], "entry_point"),
+              language=h$language, location_kind=h$location$kind, shortened_fields=.arr(unique(card_shortened)))
+          }
+        }
+      }
+      response <- .obj(query=query,helpers=.arr(cards),registry_revision=state$state_revision,unsaved=dirty,coverage=.obj(scanned_latest_records=inspected,scanned_latest_helpers=helpers_scanned,scan_limit=100L,matched=matched,returned=length(cards),invalid=invalid,incomplete=omitted_candidates>0L||matched>length(cards),scope="first 100 latest DEC records in this ledger; metadata only"))
+      while (nchar(enc2utf8(.json(response)),type="bytes") > 16384L && length(response$helpers)) {
+        response$helpers <- response$helpers[-length(response$helpers)]
+        response$coverage$returned <- length(response$helpers); response$coverage$incomplete <- TRUE
+      }
+      response
+    }
     record_scientific_decision <- function(text, reason, subjects, scientific_status, supporting = NULL, contradictory = NULL, ref = NULL) {
       if (!.design_text(text) || !.design_text(reason)) .fail("Decision text and reason required")
       descriptor <- .scientific_descriptor(state, subjects, scientific_status, if (is.null(supporting)) list() else supporting, if (is.null(contradictory)) list() else contradictory)
       if (is.null(ref)) rec <- .new_record(state, "decision", text) else {
         old <- .record(state, ref)
         if (old$kind != "decision") .fail("Not decision")
+        if (.helper_key %in% names(old$details)) .fail("Cannot convert helper to scientific decision")
         latest <- state$records[[get(old$id, attr(state, "record_index")$latest)]]
         if (old$revision != latest$revision) .fail("Scientific decision revision must be current")
         if (.analysis_protocol_key %in% names(old$details) || any(.comparison_keys %in% names(old$details))) .fail("Cannot convert protocol or comparison to scientific decision")
@@ -1394,6 +1560,10 @@ ProjectBundle <- local({
     }
     get_decision <- function(ref) {
       rec <- .record(state, ref); if (rec$kind != "decision") .fail("Not decision")
+      if (.helper_key %in% names(rec$details)) return(.obj(ref=.make_ref(state,rec), text=rec$name,
+        reason=.copy(rec$details$reason), targets=list(), record_status=rec$status, scientific=NULL,
+        approval="not_applicable", unknown=list("helper_not_scientific_decision"),
+        imported_claim=if (state$imported) "untrusted_imported_claim" else NULL))
       if (any(.comparison_keys %in% names(rec$details))) return(.obj(ref = .make_ref(state, rec), text = rec$name, reason = .copy(rec$details$reason),
         targets = list(), record_status = rec$status, scientific = NULL, approval = "not_applicable",
         unknown = .arr(list("comparison_not_scientific_decision")), imported_claim = if (isTRUE(state$imported)) "untrusted_imported_claim" else NULL))
@@ -1805,7 +1975,7 @@ ProjectBundle <- local({
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
-    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, register_metadata = register_metadata, get_metadata = get_metadata, bind_metadata = bind_metadata, metadata_view = metadata_view, check_metadata = check_metadata, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, register_metadata = register_metadata, get_metadata = get_metadata, bind_metadata = bind_metadata, metadata_view = metadata_view, check_metadata = check_metadata, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_helper = register_helper, find_helpers = find_helpers, get_helper = get_helper, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     viewer_generation <- function() list(state$state_revision, state$last_transaction, length(state$records), length(state$history), dirty)
     self$view <- function(path = NULL, open_browser = TRUE, limit = 5000L, preview_refs = NULL)
       .export_view(root, state, result_graph, dirty, self$timeline, viewer_generation, path, open_browser, limit, preview_refs)
@@ -1865,6 +2035,7 @@ print.ProjectBundle <- function(x, ...) {
   if (mode == "context" && length(include)) .fail("Context archive cannot include payload")
   if (!is.null(exclude) || !is.null(redact)) .fail("Redaction and exclusion are not implemented")
   selected <- lapply(include, function(x) .record(state, x))
+  for (rec in selected) if (rec$kind == "decision" && is.null(.helper_for_record(state, rec)$helper)) .fail("Only usable helper decisions may be selected")
   payload <- list(); bindings <- .obj(); missing <- list(); omitted <- list()
   add <- function(loc, role) {
     if (is.null(loc)) return()

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.0 — local development
+
+- Add explicit, revisioned reusable-helper cards for source modules and package functions.
+- Add bounded helper discovery, explicit identity inspection, declared analysis helper links, and graph visibility.
+- Helper registration and declared use do not import, execute, approve, or reproduce an implementation.
+
 ## 0.19.3 — local development
 
 - Add a selected-analysis Dependencies view using bounded recorded native graph
