@@ -1,0 +1,19 @@
+library(BioDataLedger)
+main <- function() {
+fail <- function(expr) stopifnot(inherits(try(force(expr), silent=TRUE), "try-error"))
+root <- tempfile("cross-helper-", tmpdir=getwd()); dir.create(root, recursive=TRUE); on.exit(unlink(root,recursive=TRUE),add=TRUE)
+a_root <- file.path(root,"a"); b_root <- file.path(root,"b"); dir.create(a_root); dir.create(b_root)
+writeLines("required_columns <- function(x, required) setdiff(required,names(x))",file.path(a_root,"helper.R"))
+contract <- list(inputs="data.frame",parameters="required",outputs="missing",example="required_columns(x,'id')",limitations="names only")
+a <- ProjectBundle$create("A",a_root)
+foreign_ref <- a$register_helper("columns","R","required columns",contract,source=file.path(a_root,"helper.R"),function_name="required_columns",tags=list("columns")); a$save()
+registry <- file.path(a_root,".nb_project_bundle","project.json"); before <- readBin(registry,"raw",file.info(registry)$size)
+b <- ProjectBundle$create("B",b_root); report <- b$find_helpers("required columns",sources=list(a_root))
+foreign <- Filter(function(x) !x$source_project$current,report$helpers)[[1]]
+stopifnot(identical(foreign$ref,foreign_ref),identical(readBin(registry,"raw",file.info(registry)$size),before))
+local <- b$register_helper_from(foreign); b$save(); saved <- b$get_helper(local,"snapshot")
+stopifnot(saved$verification$status=="pass",saved$foreign_refs[[1]]$ref$id==foreign_ref$id,identical(b$register_helper_from(foreign),local))
+b$update_record(local,list(status="inactive"),"inactive"); fail(b$register_helper_from(foreign))
+a$record_decision("changed","make old candidate stale",list()); a$save(); b$record_decision("pending","retain",list()); fail(b$register_helper_from(foreign)); stopifnot(b$status()$unsaved)
+}
+main()

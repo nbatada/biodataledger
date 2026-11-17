@@ -5,9 +5,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
+import uuid
 from unittest.mock import patch
 import zipfile
 
@@ -161,6 +163,127 @@ class HelperTests(unittest.TestCase):
         with self.assertRaises(BundleError):
             self.p.find_helpers('x' * 257)
 
+    def test_cross_project_discovery_and_deliberate_local_adoption(self):
+        """Foreign lookup is registry-only; the adopted pin is wholly local to B."""
+        a_root, b_root = self.root / 'project-a', self.root / 'project-b'
+        a_root.mkdir(); b_root.mkdir()
+        source = a_root / 'helpers.py'; source.write_text(V1)
+        a = ProjectBundle.create('Project A', a_root)
+        card = a.register_helper('Required columns', language='Python', purpose='Check required columns',
+                                 contract=self.contract, source=source, function='validate_required_columns', tags=['table', 'columns'])
+        a.save()
+        marker = a_root / '.nb_project_bundle' / 'owner'; marker.write_text('synthetic marker')
+        before = (a_root / STATE_PATH).read_bytes(), marker.read_bytes(), marker.stat().st_mtime_ns
+        b = ProjectBundle.create('Project B', b_root)
+        report = b.find_helpers('required columns', sources=[a_root])
+        foreign = next(item for item in report['helpers'] if not item['source_project']['current'])
+        self.assertEqual(foreign['ref'], card)
+        self.assertEqual(foreign['source_project']['location'], str(a_root.resolve()))
+        self.assertEqual((a_root / STATE_PATH).read_bytes(), before[0])
+        self.assertEqual((marker.read_bytes(), marker.stat().st_mtime_ns), before[1:])
+        local = b.register_helper_from(foreign)
+        self.assertEqual(local['project_id'], b.state['project']['id'])
+        self.assertTrue(b.unsaved)
+        b.save()
+        retained = b.get_helper(local, 'snapshot')
+        self.assertEqual(retained['verification']['status'], 'pass')
+        self.assertEqual(retained['foreign_refs'][0]['ref'], card)
+        # The copied snapshot is ordinary caller-controlled code; adoption never executes it.
+        namespace = {}; exec(compile((b.root / retained['code'][0]['snapshot']).read_text(), 'copied.py', 'exec'), namespace)
+        self.assertEqual(namespace['validate_required_columns']([{'id': 'a'}], ['id']), [])
+        repeated = b.register_helper_from(foreign)
+        self.assertEqual(repeated, local)
+        with self.assertRaises(BundleError):
+            b.register_analysis('foreign helper is rejected', [], helper_refs=[card])
+        analysis = b.register_analysis('local helper pin', [], helper_refs=[local])
+        b.save()
+        reopened = ProjectBundle.open(b_root)
+        self.assertEqual(reopened.get_analysis(analysis).details['bl_helper_refs'], [local])
+        self.assertEqual(reopened.get_helper(local, 'snapshot')['foreign_refs'][0]['ref'], card)
+        source.write_text(V2)
+        a.register_helper('Required columns', language='Python', purpose='Check required columns', contract=self.contract,
+                          source=source, function='validate_required_columns', tags=['table', 'columns'], ref=card)
+        a.save()
+        self.assertEqual(ProjectBundle.open(b_root).get_helper(local, 'snapshot')['verification']['status'], 'pass')
+
+    def test_cross_project_stale_candidate_preserves_pending_target_edits(self):
+        a_root, b_root = self.root / 'stale-a', self.root / 'stale-b'; a_root.mkdir(); b_root.mkdir()
+        source = a_root / 'helper.py'; source.write_text(V1)
+        a = ProjectBundle.create('A', a_root)
+        card = a.register_helper('Required columns', language='Python', purpose='Check required columns', contract=self.contract,
+                                 source=source, function='validate_required_columns', tags=['table']); a.save()
+        b = ProjectBundle.create('B', b_root); b.record_decision('pending', 'keep pending edits', [])
+        candidate = next(x for x in b.find_helpers('columns', sources=[a_root])['helpers'] if not x['source_project']['current'])
+        tampered = copy.deepcopy(candidate); tampered['source_project']['id'] = str(uuid.uuid4())
+        before_tamper = canonical(b.state)
+        with self.assertRaises(BundleError): b.register_helper_from(tampered)
+        self.assertEqual(canonical(b.state), before_tamper)
+        a.record_decision('unrelated saved change', 'makes candidate stale', []); a.save()
+        before = canonical(b.state), copy.deepcopy(b._snapshots)
+        with self.assertRaises(BundleError): b.register_helper_from(candidate)
+        self.assertEqual(canonical(b.state), before[0]); self.assertEqual(b._snapshots, before[1])
+
+    def test_cross_project_rejects_unsafe_and_conflicting_sources(self):
+        roots = [self.root / name for name in ('one', 'two', 'three', 'target')]
+        for root in roots: root.mkdir()
+        source = roots[0] / 'helper.py'; source.write_text(V1)
+        a = ProjectBundle.create('A', roots[0])
+        a.register_helper('Columns', language='Python', purpose='columns', contract=self.contract,
+                          source=source, function='validate_required_columns', tags=['columns']); a.save()
+        # Registry aliases do not consume another source slot or read another project.
+        alias = self.root / 'alias'; alias.symlink_to(roots[0], target_is_directory=True)
+        b = ProjectBundle.create('B', roots[3])
+        alias_report = b.find_helpers('columns', sources=[roots[0], alias])
+        self.assertEqual(len([x for x in alias_report['sources'] if x['status'] == 'duplicate_path']), 1)
+        # Deliberately copied registry identity with different saved bytes is ambiguous;
+        # none of its cards is returned, including a third occurrence.
+        for destination, name in zip(roots[1:3], ('copy one', 'copy two')):
+            (destination / '.nb_project_bundle').mkdir()
+            raw = (roots[0] / STATE_PATH).read_text().replace('"name":"A"', '"name":"' + name + '"')
+            (destination / STATE_PATH).write_text(raw)
+        report = b.find_helpers('columns', sources=roots[:3])
+        self.assertFalse(any(x['ref']['project_id'] == a.state['project']['id'] for x in report['helpers']))
+        self.assertTrue(all(x['status'] == 'conflicting_project_id' for x in report['sources'] if x.get('source_project', {}).get('id') == a.state['project']['id']))
+        self.assertTrue(report['coverage']['incomplete'])
+        self.assertTrue(all(x['coverage'].get('returned', 0) == 0 for x in report['sources'] if x.get('source_project', {}).get('id') == a.state['project']['id']))
+        missing = b.find_helpers('columns', sources=[self.root / 'does-not-exist'])
+        self.assertEqual(missing['sources'][1]['status'], 'unavailable')
+        self.assertTrue(missing['coverage']['incomplete'])
+
+    def test_cross_project_malformed_origin_and_inactive_pin_do_not_adopt(self):
+        a_root, b_root = self.root / 'origin-a', self.root / 'origin-b'; a_root.mkdir(); b_root.mkdir()
+        source = a_root / 'helper.py'; source.write_text(V1)
+        a = ProjectBundle.create('A', a_root)
+        ref = a.register_helper('Columns', language='Python', purpose='columns', contract=self.contract,
+                                source=source, function='validate_required_columns', tags=['columns']); a.save()
+        b = ProjectBundle.create('B', b_root)
+        candidate = next(x for x in b.find_helpers('columns', sources=[a_root])['helpers'] if not x['source_project']['current'])
+        local = b.register_helper_from(candidate); b.save()
+        inactive = b.update_record(local, {'status': 'inactive'}, 'synthetic retirement')
+        with self.assertRaises(BundleError): b.register_helper_from(candidate)
+        self.assertEqual(inactive['revision'], 2)
+        b.save()
+        state = json.loads((b_root / STATE_PATH).read_text())
+        helper = next(x for x in state['records'] if x['id'] == local['id'] and x['revision'] == 2)
+        helper['foreign_refs'][0]['provenance'] = 'approved'
+        (b_root / STATE_PATH).write_text(json.dumps(state))
+        with self.assertRaises(BundleError): ProjectBundle.open(b_root)
+
+    def test_cross_project_identical_registry_copies_keep_per_root_counts(self):
+        source_root, target_root, copy_root = self.root / 'source', self.root / 'target', self.root / 'copy'
+        for root in (source_root, target_root, copy_root): root.mkdir()
+        source = source_root / 'helper.py'; source.write_text(V1)
+        a = ProjectBundle.create('A', source_root)
+        a.register_helper('Columns', language='Python', purpose='columns', contract=self.contract,
+                          source=source, function='validate_required_columns', tags=['columns']); a.save()
+        shutil.copytree(source_root / '.nb_project_bundle', copy_root / '.nb_project_bundle', copy_function=shutil.copy2)
+        b = ProjectBundle.create('B', target_root)
+        report = b.find_helpers('columns', sources=[source_root, copy_root])
+        foreign = [item for item in report['sources'] if item.get('source_project', {}).get('id') == a.state['project']['id']]
+        self.assertEqual(len(foreign), 2)
+        self.assertEqual([item['coverage']['returned'] for item in foreign], [1, 1])
+        self.assertLessEqual(len(canonical(report)), 32 * 1024)
+
     def test_invalid_typed_mutations_and_persisted_links(self):
         helper = self.register()
         ordinary = self.p.record_decision('ordinary', 'synthetic', [])
@@ -240,6 +363,9 @@ p$save(); cat(jsonlite::toJSON(h, auto_unbox=TRUE))
 
     @unittest.skipUnless(os.environ.get('BDL_R_LIB'), 'installed R library required')
     def test_native_helper_suite(self):
-        script = Path(__file__).with_name('r_helpers.R')
-        run = subprocess.run(['Rscript', '--vanilla', str(script), os.environ['BDL_R_LIB']], capture_output=True, text=True)
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        for script in (Path(__file__).with_name('r_helpers.R'), Path(__file__).parents[1] / 'r' / 'tests' / 'cross-project-helpers.R'):
+            args = ['Rscript', '--vanilla', str(script)]
+            if script.name == 'r_helpers.R': args.append(os.environ['BDL_R_LIB'])
+            env = dict(os.environ, R_LIBS_USER=os.environ['BDL_R_LIB'])
+            run = subprocess.run(args, capture_output=True, text=True, env=env)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

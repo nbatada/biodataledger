@@ -98,7 +98,7 @@ Preview the complete registry metadata and history alongside the selected payloa
 These instructions guide use of the registry. They do not restrict an unrestricted interpreter or require calls on every chat turn.
 
 
-## Reuse functions before implementing another one (0.20.0)
+## Reuse functions before implementing another one (0.21.0)
 
 Before writing a function, use `find_helpers` and inspect suitable exact candidates
 with `get_helper`. Search only covers registered metadata and reports incomplete
@@ -111,3 +111,9 @@ A bug fix warrants review of recorded uses, not automatic reruns or historical e
 Missing functions, unsupported requirements and identity mismatches need an explicit
 resolution. Registered claims are not scientific approval or proof of execution.
 See [source and shared-package examples](../HELPERS.md).
+
+For a deliberately selected other project, pass its root in `sources`, inspect the
+returned exact card, then call `register_helper_from(card)` on the working project.
+Use only the returned local helper ref on analyses and save explicitly. Discovery and
+adoption do not authorize edits to the source project, reruns, package updates or
+automatic upgrades; they retain a declared origin, not proof of execution.

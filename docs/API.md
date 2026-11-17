@@ -14,7 +14,7 @@ to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger **0.20.0 source version** API for Python (`biodataledger`) and R
+BioDataLedger **0.21.0 source version** API for Python (`biodataledger`) and R
 (`BioDataLedger`) in this local, unpublished source build. Pin a reviewed commit when installing; no
 `v0.18.0` tag is provided. The latest tagged release
 remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
@@ -50,7 +50,7 @@ not filter cells or certify interpretations. New descriptors use the existing
 schema0.4.0 with a fail-closed optional project marker. Legacy projects stay unchanged
 until explicit metadata registration. Save staged changes at meaningful checkpoints.
 
-## Reusable helpers (0.20.0)
+## Reusable helpers (0.21.0)
 
 `register_helper(name, language, purpose, contract, source=... OR package=...,
 version=..., function=..., tags=..., ref=...)` registers an inert implementation
@@ -58,12 +58,16 @@ card. Python uses `function`; R uses `function_name`. `contract` contains inputs
 parameters, outputs, example and limitations. `ref` explicitly creates a new revision;
 previous analysis links never change. Source files are hashed/snapshotted by default.
 
-`find_helpers(query, language=None/NULL, limit=5)` searches metadata from the first
+`find_helpers(query, language=None/NULL, limit=5, sources=None/NULL)` searches metadata from the first
 100 latest DEC records and reports coverage. `get_helper(ref, verify="none")` inspects
 an exact revision; `verify="sha256"` checks selected current source bytes,
 `verify="snapshot"` checks retained saved source snapshots and returns their paths, while
 `verify="identity"` makes a qualified native package-version check without loading it.
-These operations do not establish scientific approval or execution.
+These operations do not establish scientific approval or execution. `sources` is an
+explicit list of saved project roots and returns flat candidates plus per-source
+coverage. `register_helper_from(candidate)` validates the selected registry token and
+stages one local helper pin with typed `helper_origin` provenance; it never saves,
+executes, installs, merges or updates either project.
 
 `register_analysis(..., helper_refs=[...])` (R: `list(...)`) records exact declared
 helper use separately from scientific inputs. Reuse existing functions first, then

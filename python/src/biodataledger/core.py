@@ -34,6 +34,7 @@ HELPER_KEY = "bl_helper"
 ANALYSIS_PROTOCOL_KEY = "analysis_protocol"
 SCIENTIFIC_DECISION_VERSION = "biodataledger-scientific-decision/1"
 HELPER_VERSION = "biodataledger-helper/1"
+HELPER_ORIGIN_VERSION = "biodataledger-helper-origin/1"
 SCIENTIFIC_STATUSES = {"proposed", "provisional", "approved", "superseded"}
 
 
@@ -250,6 +251,19 @@ def validate_helper_record(rec):
         require(len({canonical(c["locator"]) for c in rec["code"]}) == len(rec["code"]), "duplicate helper source")
     else:
         require(rec["code"] == [], "package helper cannot contain source snapshots")
+    for origin in rec["foreign_refs"]:
+        if isinstance(origin, dict) and origin.get("kind") == "helper_origin":
+            _validate_helper_origin(origin)
+
+
+def _validate_helper_origin(origin):
+    require(isinstance(origin, dict) and set(origin) == {"kind", "version", "relationship", "ref", "source_registry", "provenance"}, "invalid helper origin")
+    require(origin["kind"] == "helper_origin" and origin["version"] == HELPER_ORIGIN_VERSION and origin["relationship"] == "derived_from", "invalid helper origin")
+    ref = origin["ref"]
+    require(isinstance(ref, dict) and set(ref) == {"project_id", "id", "revision"} and valid_uuid(ref["project_id"]) and isinstance(ref["id"], str) and re.fullmatch(r"DEC-\d{3,}", ref["id"]) and type(ref["revision"]) is int and ref["revision"] > 0, "invalid helper origin reference")
+    snapshot = origin["source_registry"]
+    require(isinstance(snapshot, dict) and set(snapshot) == {"revision", "sha256", "imported"} and type(snapshot["revision"]) is int and snapshot["revision"] > 0 and isinstance(snapshot["sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", snapshot["sha256"]) and type(snapshot["imported"]) is bool, "invalid helper origin snapshot")
+    require(origin["provenance"] in ("declared", "untrusted_imported_claim"), "invalid helper origin provenance")
 
 
 def validate_links(rec, check_ref):
@@ -1370,44 +1384,169 @@ class ProjectBundle:
                     verification = {"requested": verify, "status": "missing", "files": [], "note": "package metadata unavailable; nothing was imported"}
         return {"ref": self._ref(rec), "name": rec["name"], "record_status": rec["status"], "descriptor": copy.deepcopy(descriptor),
                 "code": copy.deepcopy(rec["code"]), "verification": verification,
-                "approval": "not_authenticated", "execution": "unknown"}
+                "foreign_refs": copy.deepcopy(rec["foreign_refs"]), "approval": "not_authenticated", "execution": "unknown"}
 
-    def find_helpers(self, query, language=None, limit=5):
-        require(isinstance(query, str) and query.strip() and len(query.encode("utf-8")) <= 256, "query must be nonempty text up to 256 bytes")
-        require(language is None or language in ("Python", "R"), "language must be Python or R")
-        require(type(limit) is int and 1 <= limit <= 20, "limit must be 1..20")
+    def _helper_cards(self, state, query, language, limit, source_project, token):
+        """Search already-loaded metadata only; source code is deliberately not read."""
         from .related_work import _clip
         tokens = query.casefold().split()
-        records = self._latest("decision")
-        inspected = matched = invalid = 0
-        cards = []
+        latest = {}
+        for rec in state["records"]:
+            if rec["kind"] == "decision" and (rec["id"] not in latest or rec["revision"] > latest[rec["id"]]["revision"]):
+                latest[rec["id"]] = rec
+        records = [latest[key] for key in sorted(latest)]
+        inspected = matched = invalid = 0; cards = []
+        # A temporary read-only facade preserves the existing descriptor validator.
         for rec in records[:100]:
             descriptor, issue = self._helper_for_record(rec)
             if issue == "not_helper":
                 continue
             inspected += 1
             if descriptor is None:
-                invalid += 1
-                continue
+                invalid += 1; continue
             if rec["status"] != "active" or language is not None and descriptor["language"] != language:
                 continue
             text = " ".join([rec["name"], descriptor["purpose"], *descriptor["tags"]]).casefold()
-            if all(token in text for token in tokens):
+            if all(word in text for word in tokens):
                 matched += 1
                 if len(cards) < limit:
                     fields = {"name": rec["name"], "purpose": descriptor["purpose"], "entry_point": descriptor["location"]["function"]}
                     shortened = [key for key, value in fields.items() if len(value.encode("utf-8")) > 256]
-                    cards.append({"ref": self._ref(rec), **{key: _clip(value, 256)[0] for key, value in fields.items()},
-                                  "language": descriptor["language"], "location_kind": descriptor["location"]["kind"], "shortened_fields": shortened})
-        report = {"query": query, "helpers": cards, "registry_revision": self.state["state_revision"],
-                  "coverage": {"scanned_latest_records": min(100, len(records)), "scanned_latest_helpers": inspected,
-                               "scan_limit": 100, "matched": matched, "returned": len(cards), "invalid": invalid,
-                               "incomplete": len(records) > 100 or matched > len(cards),
-                               "scope": "first 100 latest DEC records in this ledger; metadata only"}, "unsaved": self.unsaved}
-        while len(canonical(report)) > 16 * 1024 and cards:
-            cards.pop()
-            report["coverage"].update(returned=len(cards), incomplete=True)
+                    cards.append({"ref": {"project_id": state["project"]["id"], "id": rec["id"], "revision": rec["revision"]},
+                                  **{key: _clip(value, 256)[0] for key, value in fields.items()}, "language": descriptor["language"],
+                                  "location_kind": descriptor["location"]["kind"], "shortened_fields": shortened,
+                                  "source_project": copy.deepcopy(source_project), "snapshot": copy.deepcopy(token)})
+        return cards, {"scanned_latest_records": min(100, len(records)), "scanned_latest_helpers": inspected, "scan_limit": 100,
+                       "matched": matched, "returned": len(cards), "invalid": invalid,
+                       "incomplete": len(records) > 100 or matched > len(cards),
+                       "scope": "first 100 latest DEC records in this ledger; metadata only"}
+
+    def _foreign_helper_state(self, source):
+        root = Path(source).expanduser().resolve()
+        path = root / STATE_PATH
+        require(path.is_file() and not path.is_symlink() and path.parent.resolve() == root / ".nb_project_bundle", "foreign project registry missing or unsafe")
+        require(path.stat().st_size <= MAX_JSON, "foreign registry exceeds 20 MiB limit")
+        raw = path.read_bytes()
+        return root, validate_state(parse_json(raw)), digest_bytes(raw)
+
+    def find_helpers(self, query, language=None, limit=5, sources=None):
+        require(isinstance(query, str) and query.strip() and len(query.encode("utf-8")) <= 256, "query must be nonempty text up to 256 bytes")
+        require(language is None or language in ("Python", "R"), "language must be Python or R")
+        require(type(limit) is int and 1 <= limit <= 20, "limit must be 1..20")
+        require(sources is None or isinstance(sources, (list, tuple)), "sources must be project roots")
+        if sources is None:
+            identity = {"id": self.state["project"]["id"], "name": self.state["project"]["name"], "location": str(self.root), "current": True, "unsaved": self.unsaved}
+            token = {"revision": self.state["state_revision"], "sha256": self._loaded_digest or digest_bytes(canonical(self.state)), "imported": self.state["imported"]}
+            cards, coverage = self._helper_cards(self.state, query, language, limit, identity, token)
+            for card in cards:
+                card.pop("source_project"); card.pop("snapshot")
+            report = {"query": query, "helpers": cards, "registry_revision": self.state["state_revision"], "coverage": coverage, "unsaved": self.unsaved}
+            while len(canonical(report)) > 16 * 1024 and cards:
+                cards.pop(); report["coverage"].update(returned=len(cards), incomplete=True)
+            return report
+        raw_sources = [] if sources is None else list(sources)
+        require(len(raw_sources) <= 7, "at most 8 projects including the current project")
+        current_loc = str(self.root)
+        current_identity = {"id": self.state["project"]["id"], "name": self.state["project"]["name"], "location": current_loc, "current": True, "unsaved": self.unsaved}
+        current_token = {"revision": self.state["state_revision"], "sha256": self._loaded_digest or digest_bytes(canonical(self.state)), "imported": self.state["imported"]}
+        cards, coverage = self._helper_cards(self.state, query, language, limit, current_identity, current_token)
+        source_reports = [{"source_project": current_identity, "snapshot": current_token, "coverage": coverage, "status": "ok"}]
+        seen_paths = {self.root}; identities = {self.state["project"]["id"]: current_token["sha256"]}; conflicts = set()
+        for source in raw_sources:
+            try:
+                candidate_root = Path(source).expanduser().resolve()
+                if candidate_root in seen_paths:
+                    source_reports.append({"source": str(candidate_root), "status": "duplicate_path", "coverage": {"incomplete": True}}); continue
+                root, state, sha = self._foreign_helper_state(candidate_root)
+                if root in seen_paths:
+                    source_reports.append({"source": str(root), "status": "duplicate_path", "coverage": {"incomplete": True}}); continue
+                seen_paths.add(root)
+                identity = {"id": state["project"]["id"], "name": state["project"]["name"], "location": str(root), "current": False, "unsaved": False}
+                token = {"revision": state["state_revision"], "sha256": sha, "imported": state["imported"]}
+                if identity["id"] in conflicts or identity["id"] in identities and identities[identity["id"]] != sha:
+                    cards[:] = [card for card in cards if card["source_project"]["id"] != identity["id"]]
+                    conflicts.add(identity["id"])
+                    for prior in source_reports:
+                        if prior.get("source_project", {}).get("id") == identity["id"]:
+                            prior["status"] = "conflicting_project_id"; prior["coverage"]["incomplete"] = True
+                    source_reports.append({"source_project": identity, "snapshot": token, "status": "conflicting_project_id", "coverage": {"incomplete": True}}); continue
+                identities[identity["id"]] = sha
+                found, foreign_coverage = self._helper_cards(state, query, language, limit, identity, token)
+                cards.extend(found); source_reports.append({"source_project": identity, "snapshot": token, "coverage": foreign_coverage, "status": "ok"})
+            except (BundleError, OSError, ValueError) as exc:
+                source_reports.append({"source": str(source), "status": "unavailable", "error": str(exc), "coverage": {"incomplete": True}})
+        report = {"query": query, "helpers": cards, "registry_revision": self.state["state_revision"], "coverage": coverage,
+                  "sources": source_reports, "unsaved": self.unsaved}
+        while len(canonical(report)) > 32 * 1024 and cards:
+            cards.pop(); report["coverage"]["incomplete"] = True
+        require(len(canonical(report)) <= 32 * 1024, "cross-project helper report exceeds 32 KiB; select fewer/shorter sources")
+        def refresh_coverage():
+            for source_report in source_reports:
+                identity = source_report.get("source_project")
+                if identity is not None:
+                    actual = sum(card["source_project"]["id"] == identity["id"] and card["source_project"]["location"] == identity["location"] for card in cards)
+                    prior_returned = source_report["coverage"].get("returned", actual)
+                    source_report["coverage"]["returned"] = actual
+                    if actual < prior_returned:
+                        source_report["coverage"]["incomplete"] = True
+            if any(source_report["status"] != "ok" or source_report["coverage"].get("incomplete") for source_report in source_reports):
+                report["coverage"]["incomplete"] = True
+        refresh_coverage()
+        while len(canonical(report)) > 32 * 1024 and cards:
+            cards.pop(); report["coverage"]["incomplete"] = True; refresh_coverage()
+        require(len(canonical(report)) <= 32 * 1024, "cross-project helper report exceeds 32 KiB; select fewer/shorter sources")
         return report
+
+    def register_helper_from(self, candidate):
+        """Deliberately retain one exact foreign helper card without touching its project."""
+        require(isinstance(candidate, dict) and {"ref", "source_project", "snapshot"} <= set(candidate), "foreign helper candidate required")
+        source = candidate["source_project"]
+        require(isinstance(source, dict) and source.get("current") is False and isinstance(source.get("location"), str), "candidate must be a foreign helper")
+        ref, token = candidate["ref"], candidate["snapshot"]
+        require(isinstance(ref, dict) and set(ref) == {"project_id", "id", "revision"}, "invalid candidate reference")
+        require(isinstance(token, dict) and set(token) == {"revision", "sha256", "imported"}, "invalid candidate snapshot")
+        root, state, sha = self._foreign_helper_state(source["location"])
+        require(state["project"]["id"] == ref["project_id"] == source.get("id") and sha == token["sha256"] and state["state_revision"] == token["revision"] and state["imported"] == token["imported"], "source registry changed; refresh candidate")
+        index = {(r["id"], r["revision"]): r for r in state["records"]}
+        foreign = index.get((ref["id"], ref["revision"]))
+        require(foreign is not None, "selected helper revision missing")
+        descriptor, issue = self._helper_for_record(foreign); require(descriptor is not None and foreign["status"] == "active", "selected helper unavailable: " + str(issue))
+        origin = {"kind": "helper_origin", "version": HELPER_ORIGIN_VERSION, "relationship": "derived_from", "ref": copy.deepcopy(ref),
+                  "source_registry": copy.deepcopy(token), "provenance": "untrusted_imported_claim" if state["imported"] or any(isinstance(x, dict) and x.get("provenance") == "untrusted_imported_claim" for x in foreign["foreign_refs"]) else "declared"}
+        _validate_helper_origin(origin)
+        for local in self._latest("decision"):
+            local_descriptor, _ = self._helper_for_record(local)
+            if origin in local["foreign_refs"]:
+                same_code = [entry["sha256"] for entry in local["code"]] == list(dict.fromkeys(entry["sha256"] for entry in foreign["code"]))
+                if local_descriptor == descriptor and same_code and local["status"] == "active":
+                    return self._ref(local)
+                raise BundleError("conflicting local helper pin for this foreign origin")
+        captured = {}; code = []; seen_digests = set()
+        if descriptor["location"]["kind"] == "source":
+            for entry in foreign["code"]:
+                require(entry["snapshot"], "foreign source helper lacks retained snapshot")
+                facade = ProjectBundle(root, state, sha)
+                path = facade._resolve({"kind": "project", "value": entry["snapshot"]})
+                require(path is not None and path.is_file() and path.stat().st_size <= 1024 * 1024, "foreign helper snapshot missing or oversized")
+                before_stat = path.stat(); raw = path.read_bytes(); after_stat = path.stat()
+                require((before_stat.st_dev, before_stat.st_ino, before_stat.st_size, before_stat.st_mtime_ns, before_stat.st_ctime_ns) == (after_stat.st_dev, after_stat.st_ino, after_stat.st_size, after_stat.st_mtime_ns, after_stat.st_ctime_ns) and digest_bytes(raw) == entry["sha256"], "foreign helper snapshot drift")
+                dest = ".nb_project_bundle/code/" + entry["sha256"]
+                captured[dest] = raw
+                if entry["sha256"] not in seen_digests:
+                    code.append({"locator": {"kind": "project", "value": dest}, "sha256": entry["sha256"], "snapshot": dest})
+                    seen_digests.add(entry["sha256"])
+        _, fresh_state, fresh_sha = self._foreign_helper_state(source["location"])
+        require(fresh_sha == sha and fresh_state["project"]["id"] == ref["project_id"] and fresh_state["state_revision"] == token["revision"], "source registry changed during adoption")
+        rec = self._new("decision", foreign["name"]); rec["code"] = code
+        rec["details"] = {"reason": "deliberately adopted exact foreign helper", "targets": [], "approval": "not_authenticated", HELPER_KEY: copy.deepcopy(descriptor)}
+        rec["foreign_refs"] = [origin]
+        before = copy.deepcopy(self._snapshots)
+        try:
+            self._snapshots.update(captured)
+            return self._stage(rec, "register_helper_from", rec["details"]["reason"], capture_code=True)
+        except BaseException:
+            self._snapshots = before
+            raise
 
     def record_scientific_decision(self, text, reason, subjects, scientific_status, supporting=None, contradictory=None, ref=None):
         require(isinstance(text, str) and text.strip() and isinstance(reason, str) and reason.strip(),

@@ -60,6 +60,7 @@
 .helper_key <- "bl_helper"
 .helper_refs_key <- "bl_helper_refs"
 .helper_version <- "biodataledger-helper/1"
+.helper_origin_version <- "biodataledger-helper-origin/1"
 .scientific_statuses <- c("proposed", "provisional", "approved", "superseded")
 # Parse only the bounded bytes that were actually read.
 .parse_json_bytes <- function(bytes) {
@@ -560,6 +561,16 @@
   }
   invisible(TRUE)
 }
+.validate_helper_origin <- function(origin) {
+  if (!.is_obj(origin) || !setequal(names(origin), c("kind","version","relationship","ref","source_registry","provenance")) ||
+      !identical(origin$kind,"helper_origin") || !identical(origin$version,.helper_origin_version) || !identical(origin$relationship,"derived_from") ||
+      !.is_obj(origin$ref) || !setequal(names(origin$ref),c("project_id","id","revision")) || !.is_uuid(origin$ref$project_id) ||
+      !is.character(origin$ref$id) || length(origin$ref$id)!=1L || !grepl("^DEC-[0-9]{3,}$",origin$ref$id) || !.is_int(origin$ref$revision,TRUE) ||
+      !.is_obj(origin$source_registry) || !setequal(names(origin$source_registry),c("revision","sha256","imported")) || !.is_int(origin$source_registry$revision,TRUE) ||
+      !.is_sha(origin$source_registry$sha256) || !is.logical(origin$source_registry$imported) || length(origin$source_registry$imported)!=1L || is.na(origin$source_registry$imported) ||
+      !is.character(origin$provenance) || length(origin$provenance)!=1L || !origin$provenance %in% c("declared","untrusted_imported_claim")) .fail("Invalid helper origin")
+  invisible(TRUE)
+}
 .validate_helper_record <- function(state, rec) {
   if (!.helper_key %in% names(rec$details)) return(invisible(TRUE))
   if (rec$kind != "decision" || !is.null(rec$locator) || !is.null(rec$inputs) || !is.null(rec$analysis)) .fail("Helpers require DEC records, not data inputs or analyses")
@@ -569,6 +580,7 @@
   parsed <- .helper_for_record(state, rec)
   if (is.null(parsed$helper)) .fail(paste("Invalid helper descriptor:", parsed$issue))
   if (identical(parsed$helper$location$kind, "source")) .helper_code_valid(rec) else if (length(rec$code)) .fail("Package helper cannot carry source code")
+  for (origin in rec$foreign_refs) if (.is_obj(origin) && identical(origin$kind,"helper_origin")) .validate_helper_origin(origin)
   invisible(TRUE)
 }
 .validate_helper_refs <- function(state, rec) {
@@ -1498,9 +1510,9 @@ ProjectBundle <- local({
           }
         }
       }
-      .obj(ref=.make_ref(state,rec),name=rec$name,record_status=rec$status,descriptor=.copy(parsed$helper),code=.copy(rec$code),verification=verification,approval="not_authenticated",execution="unknown")
+      .obj(ref=.make_ref(state,rec),name=rec$name,record_status=rec$status,descriptor=.copy(parsed$helper),code=.copy(rec$code),foreign_refs=.copy(rec$foreign_refs),verification=verification,approval="not_authenticated",execution="unknown")
     }
-    find_helpers <- function(query, language = NULL, limit = 5L) {
+    find_helpers <- function(query, language = NULL, limit = 5L, sources = NULL) {
       if (!.design_text(query) || nchar(enc2utf8(query),type="bytes") > 256L || (!is.null(language) && (!is.character(language) || length(language)!=1L || !language %in% c("Python","R"))) || !.is_int(limit,TRUE) || limit > 20L) .fail("Invalid helper query, language or limit")
       normalized_query <- stringi::stri_trans_casefold(stringi::stri_trim_both(query)); if (!nzchar(normalized_query)) .fail("Invalid helper query")
       candidates <- Filter(function(rec) rec$kind == "decision" && rec$revision == state$records[[get(rec$id, attr(state,"record_index")$latest)]]$revision, state$records)
@@ -1531,7 +1543,105 @@ ProjectBundle <- local({
         response$helpers <- response$helpers[-length(response$helpers)]
         response$coverage$returned <- length(response$helpers); response$coverage$incomplete <- TRUE
       }
+      if (is.null(sources)) return(response)
+      current_identity <- .obj(id=state$project$id,name=state$project$name,location=root,current=TRUE,unsaved=dirty)
+      current_token <- .obj(revision=state$state_revision,sha256=loaded_digest,imported=state$imported)
+      response$helpers <- .arr(lapply(response$helpers, function(card) {card$source_project <- current_identity; card$snapshot <- current_token; card}))
+      response$sources <- list(.obj(source_project=current_identity,snapshot=current_token,coverage=.copy(response$coverage),status="ok"))
+      if (!is.list(sources) || length(sources)>7L) .fail("sources must contain at most seven project roots")
+      seen <- normalizePath(root,mustWork=TRUE); identities <- setNames(list(current_token$sha256),state$project$id); conflicts <- character()
+      for (source in sources) {
+        item <- tryCatch({
+          candidate_root <- normalizePath(source,mustWork=TRUE)
+          if (candidate_root %in% seen) .obj(source=candidate_root,status="duplicate_path",coverage=.obj(incomplete=TRUE)) else {
+            seen <- c(seen,candidate_root)
+            path <- file.path(candidate_root,".nb_project_bundle","project.json")
+            if (!file.exists(path) || nzchar(Sys.readlink(path)) || normalizePath(dirname(path),mustWork=TRUE) != file.path(candidate_root,".nb_project_bundle")) .fail("foreign project registry missing or unsafe")
+            if (file.info(path)$size > .metadata_limit) .fail("Metadata size limit exceeded")
+            raw_registry <- readBin(path,"raw",n=file.info(path)$size); foreign_state <- .validate(.parse_json_bytes(raw_registry)); sha <- .hash_raw(raw_registry)
+            identity <- .obj(id=foreign_state$project$id,name=foreign_state$project$name,location=candidate_root,current=FALSE,unsaved=FALSE)
+            token <- .obj(revision=foreign_state$state_revision,sha256=sha,imported=foreign_state$imported)
+            if (identity$id %in% conflicts || (!is.null(identities[[identity$id]]) && !identical(identities[[identity$id]],sha))) {
+              response$helpers <- .arr(Filter(function(card) !identical(card$source_project$id,identity$id),response$helpers))
+              conflicts <- unique(c(conflicts,identity$id))
+              for (i in seq_along(response$sources)) if (!is.null(response$sources[[i]]$source_project) && identical(response$sources[[i]]$source_project$id,identity$id)) { response$sources[[i]]$status <- "conflicting_project_id"; response$sources[[i]]$coverage$incomplete <- TRUE }
+              .obj(source_project=identity,snapshot=token,status="conflicting_project_id",coverage=.obj(incomplete=TRUE))
+            } else {
+              identities[[identity$id]] <- sha
+              foreign_state <- .index_state(foreign_state)
+              foreign_candidates <- Filter(function(rec) rec$kind == "decision" && rec$revision == foreign_state$records[[get(rec$id, attr(foreign_state,"record_index")$latest)]]$revision, foreign_state$records)
+              foreign_candidates <- foreign_candidates[order(vapply(foreign_candidates, `[[`, "", "id"))]
+              foreign_cards <- list(); foreign_inspected <- foreign_helpers <- foreign_matched <- foreign_invalid <- 0L
+              for (rec in utils::head(foreign_candidates,100L)) {
+                foreign_inspected <- foreign_inspected + 1L; parsed <- .helper_for_record(foreign_state,rec)
+                if (identical(parsed$issue,"not_helper")) next
+                foreign_helpers <- foreign_helpers + 1L; if (is.null(parsed$helper)) { foreign_invalid <- foreign_invalid + 1L; next }
+                h <- parsed$helper; text <- stringi::stri_trans_casefold(paste(c(rec$name,h$purpose,unlist(h$tags)),collapse=" "))
+                if (identical(rec$status,"active") && (is.null(language) || identical(language,h$language)) && all(vapply(tokens,function(x) stringi::stri_detect_fixed(text,x),logical(1)))) {
+                  foreign_matched <- foreign_matched + 1L
+                  if (length(foreign_cards)<limit) {
+                    clip_card <- function(value) .related_clip(value,256L)$value
+                    shortened <- .arr(c(if (.related_clip(rec$name,256L)$clipped) "name", if (.related_clip(h$purpose,256L)$clipped) "purpose", if (.related_clip(h$location[["function"]],256L)$clipped) "entry_point"))
+                    foreign_cards[[length(foreign_cards)+1L]] <- .obj(ref=.make_ref(foreign_state,rec),name=clip_card(rec$name),purpose=clip_card(h$purpose),entry_point=clip_card(h$location[["function"]]),language=h$language,location_kind=h$location$kind,shortened_fields=shortened,source_project=identity,snapshot=token)
+                  }
+                }
+              }
+              foreign_coverage <- .obj(scanned_latest_records=min(100L,length(foreign_candidates)),scanned_latest_helpers=foreign_helpers,scan_limit=100L,matched=foreign_matched,returned=length(foreign_cards),invalid=foreign_invalid,incomplete=length(foreign_candidates)>100L || foreign_matched>length(foreign_cards),scope="first 100 latest DEC records in this ledger; metadata only")
+              response$helpers <- .arr(c(response$helpers,foreign_cards))
+              .obj(source_project=identity,snapshot=token,coverage=foreign_coverage,status="ok")
+            }
+          }
+        }, error=function(e) .obj(source=as.character(source),status="unavailable",error=conditionMessage(e),coverage=.obj(incomplete=TRUE)))
+        response$sources[[length(response$sources)+1L]] <- item
+      }
+      while (nchar(enc2utf8(.json(response)),type="bytes")>32768L && length(response$helpers)) { response$helpers <- response$helpers[-length(response$helpers)]; response$coverage$incomplete <- TRUE }
+      if (nchar(enc2utf8(.json(response)),type="bytes")>32768L) .fail("Cross-project helper report exceeds 32 KiB; select fewer/shorter sources")
+      for (i in seq_along(response$sources)) if (!is.null(response$sources[[i]]$source_project)) {
+        identity <- response$sources[[i]]$source_project; actual <- sum(vapply(response$helpers,function(card) identical(card$source_project$id,identity$id) && identical(card$source_project$location,identity$location),logical(1)))
+        previous <- response$sources[[i]]$coverage$returned; response$sources[[i]]$coverage$returned <- actual
+        if (!is.null(previous) && actual < previous) response$sources[[i]]$coverage$incomplete <- TRUE
+      }
+      if (any(vapply(response$sources,function(x) !identical(x$status,"ok") || isTRUE(x$coverage$incomplete),logical(1)))) response$coverage$incomplete <- TRUE
+      while (nchar(enc2utf8(.json(response)),type="bytes")>32768L && length(response$helpers)) {
+        response$helpers <- response$helpers[-length(response$helpers)]; response$coverage$incomplete <- TRUE
+        for (i in seq_along(response$sources)) if (!is.null(response$sources[[i]]$source_project)) {
+          identity <- response$sources[[i]]$source_project; previous <- response$sources[[i]]$coverage$returned
+          actual <- sum(vapply(response$helpers,function(card) identical(card$source_project$id,identity$id) && identical(card$source_project$location,identity$location),logical(1)))
+          response$sources[[i]]$coverage$returned <- actual; if (!is.null(previous) && actual < previous) response$sources[[i]]$coverage$incomplete <- TRUE
+        }
+      }
+      if (nchar(enc2utf8(.json(response)),type="bytes")>32768L) .fail("Cross-project helper report exceeds 32 KiB; select fewer/shorter sources")
       response
+    }
+    register_helper_from <- function(candidate) {
+      if (!.is_obj(candidate) || !all(c("ref","source_project","snapshot") %in% names(candidate)) || !isFALSE(candidate$source_project$current) || !is.character(candidate$source_project$location) || length(candidate$source_project$location)!=1L) .fail("Foreign helper candidate required")
+      source_root <- normalizePath(candidate$source_project$location,mustWork=TRUE); path <- file.path(source_root,".nb_project_bundle","project.json")
+      if (!file.exists(path) || nzchar(Sys.readlink(path)) || normalizePath(dirname(path),mustWork=TRUE) != file.path(source_root,".nb_project_bundle")) .fail("foreign project registry missing or unsafe")
+      if (file.info(path)$size > .metadata_limit) .fail("Metadata size limit exceeded")
+      raw_registry <- readBin(path,"raw",n=file.info(path)$size); foreign_state <- .validate(.parse_json_bytes(raw_registry)); sha <- .hash_raw(raw_registry); token <- candidate$snapshot; ref <- candidate$ref
+      if (!.is_obj(token) || !is.character(candidate$source_project$id) || length(candidate$source_project$id)!=1L || !identical(candidate$source_project$id,foreign_state$project$id) || !identical(token$sha256,sha) || !identical(token$revision,foreign_state$state_revision) || !identical(token$imported,foreign_state$imported) || !identical(ref$project_id,foreign_state$project$id)) .fail("Source registry changed; refresh candidate")
+      foreign <- .lookup_record(.index_state(foreign_state),ref); if (is.null(foreign)) .fail("Selected helper revision missing")
+      parsed <- .helper_for_record(foreign_state,foreign); if (is.null(parsed$helper) || !identical(foreign$status,"active")) .fail("Selected helper unavailable")
+      origin <- .obj(kind="helper_origin",version=.helper_origin_version,relationship="derived_from",ref=.copy(ref),source_registry=.copy(token),provenance=if (foreign_state$imported || any(vapply(foreign$foreign_refs,function(x) .is_obj(x) && identical(x$provenance,"untrusted_imported_claim"),logical(1)))) "untrusted_imported_claim" else "declared")
+      .validate_helper_origin(origin)
+      latest <- Filter(function(x) x$kind=="decision" && x$revision==state$records[[get(x$id,attr(state,"record_index")$latest)]]$revision,state$records)
+      for (old in latest) if (any(vapply(old$foreign_refs,function(x) .result_equal(x,origin),logical(1)))) {
+        h <- .helper_for_record(state,old)$helper
+        same_code <- identical(vapply(old$code, function(x) x$sha256, ""), unique(vapply(foreign$code, function(x) x$sha256, "")))
+        if (!is.null(h) && .result_equal(h,parsed$helper) && same_code && identical(old$status,"active")) return(.make_ref(state,old))
+        .fail("Conflicting local helper pin for this foreign origin")
+      }
+      captured <- list(); code <- list(); captured_hashes <- character()
+      if (identical(parsed$helper$location$kind,"source")) for (entry in foreign$code) {
+        if (is.null(entry$snapshot)) .fail("Foreign source helper lacks retained snapshot")
+        file <- .resolve(source_root,foreign_state,.obj(kind="project",value=entry$snapshot)); if (is.null(file) || !file.exists(file) || dir.exists(file) || file.info(file)$size>1048576) .fail("Foreign helper snapshot missing or oversized")
+        before <- file.info(file); bytes <- readBin(file,"raw",n=before$size); after <- file.info(file); if (!identical(before$size,after$size) || !identical(before$mtime,after$mtime) || .hash_raw(bytes)!=entry$sha256) .fail("Foreign helper snapshot changed during capture")
+        dest <- paste0(".nb_project_bundle/code/",entry$sha256); captured[[dest]] <- bytes
+        if (!entry$sha256 %in% captured_hashes) { code[[length(code)+1L]] <- .obj(locator=.obj(kind="project",value=dest),sha256=entry$sha256,snapshot=dest); captured_hashes <- c(captured_hashes,entry$sha256) }
+      }
+      final_raw <- readBin(path,"raw",n=file.info(path)$size); final_state <- .validate(.parse_json_bytes(final_raw)); if (!identical(.hash_raw(final_raw),sha) || !identical(final_state$project$id,ref$project_id) || !identical(final_state$state_revision,token$revision)) .fail("Source registry changed during adoption")
+      rec <- .new_record(state,"decision",foreign$name,code=.arr(code),details=.obj(reason="deliberately adopted exact foreign helper",targets=list(),approval="not_authenticated",bl_helper=.copy(parsed$helper)),foreign_refs=list(origin))
+      append_record(rec,"register_helper_from",captured)
     }
     record_scientific_decision <- function(text, reason, subjects, scientific_status, supporting = NULL, contradictory = NULL, ref = NULL) {
       if (!.design_text(text) || !.design_text(reason)) .fail("Decision text and reason required")
@@ -1975,7 +2085,7 @@ ProjectBundle <- local({
     related_work <- function(input_ref = NULL, query = NULL, limit = 5L) .related_work(state, result_graph, input_ref, query, limit, get_analysis, get_execution, dirty)
     execution_history <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_history(state, dirty, analysis_ref, protocol_ref, limit, offset, get_execution, get_protocol)
     execution_history_summary <- function(analysis_ref = NULL, protocol_ref = NULL, limit = 10L, offset = 0L) .chronology_summary(execution_history(analysis_ref, protocol_ref, limit, offset))
-    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, register_metadata = register_metadata, get_metadata = get_metadata, bind_metadata = bind_metadata, metadata_view = metadata_view, check_metadata = check_metadata, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_helper = register_helper, find_helpers = find_helpers, get_helper = get_helper, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
+    self <- list(figure_policy = figure_policy, require_approved_figures = require_approved_figures, render_figure = render_figure, run_analysis = run_analysis, get_execution = get_execution, execution_summary = execution_summary, execution_history = execution_history, execution_history_summary = execution_history_summary, register_result = register_result, check_result = check_result, dependencies = dependencies, export_graph = export_graph, related_work = related_work, register_protocol = register_protocol, get_protocol = get_protocol, compare_protocol = compare_protocol, register_comparison_plan = register_comparison_plan, record_comparison_assessment = record_comparison_assessment, get_comparison = get_comparison, check_object = check_object, read_figure_source = read_figure_source, check_context = check_context, resolve_figure = resolve_figure, save_figure = save_figure, register_data = register_data, register_metadata = register_metadata, get_metadata = get_metadata, bind_metadata = bind_metadata, metadata_view = metadata_view, check_metadata = check_metadata, set_data_scope = set_data_scope, resolve_data = resolve_data, register_analysis = register_analysis, register_helper = register_helper, register_helper_from = register_helper_from, find_helpers = find_helpers, get_helper = get_helper, register_figure = register_figure, get_data = get_data, get_analysis = get_analysis, get_figure = get_figure, get_design = get_design, get_condition = get_condition, get_levels = get_levels, get_selected_levels = get_selected_levels, get_reference_level = get_reference_level, get_replicate = get_replicate, set_design = set_design, check_design_metadata = check_design_metadata, get_design_summary = get_design_summary, summary_text = summary_text, find_figures = find_figures, save = save, save_and_confirm = save_and_confirm, set_current = set_current, set_context = set_context, update_record = update_record, record_decision = record_decision, record_scientific_decision = record_scientific_decision, get_decision = get_decision, rebind_external = rebind_external, check = check, summary = summary, status = status, get_raw_dir = get_raw_dir, get_metadata_path = get_metadata_path, get_output_dir = get_output_dir)
     viewer_generation <- function() list(state$state_revision, state$last_transaction, length(state$records), length(state$history), dirty)
     self$view <- function(path = NULL, open_browser = TRUE, limit = 5000L, preview_refs = NULL)
       .export_view(root, state, result_graph, dirty, self$timeline, viewer_generation, path, open_browser, limit, preview_refs)

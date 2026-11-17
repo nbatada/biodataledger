@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.0 — local development
+
+- Add bounded, explicitly selected cross-project helper discovery and deliberate exact local adoption.
+- Preserve foreign helper origin metadata and selected retained source snapshots without merging registries, executing code, or changing source projects.
+
 ## 0.20.0 — local development
 
 - Add explicit, revisioned reusable-helper cards for source modules and package functions.

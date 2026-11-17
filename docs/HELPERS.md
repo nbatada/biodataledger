@@ -1,9 +1,10 @@
 # Find and reuse functions
 
-Available in the local 0.20.0 source build. A helper is a registered reusable function,
+Available in the local 0.21.0 source build. A helper is a registered reusable function,
 not an analysis result or proof of approval. Source modules and shared packages use
-the same catalogue in the current project. BioDataLedger never searches other projects,
-imports a function, installs a package or runs a helper automatically.
+the same catalogue in the current project. BioDataLedger never searches other projects
+unless their roots are supplied explicitly, imports a function, installs a package or
+runs a helper automatically.
 
 ## Reuse, extend, then create
 
@@ -82,6 +83,33 @@ than the current working source. Hash-only registrations report `not_retained`; 
 is no silent fallback between current source and snapshots. Default
 `get_helper(ref)` is metadata-only and reports that identity was not checked.
 
+## Reuse a helper from another selected project
+
+Pass only project roots you are authorized to inspect. Discovery reads each selected
+saved `project.json` only; it does not inspect sibling projects, source code, payloads,
+live sessions or unsaved edits. The combined search is bounded to eight projects,
+including the current one, and reports per-source coverage and failures.
+
+```python
+report = project_b.find_helpers("required columns", sources=[project_a_root])
+chosen = next(card for card in report["helpers"]
+              if not card["source_project"]["current"])
+local_ref = project_b.register_helper_from(chosen)
+project_b.save()  # adoption never saves implicitly
+```
+
+R uses `project_b$find_helpers("required columns", sources=list(project_a_root))`
+and `project_b$register_helper_from(chosen)`. A candidate includes source identity,
+location, exact helper ref and saved-registry token. Adoption rereads the source and
+rejects token changes; it stages one local DEC pin. B analyses use that local ref.
+`get_helper` exposes its typed `helper_origin` in `foreign_refs`.
+
+Source-helper adoption copies only chosen retained snapshots into B after hash checks;
+it never reinterprets A working paths. Package helpers retain their declared
+package/version/function without copying, installing or loading a package. A later A
+revision never updates B. Origin is declared provenance, not execution, approval or
+scientific validity.
+
 When retaining work, pass the exact helper reference to `register_analysis` alongside
 the selected scientific DATA inputs. `helper_refs=list(helper_ref)` is separate from
 `inputs`; in Python use `helper_refs=[helper_ref]`. Save the approved registry edits
@@ -125,8 +153,11 @@ Search is case-folded literal all-term matching over name, purpose and tags, wit
 optional language filter. It inspects the first 100 latest DEC records in stable ID
 order and returns at most 20 cards (default 5). Read the coverage fields: a partial
 search is not evidence that no helper exists. Exact inspection remains available
-outside that window. Cards shorten long text with explicit field notices; reports
-stay within 16 KiB. No payload reads, hashing or writes occur during discovery.
+outside that window. Cards shorten long text with explicit field notices.
+Current-project reports stay within 16 KiB; explicit cross-project reports stay within
+32 KiB and may omit whole cards. Discovery does not read payloads or source code,
+write projects, or hash scientific files; it hashes selected saved registry bytes to
+bind a candidate token.
 
 Helper descriptions use the existing DEC record type with a versioned `bl_helper`
 descriptor. Analyses retain exact references in `details.bl_helper_refs`. This avoids
@@ -137,5 +168,6 @@ Working exports include helper source snapshots only when that helper revision i
 explicitly selected. Selecting an analysis does not implicitly package helper files.
 Existing archive rules still include registry metadata/history; package dependencies
 remain external and may be unavailable after import. Import never executes code.
-Old 0.19.3 clients preserve the new metadata during unrelated saves but cannot enforce
-its semantics; use the new client to create/edit helper records and links.
+Old 0.20.0 clients preserve helper-origin metadata opaquely during unrelated saves but
+cannot create or enforce cross-project adoption semantics. Old 0.19.3 clients preserve
+helper metadata opaquely but cannot enforce typed helper records or links.
