@@ -366,6 +366,20 @@ p$save(); cat(jsonlite::toJSON(h, auto_unbox=TRUE))
         for script in (Path(__file__).with_name('r_helpers.R'), Path(__file__).parents[1] / 'r' / 'tests' / 'cross-project-helpers.R'):
             args = ['Rscript', '--vanilla', str(script)]
             if script.name == 'r_helpers.R': args.append(os.environ['BDL_R_LIB'])
-            env = dict(os.environ, R_LIBS_USER=os.environ['BDL_R_LIB'])
+            env = dict(os.environ, R_LIBS_USER=os.pathsep.join(filter(None,
+                (os.environ['BDL_R_LIB'], os.environ.get('R_LIBS_USER', '')))))
             run = subprocess.run(args, capture_output=True, text=True, env=env)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+
+    @unittest.skipUnless(os.environ.get('BDL_R_LIB'), 'installed R library required')
+    def test_native_helper_child_keeps_inherited_libraries(self):
+        captured = []
+        def run(command, **kwargs):
+            captured.append(kwargs['env']['R_LIBS_USER'])
+            return subprocess.CompletedProcess(command, 0, '', '')
+        inherited = os.pathsep.join(('/dependency-one', '/dependency-two'))
+        with patch.dict(os.environ, {'BDL_R_LIB': '/selected', 'R_LIBS_USER': inherited}), \
+                patch.object(subprocess, 'run', side_effect=run):
+            self.test_native_helper_suite()
+        self.assertEqual(captured, [os.pathsep.join(('/selected', inherited))] * 2)

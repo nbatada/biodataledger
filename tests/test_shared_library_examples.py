@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from biodataledger import ProjectBundle
 
@@ -29,7 +30,7 @@ class SharedLibraryExamplesTests(unittest.TestCase):
                    ["Rscript", "--vanilla", str(R_EXAMPLE)])
         env = dict(os.environ)
         if language == "R":
-            env["R_LIBS_USER"] = os.environ["BDL_R_LIB"]
+            env["R_LIBS_USER"] = os.pathsep.join(filter(None, (os.environ["BDL_R_LIB"], env.get("R_LIBS_USER", ""))))
         return subprocess.run(command + ["--destination", str(destination)],
                               capture_output=True, text=True, env=env, timeout=30)
 
@@ -87,7 +88,7 @@ class SharedLibraryExamplesTests(unittest.TestCase):
                 check = subprocess.run(
                     ["Rscript", "--vanilla", "-e", rcode, str(R_EXAMPLE), str(project.root),
                      json.dumps(summary["local_refs"][0])], capture_output=True, text=True,
-                    env=dict(os.environ, R_LIBS_USER=os.environ["BDL_R_LIB"]), timeout=30)
+                    env=dict(os.environ, R_LIBS_USER=os.pathsep.join(filter(None, (os.environ["BDL_R_LIB"], os.environ.get("R_LIBS_USER", ""))))), timeout=30)
                 self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
 
     def test_python_workflow_and_no_mutable_fallback(self):
@@ -193,5 +194,17 @@ class SharedLibraryExamplesTests(unittest.TestCase):
                       identical(q$get_decision(old),before))'''
             run = subprocess.run(["Rscript", "--vanilla", "-e", rcode, tmp],
                                  capture_output=True, text=True, timeout=30,
-                                 env=dict(os.environ, R_LIBS_USER=os.environ["BDL_R_LIB"]))
+                                 env=dict(os.environ, R_LIBS_USER=os.pathsep.join(filter(None, (os.environ["BDL_R_LIB"], os.environ.get("R_LIBS_USER", ""))))))
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+
+    def test_r_example_child_keeps_inherited_libraries(self):
+        captured = []
+        def run(command, **kwargs):
+            captured.append(kwargs['env']['R_LIBS_USER'])
+            return subprocess.CompletedProcess(command, 0, '', '')
+        inherited = os.pathsep.join(('/dependency-one', '/dependency-two'))
+        with patch.dict(os.environ, {'BDL_R_LIB': '/selected', 'R_LIBS_USER': inherited}), \
+                patch.object(subprocess, 'run', side_effect=run):
+            self.run_example('R', Path('unused-example-destination'))
+        self.assertEqual(captured, [os.pathsep.join(('/selected', inherited))])
