@@ -41,6 +41,11 @@ class SharedLibraryExamplesTests(unittest.TestCase):
             self.assertEqual(summary["function"], "nb_utils_general_check_columns")
             self.assertEqual(summary["results"], [["currency"], ["currency"]])
             self.assertEqual(summary["strict_error"], "Missing columns: currency")
+            self.assertEqual(len(summary["adoption_saves"]), 2)
+            for receipt in summary["adoption_saves"]:
+                self.assertEqual(receipt["status"], "persisted")
+                self.assertTrue(receipt["registry_written"])
+                self.assertEqual(receipt["scope"], "all_pending_changes")
             library = ProjectBundle.open(summary["library_root"])
             project = ProjectBundle.open(summary["analysis_root"])
             suffix = "py" if language == "Python" else "R"
@@ -110,3 +115,83 @@ class SharedLibraryExamplesTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("BDL_R_LIB"), "installed R library required")
     def test_r_refuses_existing_destination(self):
         self.check_existing_destination("R")
+
+    def test_python_alternate_names_and_library_location(self):
+        """The personal flat nb_utils convention is not a package restriction."""
+        with tempfile.TemporaryDirectory() as tmp:
+            library_root = Path(tmp) / "team utilities"
+            module = library_root / "src" / "table_ops.py"
+            module.parent.mkdir(parents=True)
+            module.write_text("def missing_fields(row, required):\n"
+                              "    return [key for key in required if key not in row]\n")
+            library = ProjectBundle.create("Team code", library_root)
+            contract = dict(inputs="Dictionary", parameters="required field names",
+                            outputs="Missing names", example="missing_fields(row, ['id'])",
+                            limitations="Structural check only")
+            source_ref = library.register_helper(
+                "Field check", language="Python", purpose="Check required fields",
+                source=module, function="missing_fields", contract=contract)
+            library.save()
+            project_root = Path(tmp) / "existing project"
+            project_root.mkdir()
+            project = ProjectBundle.create("Project", project_root)
+            existing = project.record_decision("Existing note", "Preserve it", [])
+            project.save()
+            before = project.get_decision(existing)
+            settings = {"shared_custom_library_folder": library_root}
+            cards = project.find_helpers(
+                "required fields", sources=[settings["shared_custom_library_folder"]])["helpers"]
+            chosen = next(card for card in cards if card["ref"] == source_ref)
+            self.assertEqual(library.get_helper(chosen["ref"])["descriptor"]["contract"], contract)
+            local_ref = project.register_helper_from(chosen)
+            self.assertNotEqual(project.get_helper(local_ref, verify="snapshot")["verification"]["status"], "pass")
+            self.assertEqual(project.save_and_confirm()["status"], "persisted")
+            retained = project.get_helper(local_ref, verify="snapshot")
+            self.assertEqual(retained["verification"]["status"], "pass")
+            path = Path(retained["verification"]["files"][0]["path"])
+            namespace = {}
+            exec(compile(path.read_text(), str(path), "exec"), namespace)
+            self.assertEqual(namespace["missing_fields"]({"id": 1}, ["id", "value"]), ["value"])
+            analysis = project.register_analysis("Alternate convention", [], helper_refs=[local_ref])
+            project.save()
+            reopened = ProjectBundle.open(project_root)
+            self.assertEqual(reopened.get_analysis(analysis).details["bl_helper_refs"], [local_ref])
+            self.assertEqual(reopened.get_helper(local_ref)["foreign_refs"][0]["ref"], source_ref)
+            self.assertEqual(reopened.get_decision(existing), before)
+
+    @unittest.skipUnless(os.environ.get("BDL_R_LIB"), "installed R library required")
+    def test_r_alternate_names_and_library_location(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rcode = '''a<-commandArgs(TRUE);library(BioDataLedger)
+            root<-normalizePath(a[[1]]);libroot<-file.path(root,"team utilities")
+            dir.create(file.path(libroot,"src"),recursive=TRUE)
+            module<-file.path(libroot,"src","table_ops.R")
+            writeLines("missing_fields <- function(row, required) setdiff(required, names(row))",module)
+            lib<-ProjectBundle$create("Team code",libroot)
+            contract<-list(inputs="Named list",parameters="required fields",outputs="Missing names",
+                           example="missing_fields(row, 'id')",limitations="Structural only")
+            ref<-lib$register_helper("Field check",language="R",purpose="Check required fields",
+                                    source=module,function_name="missing_fields",contract=contract)
+            lib$save();dest<-file.path(root,"existing project");dir.create(dest)
+            p<-ProjectBundle$create("Project",dest)
+            old<-p$record_decision("Existing note","Preserve it",list());p$save()
+            before<-p$get_decision(old)
+            settings<-list(shared_custom_library_folder=libroot)
+            cards<-p$find_helpers("required fields",sources=list(settings$shared_custom_library_folder))$helpers
+            selected<-Filter(function(x)identical(x$ref,ref),cards)
+            stopifnot(length(selected)==1L,identical(lib$get_helper(selected[[1]]$ref)$descriptor$contract,contract))
+            local<-p$register_helper_from(selected[[1]])
+            stopifnot(p$get_helper(local,verify="snapshot")$verification$status!="pass")
+            receipt<-p$save_and_confirm();stopifnot(receipt$status=="persisted",receipt$registry_written)
+            retained<-p$get_helper(local,verify="snapshot");stopifnot(retained$verification$status=="pass")
+            helpers<-new.env(parent=baseenv());sys.source(retained$verification$files[[1]]$path,helpers)
+            stopifnot(identical(helpers$missing_fields(list(id=1),c("id","value")),"value"))
+            ana<-p$register_analysis("Alternate convention",list(),helper_refs=list(local));p$save()
+            q<-ProjectBundle$open(dest)
+            stopifnot(identical(q$get_analysis(ana)$details$bl_helper_refs,list(local)),
+                      identical(q$get_helper(local)$foreign_refs[[1]]$ref,ref),
+                      identical(q$get_decision(old),before))'''
+            run = subprocess.run(["Rscript", "--vanilla", "-e", rcode, tmp],
+                                 capture_output=True, text=True, timeout=30,
+                                 env=dict(os.environ, R_LIBS_USER=os.environ["BDL_R_LIB"]))
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

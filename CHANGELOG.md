@@ -1,10 +1,16 @@
 # Changelog
 
+## Unreleased documentation
+
+- Clarify that shared-library names, locations and project-level source lists are
+  caller conventions, not ProjectBundle configuration or a global API default.
+- Confirm adoption saves before snapshot verification in both native examples,
+  and test alternate library locations and function names without changing the API.
+
 ## 0.21.1 — 2026-11-17 (source update)
 
 - Add runnable synthetic R/Python examples and guidance for an optional explicit
   shared-helper-library workflow; no runtime API or schema changes.
-
 - Bound cross-project registry and retained-source captures to their declared limits,
   including growth races, while preserving source token and snapshot checks.
 - Reuse one Python source facade per adoption and validated R state indexes.

@@ -18,6 +18,8 @@ finds, inspects and adopts an exact version. Save, verify its retained snapshot,
 load that copy and record its local helper reference on retained analyses. Later
 library changes do not redirect those references. See the repository's `docs/HELPERS.md`
 and runnable `examples/shared_library_python.py`; they use the existing native API.
+The path and `nb_utils_*` names are optional conventions: other explicit roots and
+helper names work equally, including multiple roots passed to `find_helpers(sources=...)`.
 
 ## Install a reviewed source revision
 

@@ -74,6 +74,11 @@ A user-managed library can keep files directly in `~/git/lib`, for example
 `nb_utils_plotting.py`. Functions use a convention such as
 `nb_utils_general_check_ids()` or `nb_utils_plotting_draw_dotplots()`.
 These names and this location are conventions, not package requirements.
+Other users may name and locate libraries differently, including multiple explicit
+registry roots. A caller setting such as `shared_custom_library_folder` can name one
+folder. Keep that choice in ordinary project settings and pass the selected
+roots to `find_helpers(sources=...)`; BioDataLedger has no global library default or
+central-repository initializer.
 
 The library ledger describes reusable functions. Each analysis project deliberately
 adopts the exact helper it needs and retains its own source snapshot and origin.

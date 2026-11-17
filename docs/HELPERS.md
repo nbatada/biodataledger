@@ -25,6 +25,20 @@ Create only modules you need. R and Python should have matching responsibilities
 there is no requirement to implement every function twice. The path and names are
 user conventions, not hardcoded package requirements.
 
+They are one user's optional convention, not a global default. Another user may keep
+helpers under different names and locations, use more than one approved library root,
+and keep a saved helper registry in each library they want to search. Pass those explicit
+roots to `find_helpers(sources=...)`;
+BioDataLedger does not infer a home-directory path or restrict helper names.
+
+If project settings centralize one shared folder, a readable name is
+`shared_custom_library_folder`. Pass `[settings["shared_custom_library_folder"]]`
+as `sources` in Python, or `list(settings$shared_custom_library_folder)` in R.
+The examples below use this caller setting. It is not a ProjectBundle initialization
+parameter or stored registry field; BioDataLedger does not read it automatically or
+enforce reuse by arbitrary scripts. For several libraries, pass the selected roots
+explicitly through the same `sources` list.
+
 Use `nb_utils_<domain>_<verb>_<object>` for shared functions:
 
 | Module | Responsibility | Example name |
@@ -112,7 +126,8 @@ coverage, then select a full exact `approved_source_ref`. Never select the first
 newest hit automatically. The source handle below is read-only during adoption.
 
 ```r
-library_root <- path.expand("~/git/lib")
+settings <- list(shared_custom_library_folder=path.expand("~/git/lib")) # Example caller settings.
+library_root <- settings$shared_custom_library_folder
 report <- project$find_helpers("required columns", language="R", sources=list(library_root))
 # approved_source_ref is the full reference deliberately selected after inspecting report.
 selected <- Filter(function(card) {
@@ -123,7 +138,9 @@ stopifnot(length(selected) == 1L)
 chosen <- selected[[1L]]
 source_card <- library_project$get_helper(chosen$ref) # Inspect contract and declared source identity.
 local_ref <- project$register_helper_from(chosen)
-project$save() # Only after confirming all pending edits belong to approved work.
+receipt <- project$save_and_confirm() # Only after confirming all pending edits belong to approved work.
+stopifnot(receipt$status %in% c("persisted", "no_changes"),
+          identical(receipt$registry_written, receipt$status == "persisted"))
 ```
 
 A saved-source change invalidates its candidate token: refresh and review it instead

@@ -31,10 +31,14 @@ SOURCE_V2 = '''def nb_utils_general_check_columns(rows, required, strict=False):
 
 def check_capabilities():
     required = ("register_helper", "find_helpers", "get_helper", "register_helper_from",
-                "register_analysis", "register_result", "register_data", "resolve_data")
+                "register_analysis", "register_result", "register_data", "resolve_data",
+                "save_and_confirm")
     missing = [name for name in required if not callable(getattr(ProjectBundle, name, None))]
-    if not missing and "sources" not in inspect.signature(ProjectBundle.find_helpers).parameters:
-        missing.append("find_helpers(sources=...)")
+    if not missing:
+        for method, parameter in (("find_helpers", "sources"), ("get_helper", "verify"),
+                                  ("register_analysis", "helper_refs")):
+            if parameter not in inspect.signature(getattr(ProjectBundle, method)).parameters:
+                missing.append(f"{method}({parameter}=...)")
     if missing:
         raise RuntimeError(f"BioDataLedger {__version__} lacks {', '.join(missing)}. "
                            "Use a compatible installed client; nothing was installed or upgraded.")
@@ -77,6 +81,7 @@ def main(destination=None):
     library_root, analysis_root = root / "library", root / "analysis"
     library_root.mkdir()
     analysis_root.mkdir()
+    settings = {"shared_custom_library_folder": library_root}  # Caller settings, not ledger state.
 
     # 1. Register a reviewed function in a synthetic equivalent of ~/git/lib.
     module = library_root / "nb_utils_general.py"
@@ -91,7 +96,7 @@ def main(destination=None):
     # 2. Find, inspect, adopt and save an exact helper in a separate project.
     project = ProjectBundle.create("Unrelated synthetic analysis", analysis_root)
     project.status()  # One ordinary session-start metadata query.
-    report = project.find_helpers("required columns", sources=[library_root])
+    report = project.find_helpers("required columns", sources=[settings["shared_custom_library_folder"]])
     chosen = select_exact(report, library_root, source_v1)
     inspected = library.get_helper(chosen["ref"])
     assert inspected["descriptor"]["contract"] == CONTRACT_V1
@@ -99,7 +104,8 @@ def main(destination=None):
     input_path = analysis_root / "shop_table.json"
     input_path.write_text(json.dumps([{"item": "pencil", "price": 1.5}]))
     data_ref = project.register_data(input_path, "input", hash=True)
-    project.save()  # Saves this example's approved helper and input batch.
+    adoption_save_v1 = project.save_and_confirm()  # This example's approved helper/input batch.
+    assert adoption_save_v1["status"] == "persisted" and adoption_save_v1["registry_written"]
 
     # 3. Verify and load the retained source and exact input, then execute ordinary Python.
     check_v1, snapshot_v1 = load_reviewed_snapshot(project, local_v1)
@@ -125,11 +131,13 @@ def main(destination=None):
         **helper_details, contract=CONTRACT_V2, ref=source_v1,
         reason="Add optional strict mode while preserving default behavior")
     library.save()
-    chosen_v2 = select_exact(project.find_helpers("required columns", sources=[library_root]),
-                             library_root, source_v2)
+    report_v2 = project.find_helpers(
+        "required columns", sources=[settings["shared_custom_library_folder"]])
+    chosen_v2 = select_exact(report_v2, library_root, source_v2)
     assert library.get_helper(chosen_v2["ref"])["descriptor"]["contract"] == CONTRACT_V2
     local_v2 = project.register_helper_from(chosen_v2)
-    project.save()
+    adoption_save_v2 = project.save_and_confirm()
+    assert adoption_save_v2["status"] == "persisted" and adoption_save_v2["registry_written"]
     check_v2, _ = load_reviewed_snapshot(project, local_v2)
     result_v2 = check_v2(rows, required)
     assert result_v2 == result_v1 and check_v2(rows, ["item", "price"], strict=True) == []
@@ -161,6 +169,7 @@ def main(destination=None):
                    analysis_root=str(analysis_root), function=FUNCTION_NAME,
                    source_refs=[source_v1, source_v2], local_refs=[local_v1, local_v2],
                    analysis_refs=[analysis_v1, analysis_v2], result_refs=[result_ref_v1, result_ref_v2],
+                   adoption_saves=[adoption_save_v1, adoption_save_v2],
                    results=[result_v1, result_v2], strict_error=strict_error,
                    original_result_sha256=original_hash, old_pin_preserved=True)
     print(json.dumps(summary, sort_keys=True))

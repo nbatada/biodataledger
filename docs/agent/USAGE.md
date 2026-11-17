@@ -129,6 +129,13 @@ or evidence of validation. Keep project-specific paths and scientific choices in
    focused old/new behavior checks. Register a new revision and adopt it deliberately.
    Earlier pins/results remain unchanged; bug-fix impact and reruns need scientist review.
 
+`~/git/lib` and `nb_utils_*` are one optional user convention. Other users may use
+different locations, names and multiple approved registry roots. Keep such roots in
+ordinary project settings (for one folder, `shared_custom_library_folder`) and pass
+the selected folder in a list to `find_helpers(sources=...)`. This is a caller setting;
+ProjectBundle has no central-repository initializer and
+cannot enforce reuse by arbitrary scripts.
+
 For package helpers, `verify="identity"` is a qualified native version-metadata check;
 it does not load or install the package or prove function/source identity. Neither Git
 history nor a package pin switches the code currently loaded in a process. Do not rebuild
