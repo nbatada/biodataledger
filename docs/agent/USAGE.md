@@ -98,22 +98,62 @@ Preview the complete registry metadata and history alongside the selected payloa
 These instructions guide use of the registry. They do not restrict an unrestricted interpreter or require calls on every chat turn.
 
 
-## Reuse functions before implementing another one (0.21.1)
+## Reuse functions before implementing another one
 
-Before writing a function, use `find_helpers` and inspect suitable exact candidates
-with `get_helper`. Search only covers registered metadata and reports incomplete
-coverage. Prefer reuse -> a general extension -> a justified separate implementation.
-If extending, preserve earlier behavior with tests and register a new helper revision;
-do not silently fork, upgrade other projects, or redirect earlier analysis references.
-Check the selected source/package identity explicitly before ordinary native execution.
-Record exact `helper_refs` on retained analyses, separately from scientific inputs.
-A bug fix warrants review of recorded uses, not automatic reruns or historical edits.
-Missing functions, unsupported requirements and identity mismatches need an explicit
-resolution. Registered claims are not scientific approval or proof of execution.
-See [source and shared-package examples](../HELPERS.md).
+Prefer reuse -> a justified general extension -> a separate implementation for a
+specific gap. In an approved shared-library workflow, modules can live directly in
+`~/git/lib`, for example `nb_utils_general.R`/`.py`, `nb_utils_plotting.R`/`.py`,
+`nb_utils_scrnaseq.R`/`.py` and `nb_utils_bulkrnaseq.R`/`.py`. Shared functions follow
+`nb_utils_<domain>_<verb>_<object>`, such as `nb_utils_general_check_ids()` and
+`nb_utils_plotting_draw_dotplots()`. This is a user convention, not a required API prefix
+or evidence of validation. Keep project-specific paths and scientific choices in callers.
 
-For a deliberately selected other project, pass its root in `sources`, inspect the
-returned exact card, then call `register_helper_from(card)` on the working project.
-Use only the returned local helper ref on analyses and save explicitly. Discovery and
-adoption do not authorize edits to the source project, reruns, package updates or
-automatic upgrades; they retain a declared origin, not proof of execution.
+1. Reuse the current native handle and inspect actual loaded helper capabilities. Search
+   registered metadata with `find_helpers`; include only explicitly selected library roots
+   in `sources`. Keep one library-root registry, not a second catalogue or whole-disk scan.
+2. Read coverage/errors and inspect the full contract with `get_helper` on the source
+   handle. Review code, dependencies and scientific fit separately. Choose an exact source
+   reference deliberately; never take the first/newest candidate automatically.
+3. If no suitable local pin already exists, pass the intact selected card to the current
+   project's `register_helper_from`. It stages a local ref with exact declared origin.
+   Discovery/adoption does not authorize source-library edits or execution.
+4. Save the approved pending batch **before** checking newly retained files. Then require
+   `get_helper(local_ref, verify="snapshot")` to pass and load its returned retained path
+   into a separate native namespace. Stop on missing/drifted source; do not fall back to
+   mutable `~/git/lib` files. Snapshot copies preserve history; they are not editable forks.
+5. Call the reviewed function explicitly in the authorized analysis process. Keep its
+   local ref with the function used. Record `helper_refs` on the retained analysis and
+   use `register_result`/`register_figure` to link saved outputs to that analysis. These
+   records declare use; actual execution and scientific acceptance need separate evidence.
+6. Extend a shared helper only with authority to edit its repository, one writer and
+   focused old/new behavior checks. Register a new revision and adopt it deliberately.
+   Earlier pins/results remain unchanged; bug-fix impact and reruns need scientist review.
+
+For package helpers, `verify="identity"` is a qualified native version-metadata check;
+it does not load or install the package or prove function/source identity. Neither Git
+history nor a package pin switches the code currently loaded in a process. Do not rebuild
+undeclared dependencies from snapshots or replace a live namespace to make a check pass.
+See the [helper guide](../HELPERS.md) and runnable
+[Python](../../examples/shared_library_python.py) / [R](../../examples/shared_library_R.R)
+examples. The examples are disposable synthetic runs, not a transport for an existing
+scientific session.
+
+## Keep analysis skills aligned with the package
+
+A skill system should maintain one BioDataLedger adapter that refers to this guide and
+the [API reference](../API.md). Analysis, coding and plotting skills should route ledger
+operations through that adapter instead of copying API recipes. Domain skills retain
+scientific scope, live-kernel, execution permission and review/STOP rules; the package
+owns record identities and persistence. No skill installation is required to use it.
+
+For workflows that require BioDataLedger, missing required capabilities or an unconfigured
+ledger stop dependent work and route to authorized setup; a raw-path or legacy-client
+fallback must not silently bypass that requirement. Ordinary explanation needs no registry
+calls, and transient exploration needs no forced registration. Existing legacy projects
+retain their explicit authority and migration boundaries.
+
+When changing the package or adapter, inspect the actual loaded version/signatures and
+run the native shared-library examples in fresh synthetic workspaces. Record the tested
+capabilities and selected revision; do not claim that unrelated legacy integration was
+revalidated. Updating documentation does not update installed skills, libraries or live
+sessions automatically. Avoid changing an active scientific environment for this check.

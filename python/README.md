@@ -1,17 +1,25 @@
 # BioDataLedger — Python client
 
-A lightweight local scientific project registry for finding retained figures and inspecting their recorded data, code and parameters. The package runs without an AI service.
+A lightweight local registry for finding retained results, tracing their recorded inputs and code, and reusing exact helper versions across projects. The package runs without an AI service.
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## Local 0.19.0 build
+## Local 0.21.1 source build
 
-The local 0.19.0 build adds continuous sample-to-analysis metadata: six categories,
-managed table snapshots, checked key relationships, pinned bindings and structural
-readiness reports. It is not yet in the published 0.18.0 main source. Use the reviewed
-local source/build for these methods; existing projects remain unchanged until adoption.
+This unpublished local source includes continuous metadata and explicit bounded helper
+discovery/adoption. Published `main` or tags may differ; check the installed version and
+available methods before using the shared-helper workflow.
 
-## Install published source version 0.18.0
+## Shared-library workflow
+
+Keep optional modules such as `nb_utils_general.py` directly in a selected library
+root such as `~/git/lib`. Register helper cards there; an analysis project explicitly
+finds, inspects and adopts an exact version. Save, verify its retained snapshot, then
+load that copy and record its local helper reference on retained analyses. Later
+library changes do not redirect those references. See the repository's `docs/HELPERS.md`
+and runnable `examples/shared_library_python.py`; they use the existing native API.
+
+## Install a reviewed source revision
 
 Requires Python 3.9 or newer. The package has no Python runtime dependencies.
 
@@ -24,8 +32,9 @@ Use an isolated Python environment as needed. For an immutable installation,
 resolve `main` and replace it with the full commit SHA. For an existing project or live
 session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/main/docs/UPDATING.md).
 
-The current source is 0.18.0 on `main`. The latest tagged release remains v0.17.0;
-no v0.18.0 tag or PyPI release is provided. Pin the source commit for reuse.
+The GitHub commands select `main`, which may differ from this local 0.21.1 checkout.
+Check loaded capabilities before using helper adoption; no installation upgrades an
+already imported Python module. Pin the source commit for reuse.
 
 Use `print(p)` to see up to four oldest-first analysis
 input/output chains, the project folder, current input choices, and the latest

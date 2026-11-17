@@ -1,12 +1,15 @@
 # BioDataLedger
 
-**Trace retained results across agent sessions and colleague handoffs.**
+**Find retained results, trace their sources, and reuse helper versions across projects.**
 
-BioDataLedger helps you find retained figures and data and trace them to the
-exact inputs, code and parameters you recorded. It works in R and Python with
-your existing files, so you can recover those links when you reopen a project
-or hand it to a colleague. Keep using your existing scripts, notebooks, Git
-repository and native data files; no AI service is required.
+BioDataLedger connects saved data, analyses and figures to the exact inputs, code
+and parameters you recorded. Projects can also find helpers in explicitly selected
+library registries and retain the versions they use. Later library edits do not
+redirect earlier analysis references.
+
+It works in R and Python with your existing files, scripts, notebooks and Git
+repositories, so those links remain available when you reopen a project or hand
+it to a colleague. No AI service is required.
 
 ![Without BioDataLedger, the source of a saved CD8 figure is unclear. With BioDataLedger, an exact figure lookup retrieves its recorded input, analysis code and parameters.](docs/assets/biodataledger-provenance-gemini-v1.jpg)
 
@@ -14,11 +17,10 @@ The example illustrates records you supply; the package does not choose or verif
 
 [Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
-**New in local 0.19.0:** [continuous sample-to-analysis metadata](docs/METADATA.md)
-starts with the authoritative sample sheet before data generation, then links
-acquisition, QC, analysis, annotation and result metadata. It preserves table
-snapshots and exact historical bindings. This addition is not yet in GitHub main;
-use the reviewed local 0.19.0 build and keep existing live sessions intact.
+**Local source 0.21.1** includes [continuous sample metadata](docs/METADATA.md)
+and [cross-project helper discovery and adoption](docs/HELPERS.md). Installed
+clients and GitHub revisions may differ; check the loaded version and required
+methods before using a workflow. Keep existing live sessions intact.
 
 ## What it adds to an agent-assisted workflow
 
@@ -35,7 +37,7 @@ without relying on the previous conversation or inferring provenance from names.
 | Similar filenames hide which input was selected | Exact DATA revisions and current-for-purpose selections; explicit hash/scope checks detect mismatches against recorded requirements | [Resolve inputs](docs/API.md#resolve_data), [retain loaded inputs](docs/RETAINED_INPUTS.md) |
 | A figure has lost its connection to data and code | Retain analysis inputs, code snapshots, parameters and figure/result links | [Record provenance](#record-data-analyses-and-figures), [retrieve exact records](docs/API.md#retrieve-exact-records-and-code) |
 | Previous work is repeated because its relationships are unclear | Find related retained work and follow bounded upstream/downstream dependency links | [Related work](docs/API.md#related_work), [graphs](docs/API.md#graphs-and-chronology) |
-| A routine helper is reimplemented for each table | Register a source-module or package helper, search bounded metadata, and retain declared exact helper use | [Reusable helpers](docs/HELPERS.md) |
+| A useful helper is rewritten in every project, or a shared edit obscures the version used | Search explicitly selected library registries, adopt an exact helper version, and retain source snapshots and analysis links | [Shared helpers](docs/HELPERS.md) |
 | Design choices and scientific decisions get lost in chat | Version experimental design and record decisions, ordered protocols and comparison evidence | [Design](docs/API.md#experimental-design), [decisions and protocols](docs/API.md#decisions-protocols-execution-and-comparisons) |
 | Registration order is confused with execution | Inspect analysis input/output chains and qualified execution history; optionally capture a native call's boundary checks | [Timeline](docs/API.md#timeline), [execution receipts](docs/API.md#run_analysis) |
 | Independent agents overwrite each other's saved metadata | Explicit batch saves and stale-writer rejection preserve pending edits for deliberate reconciliation | [Save and confirm](docs/API.md#save_and_confirm) |
@@ -65,22 +67,51 @@ For a new analysis or redraw that must keep its loaded native object paired with
 the exact resolved input reference, see [Retained inputs](docs/RETAINED_INPUTS.md).
 It is a project-helper pattern, not a migration instruction for existing helpers.
 
+## Reuse a shared library without changing earlier analysis references
+
+A user-managed library can keep files directly in `~/git/lib`, for example
+`nb_utils_general.R`, `nb_utils_general.py`, `nb_utils_plotting.R` and
+`nb_utils_plotting.py`. Functions use a convention such as
+`nb_utils_general_check_ids()` or `nb_utils_plotting_draw_dotplots()`.
+These names and this location are conventions, not package requirements.
+
+The library ledger describes reusable functions. Each analysis project deliberately
+adopts the exact helper it needs and retains its own source snapshot and origin.
+Save that adoption, verify the retained snapshot, then explicitly load and call it.
+A new library revision is adopted separately; earlier analyses keep their old pins.
+The [helper guide](docs/HELPERS.md) explains naming, source inspection and limitations.
+
+Run the complete synthetic examples from this checkout with compatible installed
+clients (0.21.1 is tested):
+
+```sh
+python3 examples/shared_library_python.py
+Rscript --vanilla examples/shared_library_R.R
+```
+
+Both use temporary demonstration workspaces by default, not your actual `~/git/lib`.
+To inspect saved results after the process exits, add `--destination NEW_DEMO_FOLDER`;
+the scripts refuse an existing destination. Each executes a retained helper, records
+its result, adopts a backward-compatible strict extension, and checks that the earlier
+analysis, source and output remain unchanged. See the [Python example](examples/shared_library_python.py)
+and [R example](examples/shared_library_R.R). Loading a helper is explicit caller execution,
+not something discovery or adoption performs automatically.
+
 ## Install
 
-**Source version 0.18.0 on `main`** · MIT license · Tested on **macOS**.
-Install Python, R, or both. This source update includes the analysis timeline,
-optional plotting and renderer guard, browser snapshot, and managed R session helper.
-The latest tagged release remains **v0.17.0**; no v0.18.0 tag or package-registry
-release is provided. See the [changelog](CHANGELOG.md) and [API reference](docs/API.md).
+**Source checkout documented here: 0.21.1** · MIT license · Tested on **macOS**.
+Install Python, R, or both. The GitHub commands below select `main`, which may differ
+from this checkout. Use a reviewed compatible revision for the shared-library examples.
+See the [changelog](CHANGELOG.md) and [API reference](docs/API.md).
 
-The commands below install `main`. For an immutable installation, resolve `main`
-to its full Git commit and use that SHA in place of `main`. Record the commit
-alongside the package version when sharing an analysis.
+For an immutable installation, replace `main` with the full Git commit you selected.
+Record that commit alongside the package version when sharing an analysis; installing
+or recording a revision does not update an already loaded R/Python session.
 
 Already using BioDataLedger? Follow the [safe upgrade guide and copy-paste agent
 prompt](docs/UPDATING.md) before changing a live R or Python session.
 
-**R — install the current source from GitHub**
+**R — install selected source from GitHub**
 
 Run this in a suitable R environment to install the current source:
 
@@ -98,7 +129,7 @@ remotes::install_github(
 
 Then load it with `library(BioDataLedger)`.
 
-**Python — install the current source from GitHub**
+**Python — install selected source from GitHub**
 
 ```sh
 python3 -m pip install "git+https://github.com/nbatada/biodataledger.git@main#subdirectory=python"
@@ -477,7 +508,7 @@ Older projects remain readable. Saving experimental design requires clients ≥0
 
 ## Tests
 
-From the **0.19.0 local checkout**, install both clients and the optional
+From the **0.21.1 local checkout**, install both clients and the optional
 plotting dependencies required by the full test suite. Core use does not require
 them; the suite also tests core imports with Python plotting dependencies blocked.
 
@@ -486,7 +517,7 @@ them; the suite also tests core imports with Python plotting dependencies blocke
 Rscript -e 'install.packages(c("ggplot2", "patchwork", "SeuratObject"), repos="https://cloud.r-project.org")'
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.19.0.tar.gz
+R CMD check --no-manual BioDataLedger_0.21.1.tar.gz
 ```
 
 ## Confirm a saved change
