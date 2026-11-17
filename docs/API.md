@@ -14,7 +14,7 @@ to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger **0.21.0 source version** API for Python (`biodataledger`) and R
+BioDataLedger **0.21.1 source version** API for Python (`biodataledger`) and R
 (`BioDataLedger`) in this local, unpublished source build. Pin a reviewed commit when installing; no
 `v0.18.0` tag is provided. The latest tagged release
 remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
@@ -50,7 +50,7 @@ not filter cells or certify interpretations. New descriptors use the existing
 schema0.4.0 with a fail-closed optional project marker. Legacy projects stay unchanged
 until explicit metadata registration. Save staged changes at meaningful checkpoints.
 
-## Reusable helpers (0.21.0)
+## Reusable helpers (0.21.1)
 
 `register_helper(name, language, purpose, contract, source=... OR package=...,
 version=..., function=..., tags=..., ref=...)` registers an inert implementation

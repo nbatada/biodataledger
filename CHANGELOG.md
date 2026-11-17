@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.1 — local development
+
+- Bound cross-project registry and retained-source captures to their declared limits,
+  including growth races, while preserving source token and snapshot checks.
+- Reuse one Python source facade per adoption and validated R state indexes.
+
 ## 0.21.0 — local development
 
 - Add bounded, explicitly selected cross-project helper discovery and deliberate exact local adoption.

@@ -76,6 +76,14 @@
   bytes <- readBin(path, "raw", n = .metadata_limit + 1L)
   .parse_json_bytes(bytes)
 }
+.read_bounded <- function(path, limit, message) {
+  before <- file.info(path)
+  if (is.na(before$size) || before$size > limit) .fail(message)
+  bytes <- readBin(path, "raw", n = min(before$size + 1L, limit + 1L))
+  after <- file.info(path)
+  if (length(bytes) != before$size || !identical(before$size, after$size) || !identical(before$mtime, after$mtime) || !identical(before$ctime, after$ctime)) .fail(message)
+  bytes
+}
 .reject_duplicate_keys <- function(value) {
   if (!is.list(value)) return(invisible(NULL))
   # simplifyVector=FALSE retains decoded object names, including duplicates.
@@ -1557,8 +1565,7 @@ ProjectBundle <- local({
             seen <- c(seen,candidate_root)
             path <- file.path(candidate_root,".nb_project_bundle","project.json")
             if (!file.exists(path) || nzchar(Sys.readlink(path)) || normalizePath(dirname(path),mustWork=TRUE) != file.path(candidate_root,".nb_project_bundle")) .fail("foreign project registry missing or unsafe")
-            if (file.info(path)$size > .metadata_limit) .fail("Metadata size limit exceeded")
-            raw_registry <- readBin(path,"raw",n=file.info(path)$size); foreign_state <- .validate(.parse_json_bytes(raw_registry)); sha <- .hash_raw(raw_registry)
+            raw_registry <- .read_bounded(path,.metadata_limit,"Metadata size limit exceeded or changed during capture"); foreign_state <- .validate(.parse_json_bytes(raw_registry)); sha <- .hash_raw(raw_registry)
             identity <- .obj(id=foreign_state$project$id,name=foreign_state$project$name,location=candidate_root,current=FALSE,unsaved=FALSE)
             token <- .obj(revision=foreign_state$state_revision,sha256=sha,imported=foreign_state$imported)
             if (identity$id %in% conflicts || (!is.null(identities[[identity$id]]) && !identical(identities[[identity$id]],sha))) {
@@ -1568,7 +1575,6 @@ ProjectBundle <- local({
               .obj(source_project=identity,snapshot=token,status="conflicting_project_id",coverage=.obj(incomplete=TRUE))
             } else {
               identities[[identity$id]] <- sha
-              foreign_state <- .index_state(foreign_state)
               foreign_candidates <- Filter(function(rec) rec$kind == "decision" && rec$revision == foreign_state$records[[get(rec$id, attr(foreign_state,"record_index")$latest)]]$revision, foreign_state$records)
               foreign_candidates <- foreign_candidates[order(vapply(foreign_candidates, `[[`, "", "id"))]
               foreign_cards <- list(); foreign_inspected <- foreign_helpers <- foreign_matched <- foreign_invalid <- 0L
@@ -1617,10 +1623,9 @@ ProjectBundle <- local({
       if (!.is_obj(candidate) || !all(c("ref","source_project","snapshot") %in% names(candidate)) || !isFALSE(candidate$source_project$current) || !is.character(candidate$source_project$location) || length(candidate$source_project$location)!=1L) .fail("Foreign helper candidate required")
       source_root <- normalizePath(candidate$source_project$location,mustWork=TRUE); path <- file.path(source_root,".nb_project_bundle","project.json")
       if (!file.exists(path) || nzchar(Sys.readlink(path)) || normalizePath(dirname(path),mustWork=TRUE) != file.path(source_root,".nb_project_bundle")) .fail("foreign project registry missing or unsafe")
-      if (file.info(path)$size > .metadata_limit) .fail("Metadata size limit exceeded")
-      raw_registry <- readBin(path,"raw",n=file.info(path)$size); foreign_state <- .validate(.parse_json_bytes(raw_registry)); sha <- .hash_raw(raw_registry); token <- candidate$snapshot; ref <- candidate$ref
+      raw_registry <- .read_bounded(path,.metadata_limit,"Metadata size limit exceeded or changed during capture"); foreign_state <- .validate(.parse_json_bytes(raw_registry)); sha <- .hash_raw(raw_registry); token <- candidate$snapshot; ref <- candidate$ref
       if (!.is_obj(token) || !is.character(candidate$source_project$id) || length(candidate$source_project$id)!=1L || !identical(candidate$source_project$id,foreign_state$project$id) || !identical(token$sha256,sha) || !identical(token$revision,foreign_state$state_revision) || !identical(token$imported,foreign_state$imported) || !identical(ref$project_id,foreign_state$project$id)) .fail("Source registry changed; refresh candidate")
-      foreign <- .lookup_record(.index_state(foreign_state),ref); if (is.null(foreign)) .fail("Selected helper revision missing")
+      foreign <- .lookup_record(foreign_state,ref); if (is.null(foreign)) .fail("Selected helper revision missing")
       parsed <- .helper_for_record(foreign_state,foreign); if (is.null(parsed$helper) || !identical(foreign$status,"active")) .fail("Selected helper unavailable")
       origin <- .obj(kind="helper_origin",version=.helper_origin_version,relationship="derived_from",ref=.copy(ref),source_registry=.copy(token),provenance=if (foreign_state$imported || any(vapply(foreign$foreign_refs,function(x) .is_obj(x) && identical(x$provenance,"untrusted_imported_claim"),logical(1)))) "untrusted_imported_claim" else "declared")
       .validate_helper_origin(origin)
@@ -1634,12 +1639,12 @@ ProjectBundle <- local({
       captured <- list(); code <- list(); captured_hashes <- character()
       if (identical(parsed$helper$location$kind,"source")) for (entry in foreign$code) {
         if (is.null(entry$snapshot)) .fail("Foreign source helper lacks retained snapshot")
-        file <- .resolve(source_root,foreign_state,.obj(kind="project",value=entry$snapshot)); if (is.null(file) || !file.exists(file) || dir.exists(file) || file.info(file)$size>1048576) .fail("Foreign helper snapshot missing or oversized")
-        before <- file.info(file); bytes <- readBin(file,"raw",n=before$size); after <- file.info(file); if (!identical(before$size,after$size) || !identical(before$mtime,after$mtime) || .hash_raw(bytes)!=entry$sha256) .fail("Foreign helper snapshot changed during capture")
+        file <- .resolve(source_root,foreign_state,.obj(kind="project",value=entry$snapshot)); if (is.null(file) || !file.exists(file) || dir.exists(file)) .fail("Foreign helper snapshot missing or unsafe")
+        bytes <- .read_bounded(file,1048576L,"Foreign helper snapshot oversized or changed during capture"); if (.hash_raw(bytes)!=entry$sha256) .fail("Foreign helper snapshot drift")
         dest <- paste0(".nb_project_bundle/code/",entry$sha256); captured[[dest]] <- bytes
         if (!entry$sha256 %in% captured_hashes) { code[[length(code)+1L]] <- .obj(locator=.obj(kind="project",value=dest),sha256=entry$sha256,snapshot=dest); captured_hashes <- c(captured_hashes,entry$sha256) }
       }
-      final_raw <- readBin(path,"raw",n=file.info(path)$size); final_state <- .validate(.parse_json_bytes(final_raw)); if (!identical(.hash_raw(final_raw),sha) || !identical(final_state$project$id,ref$project_id) || !identical(final_state$state_revision,token$revision)) .fail("Source registry changed during adoption")
+      final_raw <- .read_bounded(path,.metadata_limit,"Source registry exceeds limit or changed during adoption"); final_state <- .validate(.parse_json_bytes(final_raw)); if (!identical(.hash_raw(final_raw),sha) || !identical(final_state$project$id,ref$project_id) || !identical(final_state$state_revision,token$revision)) .fail("Source registry changed during adoption")
       rec <- .new_record(state,"decision",foreign$name,code=.arr(code),details=.obj(reason="deliberately adopted exact foreign helper",targets=list(),approval="not_authenticated",bl_helper=.copy(parsed$helper)),foreign_refs=list(origin))
       append_record(rec,"register_helper_from",captured)
     }

@@ -1,6 +1,6 @@
 # Find and reuse functions
 
-Available in the local 0.21.0 source build. A helper is a registered reusable function,
+Available in the local 0.21.1 source build. A helper is a registered reusable function,
 not an analysis result or proof of approval. Source modules and shared packages use
 the same catalogue in the current project. BioDataLedger never searches other projects
 unless their roots are supplied explicitly, imports a function, installs a package or

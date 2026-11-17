@@ -1,6 +1,10 @@
 library(BioDataLedger)
 main <- function() {
 fail <- function(expr) stopifnot(inherits(try(force(expr), silent=TRUE), "try-error"))
+bounded <- getFromNamespace(".read_bounded", "BioDataLedger")
+bound_file <- tempfile("bounded-", tmpdir=getwd()); writeBin(as.raw(rep(1L, 17L)), bound_file)
+stopifnot(identical(bounded(bound_file, 32L, "bounded"), as.raw(rep(1L, 17L))))
+fail(bounded(bound_file, 16L, "bounded")); unlink(bound_file)
 root <- tempfile("cross-helper-", tmpdir=getwd()); dir.create(root, recursive=TRUE); on.exit(unlink(root,recursive=TRUE),add=TRUE)
 a_root <- file.path(root,"a"); b_root <- file.path(root,"b"); dir.create(a_root); dir.create(b_root)
 writeLines("required_columns <- function(x, required) setdiff(required,names(x))",file.path(a_root,"helper.R"))

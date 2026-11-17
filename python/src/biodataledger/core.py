@@ -67,6 +67,17 @@ def digest_bytes(value):
     return hashlib.sha256(value).hexdigest()
 
 
+def read_bounded(path, limit, message):
+    """Read no more than limit+1 bytes and reject a concurrent file change."""
+    path = Path(path); before = path.stat()
+    require(before.st_size <= limit, message)
+    with path.open("rb") as stream:
+        raw = stream.read(min(before.st_size + 1, limit + 1))
+    after = path.stat()
+    require(len(raw) == before.st_size and (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns), message)
+    return raw
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -1425,8 +1436,7 @@ class ProjectBundle:
         root = Path(source).expanduser().resolve()
         path = root / STATE_PATH
         require(path.is_file() and not path.is_symlink() and path.parent.resolve() == root / ".nb_project_bundle", "foreign project registry missing or unsafe")
-        require(path.stat().st_size <= MAX_JSON, "foreign registry exceeds 20 MiB limit")
-        raw = path.read_bytes()
+        raw = read_bounded(path, MAX_JSON, "foreign registry exceeds 20 MiB limit or changed during capture")
         return root, validate_state(parse_json(raw)), digest_bytes(raw)
 
     def find_helpers(self, query, language=None, limit=5, sources=None):
@@ -1523,13 +1533,13 @@ class ProjectBundle:
                 raise BundleError("conflicting local helper pin for this foreign origin")
         captured = {}; code = []; seen_digests = set()
         if descriptor["location"]["kind"] == "source":
+            facade = ProjectBundle(root, state, sha)
             for entry in foreign["code"]:
                 require(entry["snapshot"], "foreign source helper lacks retained snapshot")
-                facade = ProjectBundle(root, state, sha)
                 path = facade._resolve({"kind": "project", "value": entry["snapshot"]})
-                require(path is not None and path.is_file() and path.stat().st_size <= 1024 * 1024, "foreign helper snapshot missing or oversized")
-                before_stat = path.stat(); raw = path.read_bytes(); after_stat = path.stat()
-                require((before_stat.st_dev, before_stat.st_ino, before_stat.st_size, before_stat.st_mtime_ns, before_stat.st_ctime_ns) == (after_stat.st_dev, after_stat.st_ino, after_stat.st_size, after_stat.st_mtime_ns, after_stat.st_ctime_ns) and digest_bytes(raw) == entry["sha256"], "foreign helper snapshot drift")
+                require(path is not None and path.is_file(), "foreign helper snapshot missing or unsafe")
+                raw = read_bounded(path, 1024 * 1024, "foreign helper snapshot oversized or changed during capture")
+                require(digest_bytes(raw) == entry["sha256"], "foreign helper snapshot drift")
                 dest = ".nb_project_bundle/code/" + entry["sha256"]
                 captured[dest] = raw
                 if entry["sha256"] not in seen_digests:

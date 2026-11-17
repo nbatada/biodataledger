@@ -98,7 +98,7 @@ Preview the complete registry metadata and history alongside the selected payloa
 These instructions guide use of the registry. They do not restrict an unrestricted interpreter or require calls on every chat turn.
 
 
-## Reuse functions before implementing another one (0.21.0)
+## Reuse functions before implementing another one (0.21.1)
 
 Before writing a function, use `find_helpers` and inspect suitable exact candidates
 with `get_helper`. Search only covers registered metadata and reports incomplete
