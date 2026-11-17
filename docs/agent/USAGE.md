@@ -4,6 +4,9 @@ Use the [current BioDataLedger API reference](../API.md) for Python and R signat
 
 ## Open and choose the input
 
+Use a compatible installed client; bounded figure-search pages require 0.21.2 or
+newer. R writing is supported on macOS only; do not bypass platform guards.
+
 - Open the explicit project root once per process. Read compact status once for the loaded package version, registry revision and unsaved state, then group the lookups the task needs. `print(p)` gives a project overview from loaded metadata. If the registry is absent, obtain authorization before creating it.
 - Use the exact DATA ref or scientist-selected purpose. Discovery results may be partial, and a role may be ambiguous. Keep the chosen exact ref and ask for the missing selection when needed. An unchecked availability field means unknown.
 - Before loading the selected input, use [strict resolution](../API.md#resolve_data) with `verify="sha256"`. Report missing baselines, mismatches, or unmet scope requirements. Keep the original input selector and return mapping when updating an older helper. See [updating a project](../UPDATING.md).
@@ -58,6 +61,17 @@ same owner process. `bdl_session_attach()` is not an interprocess connection or
 a package-provided R server, kernel manager, or command bridge. When that route
 is unavailable, use a bounded whole-analysis Rscript batch, not one Rscript per
 prompt.
+
+## Keep figure discovery small
+
+Use `p.find_figures(query="QC", limit=5)` in Python or
+`p$find_figures(query="QC", limit=5L)` in R to search figure and linked analysis
+text without dumping every match. Inspect `matched`, `omitted` and `truncated`;
+continue with `next_offset` on unchanged state. Read the selected exact `ref` with
+`get_figure`. The page is capped at 4096 UTF-8 bytes; omission never means absence.
+The legacy call without `limit` still returns every full matching figure view.
+`find_outputs` searches presentation metadata and is not a substitute for this
+search when outputs have not been tagged.
 
 ## Retain work and confirm the save
 

@@ -453,7 +453,7 @@
       if (!.is_obj(entry) || !setequal(names(entry), c("locator", "sha256", "snapshot"))) .fail("Invalid code entry")
       .validate_locator(entry$locator)
       if (!is.null(entry$sha256) && !.is_sha(entry$sha256)) .fail("Invalid code digest")
-      if (!is.null(entry$snapshot) && !.safe_rel(entry$snapshot)) .fail("Invalid code snapshot")
+      if (!is.null(entry$snapshot) && (is.null(entry$sha256) || !.is_sha(entry$sha256) || !identical(entry$snapshot, paste0(".nb_project_bundle/code/", entry$sha256)))) .fail("Invalid code snapshot")
     }
     if (!is.null(r$locator)) .validate_locator(r$locator)
     if (!is.null(r$inputs)) for (x in r$inputs) if (.record_kind(state, x) != "data") .fail("Input must reference data")
@@ -679,6 +679,8 @@ ProjectBundle <- local({
       }
       if (rec$kind == "figure" && .sources_known(rec$details[[.figure_sources_key]])) .sources_normalize(state, rec$details[[.figure_sources_key]])
       if (context_check && rec$kind %in% c("analysis", "figure") && identical(context_report(rec)$status, "inconsistent")) .fail(paste0("SCOPE_CONFLICT: ", paste(unlist(context_report(rec)$issues), collapse = "; ")))
+      # Force capture before mutation: R arguments are otherwise evaluated lazily.
+      force(code_bytes)
       state$schema_version <<- proposed$schema_version
       state$records[[length(state$records) + 1L]] <<- rec
       state <<- .index_add(state, rec)
@@ -705,8 +707,8 @@ ProjectBundle <- local({
           next
         }
         source <- .resolve(root, state, entry$locator)
-        if (is.null(source) || !file.exists(source) || dir.exists(source) || file.info(source)$size > 1048576) .fail("Code snapshot source missing or oversized")
-        bytes <- readBin(source, "raw", n = file.info(source)$size)
+        if (is.null(source) || !file.exists(source) || dir.exists(source)) .fail("Code snapshot source missing or oversized")
+        bytes <- .read_bounded(source, 1048576L, "Code snapshot source missing, oversized, or changed during capture")
         if (.hash_raw(bytes) != entry$sha256) .fail("Code changed during registration")
         captured[[dest]] <- bytes
       }
@@ -1320,7 +1322,10 @@ ProjectBundle <- local({
       state <<- .index_state(proposed); event("set_design", reason = selection_reason, target = proposed$project$design)
       invisible(.copy(proposed$project$design))
     }
-    find_figures <- function(query = NULL, type = NULL) {
+    find_figures <- function(query = NULL, type = NULL, limit = NULL, offset = 0L) {
+      if (!is.null(limit) && (!.is_int(limit, TRUE) || limit > 20L)) .fail("limit must be an integer from 1 to 20")
+      if (!.is_int(offset) || offset < 0L) .fail("offset must be a nonnegative integer")
+      if (is.null(limit) && offset != 0L) .fail("offset requires limit")
       index <- attr(state, "record_index")$latest
       ids <- sort(ls(index, pattern = "^FIG-"), method = "radix")
       latest <- setNames(lapply(ids, function(id) state$records[[get(id, index, inherits = FALSE)]]), ids)
@@ -1337,7 +1342,29 @@ ProjectBundle <- local({
           all(vapply(tokens, function(t) grepl(t, hay, fixed = TRUE), logical(1)))
         }, latest)
       }
-      lapply(latest, function(r) get_figure(.make_ref(state, r)))
+      if (is.null(limit)) return(lapply(latest, function(r) get_figure(.make_ref(state, r))))
+      clipped <- function(value, bytes) .related_clip(value, bytes)
+      items <- list(); position <- offset; text_clipped <- FALSE
+      while (position < length(latest) && length(items) < limit) {
+        rec <- latest[[position + 1L]]; name <- clipped(rec$name, 128L); figure_type <- clipped(rec$type, 64L)
+        item <- .obj(ref = .make_ref(state, rec), name = name$value, type = figure_type$value, analysis_ref = .copy(rec$analysis))
+        trial <- .obj(items = .arr(c(items, list(item))), matched = length(latest), returned = length(items) + 1L,
+                      offset = offset, next_offset = if (position + 1L < length(latest)) position + 1L else NULL,
+                      omitted = length(latest) - length(items) - 1L, truncated = FALSE)
+        if (nchar(.json(trial), type = "bytes") > 4096L) {
+          text_clipped <- TRUE
+          if (length(items)) break
+          position <- position + 1L
+          next
+        }
+        items[[length(items) + 1L]] <- item; text_clipped <- text_clipped || name$clipped || figure_type$clipped
+        position <- position + 1L
+      }
+      report <- .obj(items = .arr(items), matched = length(latest), returned = length(items), offset = offset,
+                     next_offset = if (position < length(latest)) position else NULL,
+                     omitted = length(latest) - length(items), truncated = text_clipped || length(latest) > length(items))
+      if (nchar(.json(report), type = "bytes") > 4096L) .fail("compact figure report exceeds byte limit")
+      report
     }
     save <- function() {
       if (!dirty) return(.obj(state_revision = state$state_revision, transaction = state$last_transaction))
@@ -1466,7 +1493,8 @@ ProjectBundle <- local({
         if (rec$kind!="figure") .fail("figure_sources requires a figure")
         if (is.null(changes$figure_sources)) new$details[[.figure_sources_key]] <- NULL else new$details[[.figure_sources_key]] <- .sources_normalize(state,changes$figure_sources)
       }
-      out <- append_record(new, "update_record", context_check = any(c("inputs", "design_ref", "input_mode", "analysis") %in% names(changes)), version = if (any(c("design_ref", "input_mode", "analysis") %in% names(changes))) "0.4.0" else NULL); state$history[[length(state$history)]]$reason <<- reason; out
+      code_bytes <- if ("code" %in% names(changes)) capture_code(new) else list()
+      out <- append_record(new, "update_record", code_bytes = code_bytes, context_check = any(c("inputs", "design_ref", "input_mode", "analysis") %in% names(changes)), version = if (any(c("design_ref", "input_mode", "analysis") %in% names(changes))) "0.4.0" else NULL); state$history[[length(state$history)]]$reason <<- reason; out
     }
     record_decision <- function(text, reason, targets = list()) {
       if (!nzchar(text) || !nzchar(reason)) .fail("Decision text and reason required")

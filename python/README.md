@@ -1,13 +1,13 @@
 # BioDataLedger — Python client
 
-A lightweight local registry for finding retained results, tracing their recorded inputs and code, and reusing exact helper versions across projects. The package runs without an AI service.
+Durable project memory for analysis agents: find retained results, inspect their recorded inputs and code versions, and reuse exact helper versions across projects after the chat ends. The package runs without an AI service.
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## 0.21.1 source build
+## 0.21.2 source build
 
-This source includes continuous metadata and explicit bounded helper
-discovery/adoption. Published `main` or tags may differ; check the installed version and
+This source includes bounded figure-search pages, retained-source corrections,
+continuous metadata and explicit bounded helper discovery/adoption. Published `main` or tags may differ; check the installed version and
 available methods before using the shared-helper workflow.
 
 ## Shared-library workflow
@@ -34,7 +34,7 @@ Use an isolated Python environment as needed. For an immutable installation,
 resolve `main` and replace it with the full commit SHA. For an existing project or live
 session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/main/docs/UPDATING.md).
 
-The GitHub commands select `main`, which may differ from this local 0.21.1 checkout.
+The GitHub commands select `main`, which may differ from this local 0.21.2 checkout.
 Check loaded capabilities before using helper adoption; no installation upgrades an
 already imported Python module. Pin the source commit for reuse.
 
@@ -42,7 +42,9 @@ Use `print(p)` to see up to four oldest-first analysis
 input/output chains, the project folder, current input choices, and the latest
 figure's file and folder paths. Call `p.help()` for common commands or
 `p.recent_figures()` for more figure paths. These views use loaded metadata and
-leave file availability unchecked. Use `p.status()` for structured technical
+leave file availability unchecked. Use `p.find_figures(query="QC", limit=5)` for
+a compact 4 KiB figure-search page and `next_offset` for continuation on unchanged
+state. Use `p.status()` for structured technical
 metadata or `p.summary_text()` for the technical card. The
 [current API reference](https://github.com/nbatada/biodataledger/blob/main/docs/API.md)
 lists the supported features and their limits.
@@ -69,7 +71,8 @@ guides. MIT license; copyright 2026 Nizar Batada.
 File capture and matching hashes do not prove execution, scientific validity or
 reproduction. Ordinary registration does not execute an analysis; optional
 `run_analysis` receipts record invocation while input consumption remains unknown.
-Metadata is not automatically anonymized. Local macOS writes are tested;
-other-platform and network-volume guarantees are not established. The R
+Metadata is not automatically anonymized. Local macOS writes are tested. R registry creation, changed saves and imports
+require macOS, Python rejects Windows saves, and Linux/network-volume writes
+are unqualified. The R
 maintainer-contact placeholder remains unresolved; no PyPI or CRAN release has
 been published.

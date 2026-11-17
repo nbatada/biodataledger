@@ -208,6 +208,7 @@ def validate_record(rec, version):
         validate_locator(code["locator"])
         require(code["sha256"] is None or bool(re.fullmatch(r"[0-9a-f]{64}", str(code["sha256"]))), "invalid code digest")
         if code["snapshot"] is not None:
+            require(isinstance(code["sha256"], str) and bool(re.fullmatch(r"[0-9a-f]{64}", code["sha256"])), "snapshot requires code digest")
             require(code["snapshot"] == ".nb_project_bundle/code/" + str(code["sha256"]), "invalid snapshot path")
     require(version != VERSION or "design" not in rec and rec["kind"] != "design", "design requires schema 0.2.0")
     require("scope" not in rec or version in (SCOPE_VERSION, CONTEXT_VERSION) and rec["kind"] == "data", "scope requires schema 0.3.0 DATA")
@@ -449,8 +450,7 @@ class ProjectBundle:
         path = root / STATE_PATH
         require(path.is_file() and not path.is_symlink(), "project registry missing or symlinked")
         require(path.parent.resolve() == root / ".nb_project_bundle", "registry escapes root")
-        require(path.stat().st_size <= MAX_JSON, "state exceeds 20 MiB")
-        raw = path.read_bytes()
+        raw = read_bounded(path, MAX_JSON, "state exceeds 20 MiB or changed while opening")
         return cls(root, validate_state(parse_json(raw)), digest_bytes(raw))
 
     @property
@@ -677,7 +677,7 @@ class ProjectBundle:
             if dest and dest not in self._snapshots and not self._internal(dest).exists():
                 source = self._resolve(code["locator"])
                 require(source is not None and source.is_file() and source.stat().st_size <= 1024 * 1024, "code snapshot source missing or oversized")
-                raw = source.read_bytes()
+                raw = read_bounded(source, 1024 * 1024, "code snapshot source missing, oversized, or changed during capture")
                 require(digest_bytes(raw) == code["sha256"], "code changed during capture")
                 snapshots[dest] = raw
         rec = copy.deepcopy(rec)
@@ -705,7 +705,7 @@ class ProjectBundle:
             digest = fingerprint(path)
             relative = ".nb_project_bundle/code/" + digest if snapshot else None
             if snapshot:
-                raw = path.read_bytes()
+                raw = read_bounded(path, 1024 * 1024, "code changed during capture")
                 require(digest_bytes(raw) == digest, "code changed during capture")
             entries.append({"locator": loc, "sha256": digest, "snapshot": relative})
         return entries
@@ -1212,9 +1212,12 @@ class ProjectBundle:
         return {"content": bytes(content), "sha256": selector["sha256"], "code_ref": copy.deepcopy(selector),
                 "snapshot": snapshot, "integrity": "match", "execution": "unknown", "execution_evidence": "not_captured"}
 
-    def find_figures(self, query=None, type=None):
+    def find_figures(self, query=None, type=None, limit=None, offset=0):
+        require(limit is None or isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 20, "limit must be an integer from 1 to 20")
+        require(isinstance(offset, int) and not isinstance(offset, bool) and offset >= 0, "offset must be a nonnegative integer")
+        require(limit is not None or offset == 0, "offset requires limit")
         tokens = (query or "").casefold().split()
-        result = []
+        matches = []
         for rec in self._latest("figure"):
             if rec["status"] != "active" or type is not None and rec["type"] != type:
                 continue
@@ -1229,8 +1232,37 @@ class ProjectBundle:
                 haystack = " ".join(value for value in fields if isinstance(value, str)).casefold()
                 if not all(t in haystack for t in tokens):
                     continue
-            result.append(self.get_figure(self._ref(rec)))
-        return result
+            matches.append(rec)
+        if limit is None:
+            return [self.get_figure(self._ref(rec)) for rec in matches]
+
+        from .related_work import _clip
+
+        items, position, text_clipped = [], offset, False
+        while position < len(matches) and len(items) < limit:
+            rec = matches[position]
+            name, name_clipped = _clip(rec["name"], 128)
+            figure_type, type_clipped = _clip(rec["type"], 64)
+            item = {"ref": self._ref(rec), "name": name, "type": figure_type,
+                    "analysis_ref": copy.deepcopy(rec["analysis"])}
+            trial = {"items": items + [item], "matched": len(matches), "returned": len(items) + 1,
+                     "offset": offset, "next_offset": position + 1 if position + 1 < len(matches) else None,
+                     "omitted": len(matches) - len(items) - 1, "truncated": False}
+            if len(canonical(trial)) > 4096:
+                text_clipped = True
+                if items:
+                    break
+                position += 1
+                continue
+            items.append(item)
+            text_clipped = text_clipped or name_clipped or type_clipped
+            position += 1
+        report = {"items": items, "matched": len(matches), "returned": len(items), "offset": offset,
+                  "next_offset": position if position < len(matches) else None,
+                  "omitted": len(matches) - len(items),
+                  "truncated": bool(text_clipped or len(matches) - len(items))}
+        require(len(canonical(report)) <= 4096, "compact figure report exceeds byte limit")
+        return report
 
     def set_current(self, ref, purpose, reason):
         require(not self.state["project"]["authorities"], "current selection governed by external authority")
@@ -1860,7 +1892,7 @@ class ProjectBundle:
             raise BundleError("writer lock held; inspect/recover deliberately") from exc
         try:
             (lock / "owner.json").write_bytes(canonical({"pid": os.getpid(), "host": socket.gethostname(), "at": now()}))
-            raw = (self.root / STATE_PATH).read_bytes()
+            raw = read_bounded(self.root / STATE_PATH, MAX_JSON, "state exceeds 20 MiB or changed while saving")
             # Matching bytes under the lock retain the revision validated on open.
             require(digest_bytes(raw) == self._loaded_digest,
                     "stale state; reload and reconcile, edits retained")

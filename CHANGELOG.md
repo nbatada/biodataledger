@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.21.2 — local development
+
+- Preserve requested source snapshots on R code-reference updates and reject
+  noncanonical snapshot paths consistently with Python. Existing missing snapshots
+  are not automatically reconstructed.
+- Bound ordinary registry/source capture reads, including concurrent file growth,
+  while preserving streamed payload checks and stale-write safeguards.
+- Add opt-in compact, paged `find_figures(limit=..., offset=...)` in both clients;
+  the full-list default and search matching stay compatible.
+- Clarify macOS write support and the minimal agent-memory workflow.
+
 ## Unreleased documentation
 
 - Clarify that shared-library names, locations and project-level source lists are

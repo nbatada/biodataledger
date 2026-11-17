@@ -13,7 +13,7 @@ import zipfile
 
 from .core import (BundleError, ProjectBundle, STATE_PATH, MAX_JSON, atomic_state, canonical,
                    digest_bytes, fingerprint, locator_key, parse_json, require, safe_relative,
-                   validate_state)
+                   validate_state, read_bounded)
 
 FORMAT = "nb-project-bundle-zip/0.1"
 MAX_FILES = 10000
@@ -81,7 +81,7 @@ def preview_export(project, mode, include=None, exclude=None, redact=None):
     require(mode in ("context", "working"), "mode must be context or working")
     require(not project.unsaved, "save staged records before export")
     require(not exclude and not redact, "Phase 1 requires explicit selected payloads; metadata redaction is not implemented")
-    raw = (project.root / STATE_PATH).read_bytes()
+    raw = read_bounded(project.root / STATE_PATH, MAX_JSON, "state exceeds 20 MiB or changed during export preview")
     require(digest_bytes(raw) == project._loaded_digest, "stale state; reopen before preview")
     require(mode == "working" or not include, "context contains no selected payload")
     selected = {}
@@ -193,7 +193,7 @@ def validate_zip(path):
 def export_zip(project, plan, path):
     require(isinstance(plan, dict) and plan.get("plan_digest") == plan_hash(plan), "edited/invalid export plan")
     require(not project.unsaved, "save staged state before export")
-    raw = (project.root / STATE_PATH).read_bytes()
+    raw = read_bounded(project.root / STATE_PATH, MAX_JSON, "state exceeds 20 MiB or changed during export")
     require(plan["source_digest"] == digest_bytes(raw) == project._loaded_digest, "stale export plan")
     require(plan["project_id"] == project.state["project"]["id"], "wrong project plan")
     output = Path(path).expanduser().absolute()
@@ -232,7 +232,7 @@ def export_zip(project, plan, path):
                         writer.write(block)
                 require(digest.hexdigest() == entry["sha256"], "selected payload changed while packaging")
             archive.writestr("manifest.json", canonical(manifest))
-        require(digest_bytes((project.root / STATE_PATH).read_bytes()) == plan["source_digest"], "state changed during export")
+        require(digest_bytes(read_bounded(project.root / STATE_PATH, MAX_JSON, "state changed during export")) == plan["source_digest"], "state changed during export")
         validate_zip(temporary)
         os.link(temporary, output)  # Exclusive publication; never replace a concurrent user's file.
         return {"path": str(output), "sha256": fingerprint(output), "mode": plan["mode"], "status": "inspectable"}

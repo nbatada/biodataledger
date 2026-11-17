@@ -14,7 +14,7 @@ to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger **0.21.1 source version** API for Python (`biodataledger`) and R
+BioDataLedger **0.21.2 source version** API for Python (`biodataledger`) and R
 (`BioDataLedger`) in this local, unpublished source build. Pin a reviewed commit when installing; no
 `v0.18.0` tag is provided. The latest tagged release
 remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).
@@ -146,7 +146,7 @@ The notation `<omitted>` below describes an internal Python default. Omit the ar
 
 Relative registered file paths resolve from the project root. Getters can return a resolved path before any availability or integrity check. Python file views use `pathlib.Path` and attribute access such as `data.path`. R views use path strings and list fields such as `data$path`. Structured reports and exact refs use Python dictionaries or R lists. Returned metadata is detached. Use the documented mutators to change project state.
 
-Metadata queries inspect the loaded registry. Some resolve local paths, while explicit checks can inspect filesystem metadata, stream file hashes, or read selected bytes as noted below. Registration records declarations, and an ordinary ANA or FIG reports execution as unknown with evidence `not_captured`. File integrity, declared inputs, observed wrapper execution, actual input use, and scientific approval are distinct claims. Writes are supported on tested local macOS filesystems. Python exposes `from biodataledger import BundleError`, a `ValueError` subclass used for package validation. R signals native error conditions. Filesystem and native execution errors can also surface. Keep the exact error and selector when a call fails.
+Metadata queries inspect the loaded registry. Some resolve local paths, while explicit checks can inspect filesystem metadata, stream file hashes, or read selected bytes as noted below. Registration records declarations, and an ordinary ANA or FIG reports execution as unknown with evidence `not_captured`. File integrity, declared inputs, observed wrapper execution, actual input use, and scientific approval are distinct claims. Writes are supported on tested local macOS filesystems. R registry creation, changed saves and imports require macOS. Some staging methods can create files before a later save rejects; this is not other-platform support. Python rejects Windows saves, and Linux writes are unqualified. Python exposes `from biodataledger import BundleError`, a `ValueError` subclass used for package validation. R signals native error conditions. Filesystem and native execution errors can also surface. Keep the exact error and selector when a call fails.
 
 The short examples use `p` for a project handle and names such as `data_ref` and `figure_ref` for actual references returned by a writer or query. Names such as `input.csv` denote existing project files. For a complete paired workflow with real synthetic files, see the [retained input example](RETAINED_INPUTS.md) and the [lineage demo](LINEAGE_DEMO.md).
 
@@ -271,11 +271,15 @@ Construct the path under `results/<kind>`. For example, call `p.get_output_dir("
 ### find_figures
 
 ```text
-Python  p.find_figures(query=None, type=None)
-R       p$find_figures(query = NULL, type = NULL)
+Python  p.find_figures(query=None, type=None, limit=None, offset=0)
+R       p$find_figures(query = NULL, type = NULL, limit = NULL, offset = 0)
 ```
 
-Find the latest active revisions of figure IDs. The optional `type` filter is exact. All whitespace-separated query terms must match literal case-insensitive substrings across recorded names, descriptions, type, locator, asset ID, or the linked analysis's name and description. Returns figure views in stable ID order as a Python list or R named list. Empty results mean no match in this search scope. Example `p.find_figures(query="sample QC")` or `p$find_figures(query="sample QC")`. This reads metadata with unchecked file availability.
+Find the latest active revisions of figure IDs. The optional `type` filter is exact. All whitespace-separated query terms must match literal case-insensitive substrings across recorded names, descriptions, type, locator, asset ID, or the linked analysis's name and description. Without `limit`, returns the legacy full figure views in stable ID order as a Python list or R named list. This reads loaded metadata with unchecked file availability.
+
+For agent use, supply `limit` from 1 to 20: `p.find_figures(query="sample QC", limit=5)` or `p$find_figures(query="sample QC", limit=5L)`. This returns a JSON report capped at 4096 UTF-8 bytes. `items` contain exact `ref`, clipped `name`/`type`, and exact `analysis_ref`; use `get_figure(ref)` for selected details. `matched` counts all matches, `returned` counts items on this page, and `omitted` is `matched - returned` (including other pages). `truncated` signals omitted matches or shortened text. An empty page with `matched > 0` is not a no-match result.
+
+Pass `next_offset` back as `offset` with the same query, type and limit on the unchanged loaded state; null means no later match remains. An exact identity too large for a page is omitted, never shortened; the offset advances and omission remains visible. `offset` is a nonnegative integer and requires `limit` unless zero. Reopening or changing the registry can change page membership; restart discovery after edits. This search includes figure and linked analysis text even without presentation tags; `find_outputs` has a different search scope.
 
 ### find_outputs
 
@@ -488,7 +492,7 @@ Python  p.update_record(ref, changes, reason)
 R       p$update_record(ref, changes, reason)
 ```
 
-Append a correction to an exact source revision with a nonblank reason. The returned revision follows the latest revision of that ID. Use named `changes` with fields appropriate to the record kind. Supported keys are `name`, `status`, `details`, `method`, `params`, `inputs`, `code`, `foreign_refs`, `path`, `design_ref`, `input_mode`, `analysis`, and `figure_sources`. Use full exact refs and the existing code descriptor format for analytical fields. Supplying `details` replaces that metadata object, so preserve existing fields needed by the record. A DATA/FIG path correction hashes the new file and drops prior presentation metadata. Old refs remain pinned and current pointers do not move. Protected fields and incompatible analytical overrides reject. Use dedicated writers for designs, result paths, preserved figures, scope, protocols, comparisons, and typed decision content. Example `p.update_record(data_ref, {"path": "input-v2.csv"}, "Corrected export")` or `p$update_record(data_ref, list(path="input-v2.csv"), "Corrected export")` for ordinary DATA. See [revision rules](RETAINED_INPUTS.md#revise-an-existing-input-or-result).
+Append a correction to an exact source revision with a nonblank reason. The returned revision follows the latest revision of that ID. Use named `changes` with fields appropriate to the record kind. Supported keys are `name`, `status`, `details`, `method`, `params`, `inputs`, `code`, `foreign_refs`, `path`, `design_ref`, `input_mode`, `analysis`, and `figure_sources`. Use full exact refs and the existing code descriptor format for analytical fields. Explicit code replacements capture requested snapshots before staging. A non-null snapshot must use `.nb_project_bundle/code/<sha256>`; null explicitly opts out of preservation. Missing, changed or oversized sources reject without staging the revision. Lifecycle/name-only edits leave the recorded code references unchanged. Opening an older registry does not reconstruct already missing snapshots; inspect `check(hashes=True)` / `check(hashes=TRUE)` and recover or revise those sources deliberately. Supplying `details` replaces that metadata object, so preserve existing fields needed by the record. A DATA/FIG path correction hashes the new file and drops prior presentation metadata. Old refs remain pinned and current pointers do not move. Protected fields and incompatible analytical overrides reject. Use dedicated writers for designs, result paths, preserved figures, scope, protocols, comparisons, and typed decision content. Example `p.update_record(data_ref, {"path": "input-v2.csv"}, "Corrected export")` or `p$update_record(data_ref, list(path="input-v2.csv"), "Corrected export")` for ordinary DATA. See [revision rules](RETAINED_INPUTS.md#revise-an-existing-input-or-result).
 
 ### set_current
 

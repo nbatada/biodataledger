@@ -1,9 +1,10 @@
 # BioDataLedger
 
-**Find retained results, trace their sources, and reuse helper versions across projects.**
+**Give your analysis agent project memory that survives the chat.**
 
 BioDataLedger connects saved data, analyses and figures to the exact inputs, code
-and parameters you recorded. Projects can also find helpers in explicitly selected
+versions and parameters you recorded. A fresh agent can find retained results and
+inspect their recorded sources without reconstructing the project from filenames. Projects can also find helpers in explicitly selected
 library registries and retain the versions they use. Later library edits do not
 redirect earlier analysis references.
 
@@ -17,7 +18,7 @@ The example illustrates records you supply; the package does not choose or verif
 
 [Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
-**Source 0.21.1** includes [continuous sample metadata](docs/METADATA.md)
+**Source 0.21.2** includes [continuous sample metadata](docs/METADATA.md)
 and [cross-project helper discovery and adoption](docs/HELPERS.md). Installed
 clients and GitHub revisions may differ; check the loaded version and required
 methods before using a workflow. Keep existing live sessions intact.
@@ -28,6 +29,10 @@ An agent can read your scripts and a project manifest. BioDataLedger adds a nati
 R/Python API for exact saved revisions, linked inputs and code, selected current
 inputs, and explicit integrity checks. A fresh agent can query those records
 without relying on the previous conversation or inferring provenance from names.
+
+Open once per process, query only what the task needs, and save retained work in
+batches. Code snapshots preserve captured source bytes; declarations and hashes
+do not prove scientific validity or that an analysis used those inputs.
 
 ## Features and the problems they solve
 
@@ -87,7 +92,7 @@ A new library revision is adopted separately; earlier analyses keep their old pi
 The [helper guide](docs/HELPERS.md) explains naming, source inspection and limitations.
 
 Run the complete synthetic examples from this checkout with compatible installed
-clients (0.21.1 is tested):
+clients (0.21.2 or newer):
 
 ```sh
 python3 examples/shared_library_python.py
@@ -104,7 +109,9 @@ not something discovery or adoption performs automatically.
 
 ## Install
 
-**Source checkout documented here: 0.21.1** · MIT license · Tested on **macOS**.
+**Source checkout documented here: 0.21.2** · MIT license.
+**R writing is supported on macOS only.** Local macOS writes are tested; Linux/Windows and
+network/cloud-synced writes are not supported or qualified.
 Install Python, R, or both. The GitHub commands below select `main`, which may differ
 from this checkout. Use a reviewed compatible revision for the shared-library examples.
 See the [changelog](CHANGELOG.md) and [API reference](docs/API.md).
@@ -509,20 +516,22 @@ separately with `get_execution`; they record invocation and boundary checks whil
 input consumption and scientific validity remain unknown. Hashes, code snapshots
 and successful imports do not establish execution.
 
-Older projects remain readable. Saving experimental design requires clients ≥0.3.0; DATA scope/design records require clients ≥0.4.0; explicit analysis input modes and managed figure copies require clients ≥0.5.0. Windows/Linux writes, network/cloud-synced folders, power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
+Older projects remain readable. Saving experimental design requires clients ≥0.3.0; DATA scope/design records require clients ≥0.4.0; explicit analysis input modes and managed figure copies require clients ≥0.5.0. R registry creation, changed saves and imports require macOS. Python rejects Windows saves; Linux and network/cloud-synced writes are unqualified. Power-loss recovery and exports over 4 GiB remain unverified. The R maintainer-contact placeholder is unresolved; no PyPI or CRAN release has been published.
 
 ## Tests
 
-From the **0.21.1 local checkout**, install both clients and the optional
+From the **0.21.2 local checkout**, install both clients and the optional
 plotting dependencies required by the full test suite. Core use does not require
 them; the suite also tests core imports with Python plotting dependencies blocked.
 
 ```sh
 .venv/bin/python -m pip install './python[plotting]'
 Rscript -e 'install.packages(c("ggplot2", "patchwork", "SeuratObject"), repos="https://cloud.r-project.org")'
+mkdir -p .r-library
+R CMD INSTALL -l "$PWD/.r-library" r
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.21.1.tar.gz
+R CMD check --no-manual BioDataLedger_0.21.2.tar.gz
 ```
 
 ## Confirm a saved change
@@ -653,6 +662,11 @@ Queries read metadata without loading scientific objects or changing the registr
 See [matching rules, native examples and limits](docs/api/RELATED_WORK_V1.md).
 
 ### Find retained figures and data
+
+For figure names or linked analysis text, use `p.find_figures(query="QC", limit=5)`
+in Python or `p$find_figures(query="QC", limit=5L)` in R. The compact page is capped
+at 4 KiB; inspect `truncated` and continue with `next_offset`. Retrieve a chosen
+exact `ref` with `get_figure`. Omitting `limit` retains the full-list API.
 
 - **Start with a topic.** Call `p.find_outputs(topic="QC")` in Python or
   `p$find_outputs(topic = "QC")` in R to find figures and data tagged `QC`
