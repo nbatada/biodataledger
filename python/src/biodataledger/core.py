@@ -1287,9 +1287,10 @@ class ProjectBundle:
                 rec["details"][KEY] = normalize(changes["figure_sources"], self, require, safe_relative)
         rec["revision"] = self._latest_index[rec["id"]]["revision"] + 1
         rec["created_at"] = now()
+        # Lifecycle-only helper edits preserve existing snapshots, including imported bindings.
         return self._stage(rec, "update_record", reason, version=CONTEXT_VERSION if {"design_ref", "input_mode", "analysis"} & set(changes) else None,
                            context_check=bool({"inputs", "design_ref", "input_mode", "analysis"} & set(changes)),
-                           capture_code=not presentation_only)
+                           capture_code=not presentation_only and HELPER_KEY not in rec["details"])
 
     def set_context(self, changes):
         allowed = {"purpose", "next_task", "questions", "authorities", "raw_dir", "metadata"}

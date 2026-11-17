@@ -125,6 +125,11 @@ class HelperTests(unittest.TestCase):
             path = Path(next(f['path'] for f in card['verification']['files'] if f['sha256'] == code['sha256']))
             self.assertEqual(digest_bytes(path.read_bytes()), code['sha256'])
         self.assertEqual(imported.get_analysis(ana).details['bl_helper_refs'], [helper])
+        retired = imported.update_record(helper, {'status': 'inactive'}, 'Retire imported implementation')
+        imported.save()
+        self.assertEqual(imported.get_helper(retired)['record_status'], 'inactive')
+        self.assertEqual(imported.get_analysis(ana).details['bl_helper_refs'], [helper])
+        self.assertEqual(imported.get_helper(helper, 'snapshot')['verification']['status'], 'pass')
 
     def test_discovery_metadata_only_reports_scan_and_result_limits(self):
         helper = self.register()
