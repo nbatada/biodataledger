@@ -16,7 +16,7 @@ it to a colleague. No AI service is required.
 
 The example illustrates records you supply; the package does not choose or verify the cohort for you.
 
-[Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
+[Features](#features-and-the-problems-they-solve) · [Install](#install) · [Start a ticket on your analysis machine](#start-a-ticket-on-your-analysis-machine) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
 **Source 0.22.0** includes [continuous sample metadata](docs/METADATA.md)
 and [cross-project helper discovery and adoption](docs/HELPERS.md). Installed
@@ -43,6 +43,57 @@ without relying on the previous conversation or inferring provenance from names.
 Open once per process, query only what the task needs, and save retained work in
 batches. Code snapshots preserve captured source bytes; declarations and hashes
 do not prove scientific validity or that an analysis used those inputs.
+
+## Start a ticket on your analysis machine
+
+Run these commands in the **terminal on the laptop or server doing the analysis**,
+using your intended Python environment (3.9 or newer). This installs the ticket
+recorder from the exact 0.22.0 source commit. The same command can time Python
+and Rscript work. An existing live R session can stay open.
+
+```bash
+python -m pip install --upgrade "git+https://github.com/nbatada/biodataledger.git@f05c6e89d365d6f6092d6ce449c9f9dddfcd58d2#subdirectory=python"
+python -c "import biodataledger; print(biodataledger.__version__)"  # 0.22.0
+bdl-pilot --help
+```
+
+**At dispatch**, start the first ticket once and give the implementer the printed
+path and the path from `command -v bdl-pilot`. Choose a new ID for each later
+ticket. Keep the log on a local disk on that machine, outside any directory you
+measure. Use `--arm baseline` for a Git-plus-manifest comparison.
+
+```bash
+mkdir -p "$HOME/bdl-ticket-pilot"
+ticket="$HOME/bdl-ticket-pilot/T001.json"
+bdl-pilot start --path "$ticket" --ticket T001 --arm bdl
+command -v bdl-pilot
+```
+
+**Paste this into the implementer chat** with the two paths from dispatch:
+
+```text
+Use the existing pilot ticket and executable from the manager. Record “locate”
+when you have identified the requested sources, and “deliver” when you show me
+the actual result. Give me the figure or visual difference first, then its exact
+data, code and helper references, checks and unknowns. Keep any correction to
+this ticket on the same log. Record acceptance only when I give it.
+```
+
+**At review**, use the same absolute ticket path in any new terminal. Record
+acceptance after delivery, then generate the offline report:
+
+```bash
+ticket="$HOME/bdl-ticket-pilot/T001.json"
+bdl-pilot accept --path "$ticket" --decision accepted
+bdl-pilot summary --path "$ticket"
+bdl-pilot-report "$ticket" --out "$HOME/bdl-ticket-pilot/T001-review.html"
+```
+
+On a headless server, copy the HTML report to your laptop to view it. The
+[pilot guide](docs/TICKET_PILOT.md) gives the implementer's exact milestone
+commands, correction examples, disk measurement, batch CPU/RAM timing, and live
+R memory sampling. The standalone ticket pilot supports Linux; native R registry
+creation, changed saves and imports require macOS.
 
 ## Features and the problems they solve
 
