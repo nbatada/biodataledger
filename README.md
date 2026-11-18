@@ -1,5 +1,7 @@
 # BioDataLedger
 
+**[Download the latest R package (.tar.gz)](https://raw.githubusercontent.com/nbatada/biodataledger/main/latest/BioDataLedger.tar.gz)** · [Install the downloaded file in R](latest/README.md)
+
 **Give your analysis agent project memory that survives the chat.**
 
 BioDataLedger connects saved data, analyses and figures to the exact inputs, code
