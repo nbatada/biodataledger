@@ -18,12 +18,22 @@ The example illustrates records you supply; the package does not choose or verif
 
 [Features](#features-and-the-problems-they-solve) · [Install](#install) · [Resume](docs/RESUMING.md) · [Upgrade](docs/UPDATING.md) · [Share](docs/SHARING.md) · [Examples](#record-data-analyses-and-figures) · [Find retained outputs](#find-retained-figures-and-data) · [Trace a figure](#export-a-project-graph) · [Conditions and levels](#conditions-and-levels) · [Agent instructions](#using-an-agent) · [API reference](docs/API.md)
 
-**Source 0.21.2** includes [continuous sample metadata](docs/METADATA.md)
+**Source 0.22.0** includes [continuous sample metadata](docs/METADATA.md)
 and [cross-project helper discovery and adoption](docs/HELPERS.md). Installed
 clients and GitHub revisions may differ; check the loaded version and required
 methods before using a workflow. Keep existing live sessions intact.
 
 ## What it adds to an agent-assisted workflow
+
+Start from a figure when you ask for a revision. A fresh agent can inspect its
+recorded data, analysis and plotting sources, reuse a retained result table, and
+explain which steps a requested change requires. Scientific input checks and
+recorded links answer different questions. Retain the table and wrapper revision
+when a later redraw should avoid upstream work.
+
+The [ticket pilot](docs/TICKET_PILOT.md) measures time to the delivery the scientist
+accepts, corrections and selected resource costs. It also works alongside a plain
+manifest so you can measure the contribution of the ledger in your own workflow.
 
 An agent can read your scripts and a project manifest. BioDataLedger adds a native
 R/Python API for exact saved revisions, linked inputs and code, selected current
@@ -109,7 +119,7 @@ not something discovery or adoption performs automatically.
 
 ## Install
 
-**Source checkout documented here: 0.21.2** · MIT license.
+**Source checkout documented here: 0.22.0** · MIT license.
 **R writing is supported on macOS only.** Local macOS writes are tested; Linux/Windows and
 network/cloud-synced writes are not supported or qualified.
 Install Python, R, or both. The GitHub commands below select `main`, which may differ
@@ -520,7 +530,7 @@ Older projects remain readable. Saving experimental design requires clients ≥0
 
 ## Tests
 
-From the **0.21.2 local checkout**, install both clients and the optional
+From the **0.22.0 local checkout**, install both clients and the optional
 plotting dependencies required by the full test suite. Core use does not require
 them; the suite also tests core imports with Python plotting dependencies blocked.
 
@@ -531,7 +541,7 @@ mkdir -p .r-library
 R CMD INSTALL -l "$PWD/.r-library" r
 BDL_R_LIB="$PWD/.r-library" .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 R CMD build r
-R CMD check --no-manual BioDataLedger_0.21.2.tar.gz
+R CMD check --no-manual BioDataLedger_0.22.0.tar.gz
 ```
 
 ## Confirm a saved change

@@ -4,7 +4,10 @@ Durable project memory for analysis agents: find retained results, inspect their
 
 The native public facade is ProjectBundle: create/open an explicit project root, query compact status, resolve registered inputs, register existing data/analyses/figures and save meaningful changes. Context and selected working ZIPs import without execution. Native RDS/H5AD objects are not loaded or converted by the registry.
 
-## 0.21.2 source build
+## 0.22.0 source build
+
+The optional `python -m biodataledger.pilot --help` command records ticket milestones
+and selected process and disk measurements for local analysis handoffs.
 
 This source includes bounded figure-search pages, retained-source corrections,
 continuous metadata and explicit bounded helper discovery/adoption. Published `main` or tags may differ; check the installed version and
@@ -34,7 +37,7 @@ Use an isolated Python environment as needed. For an immutable installation,
 resolve `main` and replace it with the full commit SHA. For an existing project or live
 session, follow the [safe upgrade guide and agent prompt](https://github.com/nbatada/biodataledger/blob/main/docs/UPDATING.md).
 
-The GitHub commands select `main`, which may differ from this local 0.21.2 checkout.
+The GitHub commands select `main`, which may differ from this 0.22.0 checkout.
 Check loaded capabilities before using helper adoption; no installation upgrades an
 already imported Python module. Pin the source commit for reuse.
 

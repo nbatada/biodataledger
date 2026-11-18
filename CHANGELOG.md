@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.0 — ticket pilot
+
+- Add an opt-in terminal companion for timing a scientific ticket across deliveries, corrections and scientist review. Benchmark selected commands or an existing live process, and compare storage within an explicit directory. See [the pilot guide](docs/TICKET_PILOT.md).
+
 ## 0.21.2 — 2026-11-17 (source update)
 
 - Preserve requested source snapshots on R code-reference updates and reject

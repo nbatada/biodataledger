@@ -1,5 +1,7 @@
 # BioDataLedger API reference
 
+The optional [ticket pilot CLI](TICKET_PILOT.md) runs alongside either native client or a plain project manifest. Ticket events use a separate local benchmark record. Scientific run receipts retain their existing meaning.
+
 The optional [R session helper](R_SESSION.md) exposes
 `bdl_session_start`, `bdl_session_attach` and `bdl_session_recover` separately from
 `ProjectBundle`. It manages current in-memory objects in a designated R process;
@@ -14,7 +16,7 @@ to native project handles. Opted-in projects reject direct figure registration
 and copying; the library performs rendering itself. Earlier clients cannot open
 guarded registries; unguarded projects retain their existing behavior.
 
-BioDataLedger **0.21.2 source version** API for Python (`biodataledger`) and R
+BioDataLedger **0.22.0 source version** API for Python (`biodataledger`) and R
 (`BioDataLedger`). Pin a reviewed source commit when installing. Source updates
 are separate from tagged releases; the latest tagged release
 remains [v0.17.0](https://github.com/nbatada/biodataledger/tree/v0.17.0).

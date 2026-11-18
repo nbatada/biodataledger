@@ -1,5 +1,12 @@
 # Using BioDataLedger with an agent
 
+For a scientist who has enabled the [ticket pilot](../TICKET_PILOT.md), record
+dispatch and delivery at the time they occur. Hand back the figure or visual
+difference first, followed by its exact result and source references, the
+requested change, checks and unknowns. Record a correction for unmet original
+requirements. A new preference belongs to a new ticket. Only record acceptance
+after the scientist has actually given it.
+
 Use the [current BioDataLedger API reference](../API.md) for Python and R signatures, return fields and call effects. Agents use the same native project object as scientists.
 
 ## Open and choose the input
