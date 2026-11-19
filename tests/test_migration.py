@@ -1,4 +1,4 @@
-"""Installed-client migration, compact status and actual README examples."""
+"""Installed-client migration, compact status and documented walkthrough examples."""
 import contextlib
 import hashlib
 import io
@@ -247,20 +247,20 @@ if (action == "create") {
             Path(os.environ["BDL_METRICS_PATH"]).write_text(json.dumps(metric, indent=2) + "\n")
 
     def test_readme_python_examples_installed(self):
-        blocks = re.findall(r"```python\n(.*?)```", (BASE / "README.md").read_text(), re.S)
+        blocks = re.findall(r"```python\n(.*?)```", (BASE / "examples" / "README.md").read_text(), re.S)
         self.assertEqual(len(blocks), 4)
         folder = self.root / "python-readme"
         shutil.copytree(BASE / "examples/input-files", folder)
         scope = {"project_root": folder, "archive_path": self.root / "python-readme.zip", "import_root": self.root / "python-import"}
         with contextlib.redirect_stdout(io.StringIO()):
             for block in blocks:
-                exec(compile(block, "README.md", "exec"), scope)
+                exec(compile(block, "examples/README.md", "exec"), scope)
         self.assertEqual(scope["q"].get_figure(scope["f1"], check_files=True).params, {"min_genes": 200})
         self.assertEqual(len(scope["q"].find_figures(type="qc")), 2)
 
     def test_readme_r_examples_installed(self):
         # Installation is verified separately from the usage examples.
-        examples = (BASE / "README.md").read_text().split("## Record data, analyses and figures", 1)[1]
+        examples = (BASE / "examples" / "README.md").read_text().split("## Record data, analyses and figures", 1)[1]
         blocks = re.findall(r"```r\n(.*?)```", examples, re.S)
         self.assertEqual(len(blocks), 4)
         folder = self.root / "r-readme"

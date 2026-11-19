@@ -4,7 +4,7 @@ The **0.18.0 source version is on `main`**. Resolve the branch to a full commit
 before installation; the latest existing release tag is v0.17.0. No v0.18.0 tag
 is provided. Version 0.18.0 includes analysis input/output timelines, optional
 plotting and renderer guards, a browser snapshot, and managed R session reuse.
-See the [feature guide](../README.md#features-and-the-problems-they-solve) and
+See the [project overview](../README.md) and
 [API reference](API.md).
 
 Reopen your saved project with its existing registry schema, `.nb_project_bundle`
